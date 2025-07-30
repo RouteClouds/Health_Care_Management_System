@@ -1,0 +1,146 @@
+digraph "Health Care Management System - Docker Production Architecture (v2.0)" {
+	graph [bgcolor=white fontcolor="#2D3436" fontname="Sans-Serif" fontsize=16 label="✅ Production Ready: Docker + Authentication + Appointments + 4 Containers" nodesep=0.60 pad=1.0 rankdir=TB ranksep=0.75 splines=ortho]
+	node [fixedsize=true fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 height=1.4 imagescale=true labelloc=b shape=box style=rounded width=1.4]
+	edge [color="#7B8894"]
+	subgraph "cluster_👥 Users & Devices" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="👥 Users & Devices" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		"616e8c5838a04b46b0ab8dfd01d016b6" [label=Patients height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/client/users.png" shape=none]
+		a08218196f844dd6a4451d5cc690bbf4 [label=Doctors height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/client/users.png" shape=none]
+		fe8f095f3f114f55a5f06f702736b3ca [label="Admin Staff" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/client/users.png" shape=none]
+		subgraph "cluster_📱 Client Devices" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="📱 Client Devices" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"148f3e1867ae41679e072beae4567f2c" [label="Desktop Browser" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/client/client.png" shape=none]
+			a680cbca7ee1406a853f81d1d5dfae9f [label="Mobile App" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/generic/device/mobile.png" shape=none]
+			"90bc0849a44e4c4f8dfea10c4cdb6cff" [label=Tablet height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/generic/device/tablet.png" shape=none]
+		}
+	}
+	subgraph "cluster_🐳 Docker Container Architecture" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="🐳 Docker Container Architecture" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		subgraph "cluster_Container Network" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Container Network" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"21e38c00415f4983bae7010606295094" [label="Nginx Proxy
+(Port 80/443)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/network/nginx.png" shape=none]
+			"7f3cad7737b94ddfb831e7bd9b396c68" [label="Frontend Container
+(React + Nginx)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+			dcb58758454b44ff866e01809b69adbe [label="Backend Container
+(Node.js + Express)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+			b047ac67652c4dbba2c850fbea728fd8 [label="Database Container
+(PostgreSQL)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/database/postgresql.png" shape=none]
+		}
+	}
+	subgraph "cluster_🌐 Network & CDN Layer (Future)" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="🌐 Network & CDN Layer (Future)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		"24f82691833f4a5f94456cedec444eb6" [label="DNS (Planned)" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/aws/network/route-53.png" shape=none]
+		"657b73140fc84675b04e5ae7113dcdbb" [label="CDN (Planned)" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/aws/network/cloudfront.png" shape=none]
+		"233f9e90672344ed896634910eedc487" [label="Load Balancer (Planned)" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/aws/network/elastic-load-balancing.png" shape=none]
+	}
+	subgraph "cluster_🎨 Frontend Layer (React + TypeScript)" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="🎨 Frontend Layer (React + TypeScript)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		subgraph "cluster_React Application" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="React Application" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"11e897b5e9254a129099e617e7c54346" [label="React 18.3.1" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/framework/react.png" shape=none]
+			"9ef8b138d2b144318e6d03a3db1a2ea7" [label=TypeScript height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/typescript.png" shape=none]
+		}
+		subgraph "cluster_State Management (Current)" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="State Management (Current)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			e5f8a73286eb4b71a3db35cf62212bfa [label="Redux Toolkit" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+			edc56618e0804a9eb8c3823715174cbe [label="React Query" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+			e839bccc897245aea5915f7f2fae54e6 [label="Custom Hooks" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+		}
+		subgraph "cluster_UI Framework" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="UI Framework" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"7bb7e06bb0574491a0555752e5ecfbc4" [label="Tailwind CSS" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+			d76f6a1c93de4f9b970ca00bf8c16069 [label="Vite Build" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+		}
+		subgraph "cluster_Routing & Forms" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Routing & Forms" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"1bff8b33977e461fa0883e3e5e031172" [label="React Router" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+			a52c3fa4955a462db7bbafd9abbaa1c5 [label="Formik + Yup" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+		}
+		subgraph "cluster_Current Features (Implemented)" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Current Features (Implemented)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			f319604291e049d7ab0e8352363ca4a7 [label="Login/Register UI" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+			a42c59d09e14480984e38f1c2b981857 [label="Appointment Booking" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+			e79714df93f445ca9f2292cd6425d961 [label="Protected Routes" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+			c8c08d09d0b745c58674c39f14d68471 [label="Doctor Management" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/javascript.png" shape=none]
+		}
+	}
+	a75a0be00e214d339b5c7bb4b5ad9aba [label="API Gateway" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+	subgraph "cluster_⚙️ Backend Layer (Node.js + Express)" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="⚙️ Backend Layer (Node.js + Express)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		subgraph "cluster_Application Servers" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Application Servers" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"4bb29dad453e423faa25508e650eba24" [label="Express Server 1" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/nodejs.png" shape=none]
+			"378f49c62c6645f7a27402aeb1cd8d76" [label="Express Server 2" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/programming/language/nodejs.png" shape=none]
+		}
+		subgraph "cluster_API Services" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="API Services" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"08a47d5127cc4166a0ffb4d735385fcd" [label="Auth Service" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+			"2819547d4fea4746920462a54cc16422" [label="Doctor Service" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+			"990e00705bf54f97bb747b8324ba61da" [label="Appointment Service" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+			"49ad3d2eedf744f699635f99114f69e4" [label="Patient Service" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+			ab7ca89633cb43158369b35364f9320e [label="Notification Service" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+		}
+	}
+	subgraph "cluster_🗄️ Database Layer" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="🗄️ Database Layer" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		subgraph "cluster_Primary Database" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Primary Database" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			c3bd163b05fa490d95ba67e1218611ef [label="PostgreSQL
+(Primary)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/database/postgresql.png" shape=none]
+			ebc0a69131a44a92a0b12fd2a8a12fa4 [label="PostgreSQL
+(Read Replica)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/database/postgresql.png" shape=none]
+		}
+		subgraph "cluster_Cache Layer (Future)" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="Cache Layer (Future)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			c4eb52f13760437da60c6a84e5e3ea60 [label="Redis Cache
+(Planned)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/inmemory/redis.png" shape=none]
+			e6e1c587f40d4ca3864cfc189ec2d258 [label="Redis Sessions
+(Planned)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/inmemory/redis.png" shape=none]
+		}
+		subgraph "cluster_File Storage" {
+			graph [bgcolor="#EBF3E7" fontname="Sans-Serif" fontsize=12 label="File Storage" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			f647ccec1d0f43bf8e32bfc5c5d0f077 [label="File Storage
+(Medical Records)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/aws/storage/simple-storage-service-s3.png" shape=none]
+		}
+	}
+	subgraph "cluster_🔌 External Services (Future)" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="🔌 External Services (Future)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		"93c3842552314df392f4c9943b187a07" [label="Email Service
+(Planned)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+		c4335e8ae9774b6fa0eb5273d6b9ebc1 [label="SMS Gateway
+(Planned)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+		ba03028e1fa54046810df0d0958223be [label="Payment Gateway
+(Planned)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+		"7d70c9bc22454e3c8379edc1e3fc974f" [label="Video Call Service
+(Planned)" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+	}
+	subgraph "cluster_📊 Monitoring & Security" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="📊 Monitoring & Security" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		"83946712ffc845d488aaccf35ba0b9ba" [label=Prometheus height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/monitoring/prometheus.png" shape=none]
+		b43ba859b36e4f94a89b4197e78f22e8 [label=Grafana height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/monitoring/grafana.png" shape=none]
+		"43ed54f6179d4df4b0703456f6ca192c" [label="JWT Auth" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/aws/security/identity-and-access-management-iam.png" shape=none]
+		"1fe188146ddf4f7d97a61b7f980e5584" [label="Security Scanner" height=1.9 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+	}
+	subgraph "cluster_👨‍⚕️ Doctor Specializations (Current Database)" {
+		graph [bgcolor="#E5F5FD" fontname="Sans-Serif" fontsize=12 label="👨‍⚕️ Doctor Specializations (Current Database)" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		"1a702db8d96f44d28ef5c92102f59446" [label="Dr. John Smith
+Interventional Cardiology" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+		d87e3e0ab2dd437c8905563ee5b300bf [label="Dr. Sarah Johnson
+Critical Care Pulmonology" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+		e40620649ba14bcdaa0ddd862523b5ea [label="Dr. Michael Williams
+Clinical Neurology" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+		"67573e2321704985bb0bdd6805e77e0f" [label="Dr. Emily Brown
+Orthopedic Surgery" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+		"21c265b2362643759ffe40009e8b923e" [label="Dr. David Davis
+Clinical Nephrology" height=2.3 image="/home/ubuntu/Projects/python-venv/healthcare-diagrams/lib/python3.12/site-packages/resources/onprem/compute/server.png" shape=none]
+	}
+	"616e8c5838a04b46b0ab8dfd01d016b6" -> "24f82691833f4a5f94456cedec444eb6" [label=HTTPS dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	a08218196f844dd6a4451d5cc690bbf4 -> "24f82691833f4a5f94456cedec444eb6" [label=HTTPS dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	fe8f095f3f114f55a5f06f702736b3ca -> "24f82691833f4a5f94456cedec444eb6" [label=HTTPS dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"148f3e1867ae41679e072beae4567f2c" -> "657b73140fc84675b04e5ae7113dcdbb" [label="Web App" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	a680cbca7ee1406a853f81d1d5dfae9f -> "657b73140fc84675b04e5ae7113dcdbb" [label="PWA/App" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"90bc0849a44e4c4f8dfea10c4cdb6cff" -> "657b73140fc84675b04e5ae7113dcdbb" [label=Responsive dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"24f82691833f4a5f94456cedec444eb6" -> "657b73140fc84675b04e5ae7113dcdbb" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"657b73140fc84675b04e5ae7113dcdbb" -> "233f9e90672344ed896634910eedc487" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+}

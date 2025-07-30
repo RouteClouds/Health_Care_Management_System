@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: healthcare-backend
+  namespace: healthcare
+  labels:
+    app: healthcare-backend
+    tier: backend
+    stage: stage-1-basic
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: healthcare-backend
+  template:
+    metadata:
+      labels:
+        app: healthcare-backend
+        tier: backend
+        stage: stage-1-basic
+    spec:
+      containers:
+      - name: backend
+        image: your-username/healthcare-backend:v1.0  # UPDATE THIS WITH YOUR DOCKER HUB USERNAME
+        ports:
+        - containerPort: 3002
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3002"
+        - name: DATABASE_URL
+          value: "postgresql://healthcare_user:healthcare_password_2024@postgres-service:5432/healthcare_db"
+        - name: JWT_SECRET
+          value: "healthcare_jwt_secret_key_2024_stage1"
+        - name: CORS_ORIGIN
+          value: "*"
+        - name: API_BASE_URL
+          value: "/api"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3002
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3002
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: healthcare
+  labels:
+    app: healthcare-backend
+    tier: backend
+    stage: stage-1-basic
+spec:
+  selector:
+    app: healthcare-backend
+  ports:
+  - port: 3002
+    targetPort: 3002
+    protocol: TCP
+    name: http
+  type: ClusterIP
