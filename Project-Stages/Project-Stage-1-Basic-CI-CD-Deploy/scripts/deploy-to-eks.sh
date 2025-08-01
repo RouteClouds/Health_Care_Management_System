@@ -89,6 +89,20 @@ print_info "Waiting for frontend to be ready..."
 kubectl wait --for=condition=available --timeout=300s deployment/healthcare-frontend -n healthcare
 print_status "Frontend is ready"
 
+# Initialize database automatically
+echo ""
+print_info "Initializing database with schema and sample data..."
+if [ -f "scripts/init-database.sh" ]; then
+    ./scripts/init-database.sh
+    if [ $? -eq 0 ]; then
+        print_status "Database initialized successfully"
+    else
+        print_warning "Database initialization had issues, but deployment continues"
+    fi
+else
+    print_warning "Database initialization script not found, skipping..."
+fi
+
 echo ""
 print_info "Checking deployment status..."
 

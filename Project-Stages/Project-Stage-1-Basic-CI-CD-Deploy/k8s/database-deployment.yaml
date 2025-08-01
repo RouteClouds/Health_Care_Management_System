@@ -31,7 +31,7 @@ spec:
         - name: POSTGRES_USER
           value: "healthcare_user"
         - name: POSTGRES_PASSWORD
-          value: "healthcare_password_2024"
+          value: "healthcare_password"
         - name: PGDATA
           value: "/var/lib/postgresql/data/pgdata"
         volumeMounts:

@@ -172,7 +172,7 @@ kubectl get nodes -o wide
 
 # Check version compatibility
 print_info "Version compatibility check:"
-kubectl version --short
+kubectl version --client --output=yaml | grep gitVersion || kubectl version --client
 
 echo ""
 print_status "EKS cluster created successfully!"

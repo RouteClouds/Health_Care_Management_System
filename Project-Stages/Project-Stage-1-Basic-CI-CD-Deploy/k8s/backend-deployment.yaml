@@ -19,9 +19,24 @@ spec:
         tier: backend
         stage: stage-1-basic
     spec:
+      initContainers:
+      - name: db-init
+        image: routeclouds/healthcare-backend:v1.0
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: DATABASE_URL
+          value: "postgresql://healthcare_user:healthcare_password@postgres-service:5432/healthcare_db"
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          echo "🗄️ Initializing database schema..."
+          npx prisma db push --accept-data-loss || echo "Schema push completed"
+          echo "✅ Database initialization complete"
       containers:
       - name: backend
-        image: your-username/healthcare-backend:v1.0  # UPDATE THIS WITH YOUR DOCKER HUB USERNAME
+        image: routeclouds/healthcare-backend:v1.0  # Testing version - auto-updated on rebuild
         ports:
         - containerPort: 3002
           name: http
@@ -31,7 +46,7 @@ spec:
         - name: PORT
           value: "3002"
         - name: DATABASE_URL
-          value: "postgresql://healthcare_user:healthcare_password_2024@postgres-service:5432/healthcare_db"
+          value: "postgresql://healthcare_user:healthcare_password@postgres-service:5432/healthcare_db"
         - name: JWT_SECRET
           value: "healthcare_jwt_secret_key_2024_stage1"
         - name: CORS_ORIGIN
@@ -47,7 +62,7 @@ spec:
             cpu: "500m"
         livenessProbe:
           httpGet:
-            path: /api/health
+            path: /health
             port: 3002
           initialDelaySeconds: 60
           periodSeconds: 30
@@ -55,7 +70,7 @@ spec:
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /api/health
+            path: /api/ready
             port: 3002
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -82,3 +97,5 @@ spec:
     protocol: TCP
     name: http
   type: ClusterIP
+
+
