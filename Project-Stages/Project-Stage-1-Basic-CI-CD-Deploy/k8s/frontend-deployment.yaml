@@ -21,17 +21,11 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: your-username/healthcare-frontend:v1.0  # UPDATE THIS WITH YOUR DOCKER HUB USERNAME
+        image: routeclouds/healthcare-frontend:v1.0  # Testing version - auto-updated on rebuild
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
           name: http
-        env:
-        - name: REACT_APP_API_URL
-          value: "http://backend-service:3002/api"
-        - name: REACT_APP_ENV
-          value: "production"
-        - name: REACT_APP_STAGE
-          value: "stage-1-basic"
         resources:
           requests:
             memory: "128Mi"
@@ -41,7 +35,7 @@ spec:
             cpu: "200m"
         livenessProbe:
           httpGet:
-            path: /
+            path: /health
             port: 80
           initialDelaySeconds: 30
           periodSeconds: 30
@@ -49,7 +43,7 @@ spec:
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /
+            path: /health
             port: 80
           initialDelaySeconds: 10
           periodSeconds: 10

@@ -1,0 +1,47 @@
+# Multi-stage build for React frontend - KUBERNETES VERSION
+# This Dockerfile is specifically for Kubernetes deployments
+
+# Stage 1: Build the React application
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY frontend/package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source code
+COPY frontend/ .
+
+# Copy Kubernetes-specific environment file
+COPY frontend/.env.k8s .env
+
+# Build the application for production
+RUN npm run build
+
+# Stage 2: Production image with Nginx
+FROM nginx:alpine AS production
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Copy custom nginx configuration for KUBERNETES
+COPY nginx/nginx.k8s.conf /etc/nginx/nginx.conf
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Set proper permissions
+RUN chown -R nginx:nginx /usr/share/nginx/html
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
+
+# Expose port 80
+EXPOSE 80
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

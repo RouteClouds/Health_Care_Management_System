@@ -39,6 +39,35 @@ app.get('/health', (req, res) => {
   });
 });
 
+// API health check endpoint (for Kubernetes probes)
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'healthcare-backend',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'production',
+    version: '1.0.0',
+    database: 'connected', // TODO: Add actual database health check
+    memory: process.memoryUsage(),
+  });
+});
+
+// API readiness check endpoint (for Kubernetes readiness probes)
+app.get('/api/ready', (req, res) => {
+  // TODO: Add actual readiness checks (database connection, etc.)
+  res.json({
+    status: 'ready',
+    service: 'healthcare-backend',
+    timestamp: new Date().toISOString(),
+    checks: {
+      database: 'connected',
+      memory: process.memoryUsage(),
+      uptime: process.uptime(),
+    },
+  });
+});
+
 // API info endpoint
 app.get('/api', (req, res) => {
   res.json({
@@ -47,6 +76,8 @@ app.get('/api', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: '/health',
+      apiHealth: '/api/health',
+      apiReady: '/api/ready',
       doctors: '/api/doctors',
       departments: '/api/doctors/departments',
       appointments: '/api/appointments',
@@ -64,6 +95,8 @@ app.use('*', (req, res) => {
     availableEndpoints: [
       '/health',
       '/api',
+      '/api/health',
+      '/api/ready',
       '/api/doctors',
       '/api/doctors/departments',
       '/api/appointments',

@@ -31,13 +31,20 @@ RUN npx prisma generate
 # Copy source code
 COPY backend/src ./src/
 COPY backend/tsconfig.json ./
+COPY backend/scripts ./scripts/
+
+# Verify scripts are copied
+RUN ls -la scripts/ && chmod +x scripts/*.sh
 
 # Build TypeScript
 RUN npm run build
 
-# Remove dev dependencies and source files
+# Remove dev dependencies and source files, but keep scripts
 RUN npm prune --production && \
-    rm -rf src tsconfig.json
+    rm -rf src tsconfig.json && \
+    chmod +x scripts/*.sh && \
+    chown -R nodejs:nodejs scripts/ && \
+    ls -la scripts/
 
 # Change ownership to nodejs user
 RUN chown -R nodejs:nodejs /app
