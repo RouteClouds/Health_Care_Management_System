@@ -219,7 +219,9 @@ A: Use efficient workflows, cache dependencies, and manage environment lifecycle
 ### **📚 Prerequisites Knowledge**
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [Jest Testing Framework](https://jestjs.io/docs/getting-started)
-- [Cypress E2E Testing](https://docs.cypress.io/)
+- [Selenium WebDriver](https://selenium-webdriver.readthedocs.io/)
+- [SonarQube Code Quality](https://docs.sonarqube.org/)
+- [Trivy Security Scanner](https://trivy.dev/)
 - [Helm Package Manager](https://helm.sh/docs/)
 
 ### **🛠️ Required Tools**
