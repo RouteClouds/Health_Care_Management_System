@@ -32,7 +32,7 @@ This is the **comprehensive troubleshooting database** for Stage 2 CI/CD pipelin
 |-------|----------|----------|-----------|
 | **[Issue #9](#issue-9)** | Unit Tests | Jest tests failing | Test environment setup |
 | **[Issue #10](#issue-10)** | Integration Tests | API tests failing | Database and service connectivity |
-| **[Issue #11](#issue-11)** | E2E Tests | Cypress tests failing | Browser automation and timing |
+| **[Issue #11](#issue-11)** | E2E Tests | Selenium tests failing | Browser automation and timing |
 | **[Issue #12](#issue-12)** | Code Quality | Linting and formatting errors | ESLint and Prettier configuration |
 
 ---
@@ -163,11 +163,11 @@ Test environment differences between local and CI:
 NODE_ENV=test npm test
 
 # Check test dependencies
-npm ls --depth=0 | grep -E "(jest|cypress|supertest)"
+npm ls --depth=0 | grep -E "(jest|selenium-webdriver|supertest)"
 
 # Verify test configuration
 cat jest.config.js
-cat cypress.config.js
+cat tests/selenium-config/webdriver.config.js
 ```
 
 #### **Complete Solution**
@@ -360,38 +360,53 @@ module.exports = {
 
 ---
 
-### **Issue #11: Cypress E2E Tests Failing** {#issue-11}
-**Symptoms**: Browser tests timeout, element not found, network errors
+### **Issue #11: Selenium E2E Tests Failing** {#issue-11}
+**Symptoms**: Browser tests timeout, element not found, WebDriver errors
 
 #### **Quick Solution**
 ```bash
-# 1. Add Cypress GitHub Action
-- name: Run E2E tests
-  uses: cypress-io/github-action@v6
-  with:
-    working-directory: src-code
-    start: npm start
-    wait-on: 'http://localhost:3000'
-    wait-on-timeout: 120
+# 1. Install browser drivers
+npx webdriver-manager update
 
-# 2. Configure Cypress for CI
-// cypress.config.js
-module.exports = {
-  e2e: {
-    baseUrl: 'http://localhost:3000',
-    video: true,
-    screenshotOnRunFailure: true,
-    defaultCommandTimeout: 10000,
-    requestTimeout: 10000,
-    responseTimeout: 10000
+# 2. Configure Selenium for CI
+// tests/selenium-config/webdriver.config.js
+class WebDriverConfig {
+  static async createDriver(browser = 'chrome', headless = true) {
+    const chromeOptions = new chrome.Options();
+    if (headless) {
+      chromeOptions.addArguments('--headless');
+    }
+    chromeOptions.addArguments('--no-sandbox');
+    chromeOptions.addArguments('--disable-dev-shm-usage');
+    chromeOptions.addArguments('--window-size=1920,1080');
+
+    return await new Builder()
+      .forBrowser('chrome')
+      .setChromeOptions(chromeOptions)
+      .build();
   }
-};
-
-# 3. Add retry logic
-retries: {
-  runMode: 2,
-  openMode: 0
 }
+
+# 3. Add browser setup in GitHub Actions
+- name: Setup Chrome browser
+  uses: browser-actions/setup-chrome@latest
+
+- name: Run Selenium E2E tests
+  env:
+    TEST_URL: http://localhost:3000
+  run: |
+    cd src-code
+    npm run test:e2e:chrome
+
+# 4. Add retry logic in test
+// In test files
+beforeEach(async () => {
+  await driver.manage().setTimeouts({
+    implicit: 10000,
+    pageLoad: 30000,
+    script: 30000
+  });
+});
 ```
 
 ---
