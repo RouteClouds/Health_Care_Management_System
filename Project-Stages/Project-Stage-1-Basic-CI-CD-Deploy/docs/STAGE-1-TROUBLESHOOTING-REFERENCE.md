@@ -14,6 +14,7 @@ This is the **comprehensive troubleshooting database** for Stage 1 deployment is
 ### **🚨 Critical Issues (Start Here)**
 | Issue | Category | Symptoms | Quick Fix |
 |-------|----------|----------|-----------|
+| **[Issue #10](#issue-10)** | CloudFormation | "Stack already exists" error | Force delete failed stack |
 | **[Issue #9](#issue-9)** | Frontend API | Empty pages, no data | JavaScript API connectivity |
 | **[Issue #8](#issue-8)** | Configuration | Service name conflicts | Environment-specific configs |
 | **[Issue #7](#issue-7)** | Docker Cache | Stale images, old behavior | Force image rebuild |
@@ -30,6 +31,7 @@ This is the **comprehensive troubleshooting database** for Stage 1 deployment is
 ### **🛠️ Operational Procedures**
 | Procedure | Purpose | When to Use |
 |-----------|---------|-------------|
+| **[Force Delete Failed Stack](#force-delete-failed-stack)** | Remove DELETE_FAILED stacks | "Stack already exists" error |
 | **[Cluster Cleanup](#cluster-cleanup)** | Complete deletion | After testing, before redeploy |
 | **[General Commands](#general-commands)** | Basic troubleshooting | Any deployment issue |
 | **[Prevention Strategies](#prevention)** | Avoid issues | Before deployment |
@@ -37,6 +39,100 @@ This is the **comprehensive troubleshooting database** for Stage 1 deployment is
 ---
 
 ## **🚨 Critical Issues (Detailed Solutions)**
+
+### **Issue #10: CloudFormation Stack DELETE_FAILED Blocking Cluster Creation** {#issue-10}
+**Category**: Infrastructure/CloudFormation
+**Severity**: Critical
+**Symptoms**: Cannot create new EKS cluster, "Stack already exists" error
+
+#### **Root Cause**
+```bash
+❌ Problem: Previous cluster deletion failed partially
+   • CloudFormation stack remains in DELETE_FAILED state
+   • Stack record exists in AWS but cluster is gone
+   • eksctl cannot create new stack with same name
+   • Usually caused by stuck networking resources (subnets, ENIs)
+```
+
+#### **Error Messages**
+```bash
+Error: failed to create cluster "healthcare-cluster"
+creating CloudFormation stack "eksctl-healthcare-cluster-cluster":
+AlreadyExistsException: Stack [eksctl-healthcare-cluster-cluster] already exists
+```
+
+#### **Diagnosis Steps**
+```bash
+# 1. Check current stack status
+./diagnose-aws-resources.sh
+
+# Look for output like:
+# eksctl-healthcare-cluster-cluster | DELETE_FAILED
+
+# 2. Verify no actual EKS cluster exists
+aws eks describe-cluster --name healthcare-cluster --region us-east-1
+# Should return: No cluster found
+
+# 3. Check CloudFormation console for specific error details
+```
+
+#### **Solution**
+```bash
+# Step 1: Use the force delete script
+cd /Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy/scripts
+./force-delete-failed-stack.sh
+
+# Step 2: Confirm when prompted (type 'yes')
+# The script will:
+# ✅ Identify the DELETE_FAILED stack
+# ✅ Show which resources failed to delete
+# ✅ Use --retain-resources to remove stack record
+# ✅ Leave stuck resources for new cluster to handle
+
+# Step 3: Verify stack is gone
+./diagnose-aws-resources.sh
+
+# Step 4: Create new cluster
+./create-eks-cluster.sh
+```
+
+#### **Technical Details**
+```bash
+Why This Happens:
+• Subnet has dependencies (ENIs, route table associations)
+• Security group has active network interfaces
+• Internet gateway still attached to VPC
+• CloudFormation cannot delete resource due to dependencies
+
+Why Force Delete Works:
+• Removes CloudFormation stack record from AWS
+• Leaves stuck resources in place (minimal cost impact)
+• New cluster creation handles resource conflicts automatically
+• eksctl can create fresh stack with same name
+```
+
+#### **Prevention**
+```bash
+# Always run complete cleanup before recreating cluster
+./cleanup-cloudformation.sh
+./verify-complete-cleanup.sh
+
+# Wait for all resources to be fully deleted
+# Check AWS Console for any stuck resources
+```
+
+#### **Cost Impact**
+```bash
+Stuck Resources Cost: Usually <$5/month
+• Subnets: $0/month
+• Security Groups: $0/month
+• ENIs: $0/month (if not attached)
+• Route Tables: $0/month
+
+New cluster will reuse or replace these resources automatically.
+```
+
+---
 
 ### **Issue #9: Frontend JavaScript API Connectivity** {#issue-9}
 **Category**: Frontend Configuration  
@@ -236,6 +332,83 @@ kubectl exec -it <backend-pod> -n healthcare -- npm run db:migrate
 ---
 
 ## **🛠️ Operational Procedures**
+
+### **Force Delete Failed CloudFormation Stack** {#force-delete-failed-stack}
+**Purpose**: Remove DELETE_FAILED CloudFormation stacks that block new cluster creation
+
+#### **When to Use**
+```bash
+✅ Use when you get "Stack already exists" error
+✅ Use when diagnose script shows DELETE_FAILED status
+✅ Use when normal cleanup scripts completed but cluster creation fails
+❌ Don't use if normal cleanup hasn't been attempted first
+❌ Don't use if stack is in DELETE_IN_PROGRESS (wait for completion)
+```
+
+#### **Step-by-Step Procedure**
+```bash
+# Step 1: Navigate to scripts directory
+cd /Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy/scripts
+
+# Step 2: Diagnose current state
+./diagnose-aws-resources.sh
+# Look for: eksctl-healthcare-cluster-cluster | DELETE_FAILED
+
+# Step 3: Run force delete script
+./force-delete-failed-stack.sh
+
+# Step 4: Review failed resources and confirm deletion
+# The script will show which resources failed to delete
+# Type 'yes' to proceed with force deletion
+
+# Step 5: Verify stack removal
+./diagnose-aws-resources.sh
+# Should show: No healthcare-related stacks or all DELETE_COMPLETE
+
+# Step 6: Create new cluster
+./create-eks-cluster.sh
+```
+
+#### **What the Script Does**
+```bash
+✅ Identifies stack status (DELETE_FAILED, DELETE_IN_PROGRESS, etc.)
+✅ Shows specific resources that failed to delete
+✅ Uses AWS CloudFormation --retain-resources option
+✅ Removes stack record while preserving stuck resources
+✅ Enables new cluster creation with same name
+✅ Provides detailed status reporting and verification
+```
+
+#### **Expected Output**
+```bash
+🔍 Checking stack status...
+📋 Current stack status: DELETE_FAILED
+🚨 Stack is in DELETE_FAILED state - this is blocking new cluster creation
+
+📋 Resources in the failed stack:
++--------+-----------------------------------------------------------------------------------+
+|  Type  |  AWS::EC2::Subnet                                                                 |
+|  Id    |  subnet-01b7b29512e9d9459                                                         |
+|  Status|  DELETE_FAILED                                                                    |
+|  Reason|  The subnet has dependencies and cannot be deleted                               |
++--------+-----------------------------------------------------------------------------------+
+
+🗑️ Force deleting stack: eksctl-healthcare-cluster-cluster
+✅ Stack deletion initiated with resource retention
+✅ Stack successfully deleted!
+🚀 You can now create a new cluster: ./create-eks-cluster.sh
+```
+
+#### **Safety Considerations**
+```bash
+✅ Safe to use: Only removes CloudFormation stack record
+✅ Cost impact: Minimal (stuck resources usually <$5/month)
+✅ Resource handling: New cluster will reuse or replace stuck resources
+✅ Reversible: No permanent damage to AWS account
+⚠️ Caution: Only use for healthcare-cluster, not production clusters
+```
+
+---
 
 ### **Cluster Cleanup Verification** {#cluster-cleanup}
 **Purpose**: Ensure complete resource deletion and zero AWS charges
