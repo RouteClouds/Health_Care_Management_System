@@ -1,0 +1,58 @@
+{
+  "name": "healthcare-stage2-pipeline",
+  "version": "2.0.0",
+  "description": "Stage 2 CI/CD Pipeline for Healthcare Management System",
+  "scripts": {
+    "test:e2e": "npm run test:e2e:chrome",
+    "test:e2e:chrome": "node tests/selenium-config/webdriver.config.js --browser=chrome",
+    "test:e2e:firefox": "node tests/selenium-config/webdriver.config.js --browser=firefox",
+    "test:e2e:headless": "HEADLESS=true npm run test:e2e:chrome",
+    "test:e2e:ci": "CI=true HEADLESS=true npm run test:e2e:chrome",
+    "sonar": "sonar-scanner -Dproject.settings=configs/quality-gates/sonar-project.properties",
+    "security:scan": "trivy fs --config configs/security/trivy-config.yaml ../../src-code/",
+    "security:scan:container": "trivy image --config configs/security/trivy-config.yaml",
+    "pipeline:validate": "npm run validate:configs && npm run validate:tests",
+    "validate:configs": "echo 'Validating pipeline configurations...' && node scripts/validate-configs.js",
+    "validate:tests": "echo 'Validating test configurations...' && node scripts/validate-tests.js",
+    "install:tools": "npm run install:selenium && npm run install:sonar && npm run install:trivy",
+    "install:selenium": "npm install selenium-webdriver chromedriver geckodriver",
+    "install:sonar": "npm install -g sonar-scanner",
+    "install:trivy": "echo 'Please install Trivy manually: https://trivy.dev/getting-started/installation/'",
+    "docs:serve": "python3 -m http.server 8080 --directory docs/",
+    "health:check": "node scripts/health-check.js"
+  },
+  "dependencies": {
+    "selenium-webdriver": "^4.15.0"
+  },
+  "devDependencies": {
+    "chromedriver": "^119.0.0",
+    "geckodriver": "^4.3.0",
+    "@types/selenium-webdriver": "^4.1.20"
+  },
+  "keywords": [
+    "healthcare",
+    "ci-cd",
+    "pipeline",
+    "testing",
+    "automation",
+    "jest",
+    "selenium",
+    "sonarqube",
+    "trivy"
+  ],
+  "author": "RouteClouds",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/healthcare-management-system.git",
+    "directory": "Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/healthcare-management-system/issues"
+  },
+  "homepage": "https://github.com/your-org/healthcare-management-system#readme"
+}

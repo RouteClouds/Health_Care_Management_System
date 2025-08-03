@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: healthcare
+  labels:
+    name: healthcare
+    stage: stage-1-basic
+    project: health-care-management-system
+  annotations:
+    description: "Stage 1 Basic CI/CD Deployment - Healthcare Management System"
+    stage: "1"
+    deployment-type: "basic-manual"

@@ -4,6 +4,9 @@
 ### 🎯 Overview
 This directory contains **comprehensive architecture diagrams** for Stage 1 of the Health Care Management System deployment. All diagrams are generated using **Python Diagram as Code** for consistency, maintainability, and professional quality.
 
+### **👋 New to Stage 1?**
+**Start here**: View `Stage-1-Onboarding-Roadmap.png` for a complete visual getting started guide!
+
 ---
 
 ## 🚀 Quick Start
@@ -32,6 +35,11 @@ xdg-open stage1_complete_workflow.png
 ---
 
 ## 📊 Diagram Catalog
+
+### **🎯 0. New User Onboarding** ⭐ **NEW**
+| **File** | **Description** | **Purpose** |
+|----------|-----------------|-------------|
+| `Stage-1-Onboarding-Roadmap.png` | Visual getting started guide | 10-step pathway for new users jumping into Stage 1 |
 
 ### **🔧 1. Complete Workflow Diagrams**
 | **File** | **Description** | **Purpose** |
@@ -81,6 +89,7 @@ xdg-open stage1_complete_workflow.png
 ### **Python Scripts**
 | **Script** | **Purpose** | **Generates** |
 |------------|-------------|---------------|
+| `generate_stage1_onboarding_roadmap.py` | New user onboarding | 1 diagram ⭐ **NEW** |
 | `stage1_workflow_diagram.py` | Complete workflow | 2 diagrams |
 | `stage1_script_flow_diagram.py` | Script execution | 2 diagrams |
 | `stage1_aws_architecture_diagram.py` | AWS infrastructure | 3 diagrams |
@@ -97,10 +106,10 @@ matplotlib>=3.7.0     # Optional: Customization
 ### **Generated Files**
 ```
 Stage-1-Architecture/
+├── Stage-1-Onboarding-Roadmap.png     # New user getting started ⭐ NEW
 ├── stage1_complete_workflow.png       # Main workflow diagram
 ├── stage1_cost_timeline.png           # Cost and timeline
 ├── stage1_script_execution_flow.png   # Script flow details
-├── stage1_error_handling.png          # Error scenarios
 ├── stage1_aws_infrastructure.png      # AWS architecture
 ├── stage1_k8s_application.png         # Kubernetes apps
 ├── stage1_cost_optimization.png       # Cost strategies

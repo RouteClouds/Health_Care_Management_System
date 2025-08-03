@@ -49,6 +49,7 @@ Documentation: /Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/scripts/
 | `diagnose-aws-resources.sh` | Resource discovery | 2 min | Shows current AWS resources and costs |
 | `cleanup-cloudformation.sh` | **Main cleanup** | 10-20 min | Comprehensive resource deletion |
 | `force-delete-failed-stack.sh` | **Emergency cleanup** | 2-5 min | Handles DELETE_FAILED CloudFormation stacks |
+| `manual-cleanup-stuck-resources.sh` | **Advanced cleanup** | 5-10 min | Manual cleanup of specific stuck resources |
 | `verify-complete-cleanup.sh` | Final verification | 3 min | Confirms complete cleanup |
 | `create-eks-cluster.sh` | Create new cluster | 15-20 min | Creates fresh EKS cluster |
 
@@ -675,6 +676,9 @@ Elastic IP savings:            $3.65 per unattached IP
 
 # Emergency cleanup for DELETE_FAILED stacks
 ./force-delete-failed-stack.sh
+
+# Advanced manual cleanup for stuck resources
+./manual-cleanup-stuck-resources.sh
 
 # Emergency manual checks
 aws eks list-clusters --region us-east-1

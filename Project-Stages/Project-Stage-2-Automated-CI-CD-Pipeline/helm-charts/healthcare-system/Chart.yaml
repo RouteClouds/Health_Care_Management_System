@@ -1,0 +1,52 @@
+# Helm Chart for Healthcare Management System
+# Stage 2 Enhanced Infrastructure
+apiVersion: v2
+name: healthcare-system
+description: A Helm chart for Healthcare Management System with CI/CD pipeline integration
+type: application
+version: 2.0.0
+appVersion: "2.0.0"
+
+keywords:
+  - healthcare
+  - management
+  - system
+  - nodejs
+  - react
+  - postgresql
+  - ci-cd
+  - monitoring
+
+home: https://github.com/your-org/healthcare-management-system
+sources:
+  - https://github.com/your-org/healthcare-management-system
+
+maintainers:
+  - name: RouteClouds
+    email: support@routeclouds.com
+    url: https://routeclouds.com
+
+annotations:
+  category: Healthcare
+  licenses: MIT
+  images: |
+    - name: frontend
+      image: healthcare-frontend:v1.0
+    - name: backend
+      image: healthcare-backend:v1.0
+    - name: database
+      image: postgres:15-alpine
+
+dependencies:
+  - name: postgresql
+    version: "12.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: prometheus
+    version: "23.x.x"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: monitoring.prometheus.enabled
+  - name: grafana
+    version: "6.x.x"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: monitoring.grafana.enabled

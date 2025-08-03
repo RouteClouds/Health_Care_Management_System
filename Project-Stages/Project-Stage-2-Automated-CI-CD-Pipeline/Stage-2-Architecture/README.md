@@ -2,17 +2,50 @@
 
 ## 📊 Healthcare Management System - Automated CI/CD Pipeline
 
-### **🎯 Selected Technology Stack**
-- **Unit Testing**: Jest (mature, stable, excellent documentation)
+### **🎯 Complete Technology Stack**
+- **Unit Testing**: Jest (backend) + Vitest (frontend) - 80% coverage enforced
 - **E2E Testing**: Selenium WebDriver (cross-browser, enterprise-grade)
-- **Code Quality**: SonarQube (industry standard, compliance-ready)
-- **Security**: Trivy (fast, comprehensive vulnerability scanning)
+- **Code Quality**: SonarQube (industry standard, A-rating required)
+- **Security**: Trivy (comprehensive vulnerability scanning, zero CVEs)
+- **Deployment**: Helm Charts (multi-environment: dev/staging/prod)
+- **Monitoring**: Prometheus + Grafana (healthcare-specific metrics)
+- **Infrastructure**: AWS EKS + automated validation scripts
+
+### **👋 New to Stage 2?**
+**Start here**: View `Stage-2-Onboarding-Roadmap.png` for a complete visual getting started guide!
 
 ---
 
 ## 📁 Generated Diagrams
 
-### **1. Stage-2-Architecture-Diagram.png**
+### **🎯 Primary Diagrams (Recommended)**
+
+#### **1. Stage-2-Enhanced-Architecture.png** ⭐ **ENHANCED**
+**Most comprehensive system architecture with all Phase D components**
+
+**Features**:
+- ✅ Complete technology stack (Jest + Vitest + Selenium + SonarQube + Trivy + Prometheus + Grafana + Helm)
+- ✅ Multi-environment deployment (Development/Staging/Production)
+- ✅ Enhanced monitoring stack with healthcare-specific metrics
+- ✅ Infrastructure automation scripts
+- ✅ HIPAA/FDA/SOX compliance features
+- ✅ Professional presentation quality
+
+#### **2. Stage-2-Onboarding-Roadmap.png** ⭐ **NEW**
+**Visual getting started guide for new users**
+
+**Features**:
+- ✅ 12-step numbered pathway for new users
+- ✅ Complete project navigation guide
+- ✅ Source code location mapping
+- ✅ Infrastructure setup roadmap
+- ✅ Quick reference panel with key locations
+- ✅ Important notes and best practices
+- ✅ Color-coded sections for easy navigation
+
+### **📚 Additional Diagrams**
+
+#### **3. Stage-2-Architecture-Diagram.png**
 **Complete system architecture overview**
 
 **Features**:
@@ -86,15 +119,42 @@ open Stage-2-Architecture-Diagram.png
 open Stage-2-Pipeline-Flow-Diagram.png
 ```
 
-### **Regenerating Diagrams**
-```bash
-# Generate all diagrams
-python3 generate_all_diagrams.py
+### **🎨 Regenerating Diagrams**
 
-# Generate specific diagrams
-python3 generate_stage2_architecture.py
-python3 generate_pipeline_flow.py
+#### **Generate All Diagrams (Recommended)**
+```bash
+# One command to generate everything
+python3 generate_all_stage2_diagrams.py
 ```
+
+#### **Generate Individual Diagrams**
+```bash
+# Enhanced architecture (most comprehensive)
+python3 generate_enhanced_stage2_architecture.py
+
+# New user onboarding roadmap
+python3 generate_onboarding_roadmap.py
+
+# Pipeline workflow
+python3 generate_pipeline_flow.py
+
+# Original architecture (updated)
+python3 generate_stage2_architecture.py
+```
+
+### **📋 Usage Recommendations**
+
+#### **For Different Audiences**
+- **👥 Stakeholders/Management**: Use `Stage-2-Enhanced-Architecture.png`
+- **👨‍💻 Development Teams**: Use `Stage-2-Pipeline-Flow-Diagram.png`
+- **👋 New Team Members**: Use `Stage-2-Onboarding-Roadmap.png`
+- **📚 Documentation**: Use all diagrams for complete coverage
+
+#### **For Different Purposes**
+- **🎯 Presentations**: Enhanced Architecture (most comprehensive)
+- **📖 Technical Docs**: Pipeline Flow (detailed workflow)
+- **🎓 Training**: Onboarding Roadmap (step-by-step guide)
+- **🔍 Reference**: All diagrams (complete understanding)
 
 ### **Requirements**
 - Python 3.7+

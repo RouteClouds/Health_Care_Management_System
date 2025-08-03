@@ -6,6 +6,8 @@ echo "======================================"
 # Make all scripts executable
 chmod +x diagnose-aws-resources.sh
 chmod +x cleanup-cloudformation.sh
+chmod +x force-delete-failed-stack.sh
+chmod +x manual-cleanup-stuck-resources.sh
 chmod +x verify-complete-cleanup.sh
 chmod +x create-eks-cluster.sh
 chmod +x delete-eks-cluster.sh

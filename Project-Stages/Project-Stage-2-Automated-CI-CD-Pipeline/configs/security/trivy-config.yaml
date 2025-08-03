@@ -1,0 +1,357 @@
+# Trivy Security Scanner Configuration
+# Healthcare Management System - Stage 2
+# Comprehensive vulnerability scanning configuration
+
+# Global configuration
+global:
+  # Cache configuration
+  cache:
+    dir: /tmp/trivy-cache
+    ttl: 24h
+    
+  # Database configuration  
+  db:
+    repository: ghcr.io/aquasecurity/trivy-db
+    skip-update: false
+    
+  # Output configuration
+  output:
+    format: sarif
+    template: ""
+    
+  # Timeout settings
+  timeout: 5m
+  
+  # Parallel processing
+  parallel: 5
+  
+  # Quiet mode (reduce output)
+  quiet: false
+  
+  # Debug mode
+  debug: false
+
+# Filesystem scanning configuration
+filesystem:
+  # Target paths to scan
+  targets:
+    - "src-code/"
+    - "configs/"
+    - "k8s/"
+    - ".github/"
+    
+  # Skip directories
+  skip-dirs:
+    - "node_modules"
+    - "dist"
+    - "build"
+    - "coverage"
+    - ".git"
+    - ".vscode"
+    - ".idea"
+    - "tmp"
+    - "temp"
+    
+  # Skip files
+  skip-files:
+    - "*.log"
+    - "*.tmp"
+    - "*.cache"
+    - "package-lock.json"
+    - "yarn.lock"
+    
+  # File patterns to include
+  file-patterns:
+    - "*.js"
+    - "*.ts"
+    - "*.jsx"
+    - "*.tsx"
+    - "*.json"
+    - "*.yaml"
+    - "*.yml"
+    - "*.dockerfile"
+    - "Dockerfile*"
+    - "*.sh"
+    - "*.py"
+    
+  # Security checks to perform
+  security-checks:
+    - vuln      # Vulnerabilities
+    - config    # Misconfigurations
+    - secret    # Secrets detection
+    - license   # License scanning
+
+# Container image scanning configuration  
+image:
+  # Registry configuration
+  registry:
+    timeout: 10m
+    insecure: false
+    
+  # Image scanning options
+  scan:
+    # Layers to scan
+    layers: all
+    
+    # Remove intermediate containers
+    remove-intermediate: true
+    
+    # Skip update of vulnerability database
+    skip-update: false
+    
+  # Security checks for images
+  security-checks:
+    - vuln      # Vulnerabilities
+    - config    # Misconfigurations
+    - secret    # Secrets in images
+
+# Vulnerability configuration
+vulnerability:
+  # Severity levels to report
+  severity:
+    - UNKNOWN
+    - LOW
+    - MEDIUM  
+    - HIGH
+    - CRITICAL
+    
+  # Exit code configuration
+  exit-code:
+    # Exit with error on vulnerabilities
+    on-vulnerability: 1
+    
+    # Severity threshold for exit code
+    severity-threshold: HIGH
+    
+  # Ignore unfixed vulnerabilities
+  ignore-unfixed: false
+  
+  # Vulnerability database
+  db:
+    # Skip database update
+    skip-update: false
+    
+    # Database repository
+    repository: ghcr.io/aquasecurity/trivy-db
+    
+  # CVSS scoring
+  cvss:
+    # Minimum CVSS score to report
+    min-score: 0.0
+    
+    # CVSS version preference
+    version: "3.1"
+
+# Misconfiguration scanning
+misconfiguration:
+  # Configuration file types to scan
+  file-types:
+    - dockerfile
+    - kubernetes
+    - terraform
+    - cloudformation
+    - ansible
+    - helm
+    
+  # Severity levels for misconfigurations
+  severity:
+    - LOW
+    - MEDIUM
+    - HIGH
+    - CRITICAL
+    
+  # Policy bundles
+  policy:
+    # Built-in policies
+    builtin:
+      - docker
+      - kubernetes
+      - aws
+      - azure
+      - gcp
+      
+    # Custom policy paths
+    custom: []
+    
+  # Namespaces to include
+  namespaces:
+    - builtin.dockerfile
+    - builtin.kubernetes
+    - builtin.aws
+    
+  # Checks to skip
+  skip-checks: []
+
+# Secret scanning configuration
+secret:
+  # Secret types to detect
+  types:
+    - api-key
+    - aws-access-key
+    - aws-secret-key
+    - github-token
+    - google-api-key
+    - jwt
+    - password
+    - private-key
+    - slack-token
+    - stripe-key
+    
+  # File patterns to scan for secrets
+  file-patterns:
+    - "*.js"
+    - "*.ts"
+    - "*.jsx"
+    - "*.tsx"
+    - "*.json"
+    - "*.yaml"
+    - "*.yml"
+    - "*.env"
+    - "*.config"
+    - "*.sh"
+    - "*.py"
+    
+  # Paths to exclude from secret scanning
+  exclude-paths:
+    - "node_modules/"
+    - "dist/"
+    - "build/"
+    - "coverage/"
+    - "test/"
+    - "tests/"
+    - "__tests__/"
+    - "*.test.*"
+    - "*.spec.*"
+    
+  # Maximum file size to scan (in bytes)
+  max-file-size: 1048576  # 1MB
+
+# License scanning configuration
+license:
+  # License types to flag
+  forbidden:
+    - GPL-2.0
+    - GPL-3.0
+    - AGPL-1.0
+    - AGPL-3.0
+    
+  # License types to allow
+  allowed:
+    - MIT
+    - Apache-2.0
+    - BSD-2-Clause
+    - BSD-3-Clause
+    - ISC
+    - MPL-2.0
+    
+  # License confidence threshold
+  confidence-threshold: 0.9
+  
+  # Include dev dependencies
+  include-dev-deps: false
+
+# Reporting configuration
+report:
+  # Output formats
+  formats:
+    - sarif
+    - json
+    - table
+    - template
+    
+  # Report templates
+  templates:
+    sarif: "@contrib/sarif.tpl"
+    html: "@contrib/html.tpl"
+    
+  # Output files
+  output-files:
+    sarif: "trivy-results.sarif"
+    json: "trivy-results.json"
+    html: "trivy-report.html"
+    
+  # Include suppressed vulnerabilities
+  include-suppressed: false
+  
+  # Compliance reports
+  compliance:
+    - cis
+    - nist
+    - pci-dss
+
+# Healthcare-specific configuration
+healthcare:
+  # HIPAA compliance requirements
+  hipaa:
+    enabled: true
+    requirements:
+      - no-critical-vulnerabilities
+      - encryption-at-rest
+      - encryption-in-transit
+      - access-controls
+      - audit-logging
+      
+  # FDA requirements for medical devices
+  fda:
+    enabled: true
+    requirements:
+      - vulnerability-management
+      - secure-development
+      - risk-assessment
+      
+  # SOX compliance
+  sox:
+    enabled: true
+    requirements:
+      - change-management
+      - access-controls
+      - audit-trails
+
+# Integration configuration
+integration:
+  # GitHub integration
+  github:
+    # Upload SARIF results
+    upload-sarif: true
+    
+    # Create security advisories
+    create-advisories: false
+    
+    # Comment on PRs
+    pr-comments: true
+    
+  # Slack notifications
+  slack:
+    enabled: false
+    webhook-url: ""
+    channel: "#security-alerts"
+    
+  # Email notifications  
+  email:
+    enabled: false
+    smtp:
+      host: ""
+      port: 587
+      username: ""
+      password: ""
+    recipients: []
+
+# Ignore configuration
+ignore:
+  # Vulnerability IDs to ignore
+  vulnerabilities: []
+  
+  # Paths to ignore
+  paths:
+    - "test/"
+    - "tests/"
+    - "__tests__/"
+    - "*.test.*"
+    - "*.spec.*"
+    - "node_modules/"
+    
+  # Expiration for ignores
+  expiration: "2025-12-31"
+  
+  # Reason for ignoring
+  reason: "Testing files and dependencies"

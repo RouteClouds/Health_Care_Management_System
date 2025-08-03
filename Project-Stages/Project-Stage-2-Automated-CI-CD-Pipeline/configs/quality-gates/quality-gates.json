@@ -1,0 +1,277 @@
+{
+  "name": "Healthcare Management System Quality Gate",
+  "description": "Quality gate configuration for healthcare application with strict requirements",
+  "isDefault": true,
+  "conditions": [
+    {
+      "metric": "coverage",
+      "operator": "LT",
+      "threshold": "80.0",
+      "error": true,
+      "description": "Code coverage must be at least 80%"
+    },
+    {
+      "metric": "new_coverage",
+      "operator": "LT", 
+      "threshold": "80.0",
+      "error": true,
+      "description": "New code coverage must be at least 80%"
+    },
+    {
+      "metric": "duplicated_lines_density",
+      "operator": "GT",
+      "threshold": "3.0",
+      "error": true,
+      "description": "Duplicated lines density must not exceed 3%"
+    },
+    {
+      "metric": "new_duplicated_lines_density",
+      "operator": "GT",
+      "threshold": "3.0", 
+      "error": true,
+      "description": "New duplicated lines density must not exceed 3%"
+    },
+    {
+      "metric": "maintainability_rating",
+      "operator": "GT",
+      "threshold": "1",
+      "error": true,
+      "description": "Maintainability rating must be A"
+    },
+    {
+      "metric": "new_maintainability_rating",
+      "operator": "GT",
+      "threshold": "1",
+      "error": true,
+      "description": "New maintainability rating must be A"
+    },
+    {
+      "metric": "reliability_rating",
+      "operator": "GT", 
+      "threshold": "1",
+      "error": true,
+      "description": "Reliability rating must be A"
+    },
+    {
+      "metric": "new_reliability_rating",
+      "operator": "GT",
+      "threshold": "1", 
+      "error": true,
+      "description": "New reliability rating must be A"
+    },
+    {
+      "metric": "security_rating",
+      "operator": "GT",
+      "threshold": "1",
+      "error": true,
+      "description": "Security rating must be A"
+    },
+    {
+      "metric": "new_security_rating",
+      "operator": "GT",
+      "threshold": "1",
+      "error": true,
+      "description": "New security rating must be A"
+    },
+    {
+      "metric": "security_hotspots_reviewed",
+      "operator": "LT",
+      "threshold": "100.0",
+      "error": true,
+      "description": "All security hotspots must be reviewed"
+    },
+    {
+      "metric": "new_security_hotspots_reviewed",
+      "operator": "LT",
+      "threshold": "100.0",
+      "error": true,
+      "description": "All new security hotspots must be reviewed"
+    },
+    {
+      "metric": "blocker_violations",
+      "operator": "GT",
+      "threshold": "0",
+      "error": true,
+      "description": "No blocker violations allowed"
+    },
+    {
+      "metric": "critical_violations", 
+      "operator": "GT",
+      "threshold": "0",
+      "error": true,
+      "description": "No critical violations allowed"
+    },
+    {
+      "metric": "new_blocker_violations",
+      "operator": "GT",
+      "threshold": "0",
+      "error": true,
+      "description": "No new blocker violations allowed"
+    },
+    {
+      "metric": "new_critical_violations",
+      "operator": "GT", 
+      "threshold": "0",
+      "error": true,
+      "description": "No new critical violations allowed"
+    },
+    {
+      "metric": "major_violations",
+      "operator": "GT",
+      "threshold": "5",
+      "error": false,
+      "description": "Major violations should not exceed 5 (warning)"
+    },
+    {
+      "metric": "new_major_violations",
+      "operator": "GT",
+      "threshold": "0",
+      "error": true,
+      "description": "No new major violations allowed"
+    },
+    {
+      "metric": "minor_violations",
+      "operator": "GT",
+      "threshold": "10",
+      "error": false,
+      "description": "Minor violations should not exceed 10 (warning)"
+    },
+    {
+      "metric": "cognitive_complexity",
+      "operator": "GT",
+      "threshold": "15",
+      "error": false,
+      "description": "Cognitive complexity should not exceed 15 per function"
+    },
+    {
+      "metric": "complexity",
+      "operator": "GT",
+      "threshold": "10",
+      "error": false,
+      "description": "Cyclomatic complexity should not exceed 10 per function"
+    },
+    {
+      "metric": "function_complexity",
+      "operator": "GT",
+      "threshold": "10",
+      "error": false,
+      "description": "Function complexity should not exceed 10"
+    },
+    {
+      "metric": "file_complexity",
+      "operator": "GT",
+      "threshold": "200",
+      "error": false,
+      "description": "File complexity should not exceed 200"
+    },
+    {
+      "metric": "class_complexity",
+      "operator": "GT",
+      "threshold": "80",
+      "error": false,
+      "description": "Class complexity should not exceed 80"
+    }
+  ],
+  "healthcareSpecific": {
+    "description": "Healthcare industry specific quality requirements",
+    "compliance": {
+      "hipaa": {
+        "enabled": true,
+        "requirements": [
+          "All security hotspots must be reviewed",
+          "Security rating must be A",
+          "No critical or blocker security violations"
+        ]
+      },
+      "fda": {
+        "enabled": true,
+        "requirements": [
+          "Code coverage >= 80%",
+          "All critical bugs must be fixed",
+          "Maintainability rating must be A"
+        ]
+      },
+      "sox": {
+        "enabled": true,
+        "requirements": [
+          "All code changes must be reviewed",
+          "No blocker or critical violations",
+          "Audit trail for all changes"
+        ]
+      }
+    },
+    "criticalPaths": [
+      "src/controllers/patient/**",
+      "src/controllers/appointment/**", 
+      "src/services/auth/**",
+      "src/services/payment/**",
+      "src/middleware/security/**"
+    ],
+    "stricterThresholds": {
+      "coverage": "90.0",
+      "duplicated_lines_density": "1.0",
+      "security_rating": "1",
+      "reliability_rating": "1"
+    }
+  },
+  "notifications": {
+    "email": {
+      "enabled": true,
+      "recipients": [
+        "dev-team@healthcare.com",
+        "qa-team@healthcare.com",
+        "security-team@healthcare.com"
+      ],
+      "events": [
+        "quality_gate_failed",
+        "security_hotspot_detected",
+        "critical_violation_detected"
+      ]
+    },
+    "slack": {
+      "enabled": true,
+      "webhook": "${SLACK_WEBHOOK_URL}",
+      "channel": "#healthcare-quality",
+      "events": [
+        "quality_gate_failed",
+        "quality_gate_passed",
+        "security_issues_detected"
+      ]
+    }
+  },
+  "reporting": {
+    "formats": ["json", "xml", "html"],
+    "includeMetrics": [
+      "coverage",
+      "duplicated_lines_density", 
+      "maintainability_rating",
+      "reliability_rating",
+      "security_rating",
+      "violations",
+      "security_hotspots",
+      "complexity"
+    ],
+    "exportPath": "quality-reports/",
+    "retention": {
+      "days": 90,
+      "maxReports": 100
+    }
+  },
+  "integration": {
+    "github": {
+      "enabled": true,
+      "prComments": true,
+      "statusChecks": true,
+      "blockMergeOnFailure": true
+    },
+    "jira": {
+      "enabled": false,
+      "createIssues": false,
+      "project": "HEALTH"
+    },
+    "jenkins": {
+      "enabled": false,
+      "buildBreaker": true
+    }
+  }
+}

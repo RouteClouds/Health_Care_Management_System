@@ -1,0 +1,497 @@
+name: 🚀 Stage 2 - Automated CI/CD Pipeline
+# Healthcare Management System - Jest + Selenium + SonarQube + Trivy Stack
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src-code/**'
+      - '.github/workflows/**'
+      - 'k8s/**'
+      - 'configs/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src-code/**'
+      - '.github/workflows/**'
+      - 'k8s/**'
+      - 'configs/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+        - development
+        - staging
+        - production
+
+env:
+  # Source code configuration
+  SOURCE_CODE_PATH: './src-code'
+  DOCKER_REGISTRY: 'docker.io'
+  IMAGE_TAG: ${{ github.sha }}
+  
+  # Application configuration
+  APP_NAME: 'healthcare-management'
+  FRONTEND_IMAGE: 'healthcare-frontend'
+  BACKEND_IMAGE: 'healthcare-backend'
+  
+  # Quality gates configuration
+  COVERAGE_THRESHOLD: 80
+  SONAR_PROJECT_KEY: 'healthcare-management-system'
+  
+  # Security configuration
+  TRIVY_SEVERITY: 'HIGH,CRITICAL'
+
+jobs:
+  # ============================================================================
+  # JOB 1: SECURITY ANALYSIS (2-3 minutes)
+  # ============================================================================
+  security-analysis:
+    name: 🛡️ Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 🔍 Run Trivy Filesystem Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: ${{ env.SOURCE_CODE_PATH }}
+        format: 'sarif'
+        output: 'trivy-fs-results.sarif'
+        severity: ${{ env.TRIVY_SEVERITY }}
+        exit-code: '1'
+    
+    - name: 📊 Upload Trivy Results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-fs-results.sarif'
+    
+    - name: 📋 Security Summary
+      if: always()
+      run: |
+        echo "🛡️ Security Analysis Complete"
+        echo "📊 Results uploaded to GitHub Security tab"
+        echo "🔍 Scan target: ${{ env.SOURCE_CODE_PATH }}"
+        echo "⚠️ Severity levels: ${{ env.TRIVY_SEVERITY }}"
+
+  # ============================================================================
+  # JOB 2: UNIT TESTING (3-4 minutes)
+  # ============================================================================
+  unit-testing:
+    name: 🧪 Unit Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: security-analysis
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: 🟢 Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: '${{ env.SOURCE_CODE_PATH }}/package-lock.json'
+    
+    - name: 📦 Install Dependencies
+      working-directory: ${{ env.SOURCE_CODE_PATH }}
+      run: |
+        npm ci
+        cd frontend && npm ci
+        cd ../backend && npm ci
+    
+    - name: 🧪 Run Jest Unit Tests
+      working-directory: ${{ env.SOURCE_CODE_PATH }}
+      run: |
+        echo "🧪 Running Jest unit tests..."
+        npm run test:unit -- --coverage --ci --watchAll=false
+        echo "📊 Checking coverage threshold..."
+        npm run test:coverage-check
+    
+    - name: 📊 Upload Coverage Reports
+      uses: codecov/codecov-action@v4
+      with:
+        directory: ${{ env.SOURCE_CODE_PATH }}/coverage
+        flags: unittests
+        name: codecov-umbrella
+    
+    - name: 📋 Test Summary
+      if: always()
+      run: |
+        echo "🧪 Unit Testing Complete"
+        echo "📊 Coverage threshold: ${{ env.COVERAGE_THRESHOLD }}%"
+        echo "🟢 Node.js version: ${{ matrix.node-version }}"
+
+  # ============================================================================
+  # JOB 3: CODE QUALITY ANALYSIS (2-3 minutes)
+  # ============================================================================
+  code-quality:
+    name: 📊 Code Quality Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: unit-testing
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: '${{ env.SOURCE_CODE_PATH }}/package-lock.json'
+    
+    - name: 📦 Install Dependencies
+      working-directory: ${{ env.SOURCE_CODE_PATH }}
+      run: npm ci
+    
+    - name: 📊 SonarQube Analysis
+      uses: sonarqube-quality-gate-action@master
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      with:
+        projectBaseDir: ${{ env.SOURCE_CODE_PATH }}
+    
+    - name: 🚪 Quality Gate Check
+      run: |
+        echo "📊 SonarQube Analysis Complete"
+        echo "🚪 Quality Gate Status: Checking..."
+        echo "🎯 Project: ${{ env.SONAR_PROJECT_KEY }}"
+    
+    - name: 📋 Quality Summary
+      if: always()
+      run: |
+        echo "📊 Code Quality Analysis Complete"
+        echo "🎯 SonarQube project: ${{ env.SONAR_PROJECT_KEY }}"
+        echo "🚪 Quality gate must pass to continue"
+
+  # ============================================================================
+  # JOB 4: CONTAINER BUILD (4-5 minutes)
+  # ============================================================================
+  container-build:
+    name: 🐳 Container Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: code-quality
+    
+    outputs:
+      frontend-image: ${{ steps.meta.outputs.frontend-image }}
+      backend-image: ${{ steps.meta.outputs.backend-image }}
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: 🔐 Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: 🏷️ Extract Metadata
+      id: meta
+      run: |
+        echo "frontend-image=${{ env.DOCKER_REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT
+        echo "backend-image=${{ env.DOCKER_REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT
+    
+    - name: 🔨 Build and Push Frontend Image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ env.SOURCE_CODE_PATH }}
+        file: ${{ env.SOURCE_CODE_PATH }}/Dockerfile.frontend
+        push: true
+        tags: ${{ steps.meta.outputs.frontend-image }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: 🔨 Build and Push Backend Image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ env.SOURCE_CODE_PATH }}
+        file: ${{ env.SOURCE_CODE_PATH }}/Dockerfile.backend
+        push: true
+        tags: ${{ steps.meta.outputs.backend-image }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: 📋 Build Summary
+      run: |
+        echo "🐳 Container Build Complete"
+        echo "🖼️ Frontend image: ${{ steps.meta.outputs.frontend-image }}"
+        echo "🖼️ Backend image: ${{ steps.meta.outputs.backend-image }}"
+        echo "🏷️ Image tag: ${{ env.IMAGE_TAG }}"
+
+  # ============================================================================
+  # JOB 5: IMAGE SECURITY SCAN (2-3 minutes)
+  # ============================================================================
+  image-security:
+    name: 🔍 Image Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: container-build
+    
+    strategy:
+      matrix:
+        image: [frontend, backend]
+    
+    steps:
+    - name: 🔍 Run Trivy Container Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ needs.container-build.outputs[format('{0}-image', matrix.image)] }}
+        format: 'sarif'
+        output: 'trivy-${{ matrix.image }}-results.sarif'
+        severity: ${{ env.TRIVY_SEVERITY }}
+        exit-code: '1'
+    
+    - name: 📊 Upload Trivy Results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-${{ matrix.image }}-results.sarif'
+    
+    - name: 📋 Security Summary
+      if: always()
+      run: |
+        echo "🔍 Image Security Scan Complete"
+        echo "🖼️ Image: ${{ matrix.image }}"
+        echo "⚠️ Severity: ${{ env.TRIVY_SEVERITY }}"
+
+  # ============================================================================
+  # JOB 6: END-TO-END TESTING (5-8 minutes)
+  # ============================================================================
+  e2e-testing:
+    name: 🌐 End-to-End Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: image-security
+
+    strategy:
+      matrix:
+        browser: [chrome, firefox]
+
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: '${{ env.SOURCE_CODE_PATH }}/package-lock.json'
+
+    - name: 🌐 Setup Browser - ${{ matrix.browser }}
+      if: matrix.browser == 'chrome'
+      uses: browser-actions/setup-chrome@latest
+
+    - name: 🦊 Setup Firefox
+      if: matrix.browser == 'firefox'
+      uses: browser-actions/setup-firefox@latest
+
+    - name: 📦 Install Dependencies
+      working-directory: ${{ env.SOURCE_CODE_PATH }}
+      run: |
+        npm ci
+        npm install selenium-webdriver chromedriver geckodriver
+
+    - name: 🚀 Start Application for Testing
+      working-directory: ${{ env.SOURCE_CODE_PATH }}
+      run: |
+        echo "🚀 Starting application in test mode..."
+        npm run start:test &
+        sleep 30
+        curl -f http://localhost:3000 || exit 1
+
+    - name: 🧪 Run Selenium E2E Tests
+      working-directory: ${{ env.SOURCE_CODE_PATH }}
+      run: |
+        echo "🌐 Running E2E tests with ${{ matrix.browser }}..."
+        npm run test:e2e:${{ matrix.browser }}
+
+    - name: 📊 Upload E2E Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: e2e-results-${{ matrix.browser }}
+        path: ${{ env.SOURCE_CODE_PATH }}/test-results/
+
+    - name: 📋 E2E Summary
+      if: always()
+      run: |
+        echo "🌐 E2E Testing Complete"
+        echo "🌐 Browser: ${{ matrix.browser }}"
+        echo "📊 Results uploaded as artifacts"
+
+  # ============================================================================
+  # JOB 7: DEPLOYMENT TO DEVELOPMENT (3-5 minutes)
+  # ============================================================================
+  deploy-development:
+    name: 🚀 Deploy to Development
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: e2e-testing
+    if: github.ref == 'refs/heads/develop' || github.event.inputs.environment == 'development'
+    environment: development
+
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: 🔧 Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: 🔗 Update kubeconfig
+      run: |
+        aws eks update-kubeconfig --region us-east-1 --name healthcare-cluster
+
+    - name: 🚀 Deploy to Development
+      run: |
+        echo "🚀 Deploying to Development environment..."
+        kubectl apply -f k8s/environments/development/
+        kubectl apply -f k8s/
+        kubectl set image deployment/frontend-deployment frontend=${{ needs.container-build.outputs.frontend-image }} -n healthcare-dev
+        kubectl set image deployment/backend-deployment backend=${{ needs.container-build.outputs.backend-image }} -n healthcare-dev
+
+    - name: ✅ Verify Deployment
+      run: |
+        echo "✅ Verifying deployment..."
+        kubectl rollout status deployment/frontend-deployment -n healthcare-dev --timeout=300s
+        kubectl rollout status deployment/backend-deployment -n healthcare-dev --timeout=300s
+        kubectl get pods -n healthcare-dev
+
+    - name: 📋 Deployment Summary
+      run: |
+        echo "🚀 Development Deployment Complete"
+        echo "🌍 Environment: Development"
+        echo "🖼️ Images deployed successfully"
+
+  # ============================================================================
+  # JOB 8: DEPLOYMENT TO STAGING (Manual Approval)
+  # ============================================================================
+  deploy-staging:
+    name: 🎭 Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [e2e-testing, container-build]
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    environment: staging
+
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: 🔧 Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: 🔗 Update kubeconfig
+      run: |
+        aws eks update-kubeconfig --region us-east-1 --name healthcare-cluster
+
+    - name: 🎭 Deploy to Staging
+      run: |
+        echo "🎭 Deploying to Staging environment..."
+        kubectl apply -f k8s/environments/staging/
+        kubectl apply -f k8s/
+        kubectl set image deployment/frontend-deployment frontend=${{ needs.container-build.outputs.frontend-image }} -n healthcare-staging
+        kubectl set image deployment/backend-deployment backend=${{ needs.container-build.outputs.backend-image }} -n healthcare-staging
+
+    - name: ✅ Verify Deployment
+      run: |
+        echo "✅ Verifying staging deployment..."
+        kubectl rollout status deployment/frontend-deployment -n healthcare-staging --timeout=300s
+        kubectl rollout status deployment/backend-deployment -n healthcare-staging --timeout=300s
+        kubectl get pods -n healthcare-staging
+
+  # ============================================================================
+  # JOB 9: DEPLOYMENT TO PRODUCTION (Manual Approval Required)
+  # ============================================================================
+  deploy-production:
+    name: 🏭 Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [deploy-staging, container-build]
+    if: github.event.inputs.environment == 'production'
+    environment: production
+
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: 🔧 Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: 🔗 Update kubeconfig
+      run: |
+        aws eks update-kubeconfig --region us-east-1 --name healthcare-cluster
+
+    - name: 🏭 Deploy to Production
+      run: |
+        echo "🏭 Deploying to Production environment..."
+        kubectl apply -f k8s/environments/production/
+        kubectl apply -f k8s/
+        kubectl set image deployment/frontend-deployment frontend=${{ needs.container-build.outputs.frontend-image }} -n healthcare-prod
+        kubectl set image deployment/backend-deployment backend=${{ needs.container-build.outputs.backend-image }} -n healthcare-prod
+
+    - name: ✅ Verify Production Deployment
+      run: |
+        echo "✅ Verifying production deployment..."
+        kubectl rollout status deployment/frontend-deployment -n healthcare-prod --timeout=600s
+        kubectl rollout status deployment/backend-deployment -n healthcare-prod --timeout=600s
+        kubectl get pods -n healthcare-prod
+
+    - name: 🎉 Production Success
+      run: |
+        echo "🎉 Production Deployment Complete!"
+        echo "🏭 Environment: Production"
+        echo "✅ All services deployed and verified"
