@@ -30,12 +30,15 @@ def create_pipeline_flow():
     }
     
     # Title
-    ax.text(50, 96, 'Stage 2: Detailed CI/CD Pipeline Flow', 
+    ax.text(50, 96, 'Stage 2: Enhanced CI/CD Pipeline Flow',
             fontsize=26, fontweight='bold', ha='center',
             bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', alpha=0.8))
-    
-    ax.text(50, 93, 'Healthcare Management System - Automated Testing & Deployment Pipeline', 
+
+    ax.text(50, 93, 'Healthcare Management System - Complete Pipeline with Monitoring',
             fontsize=16, ha='center', style='italic')
+
+    ax.text(50, 90, 'Jest + Selenium + SonarQube + Trivy + Prometheus + Grafana + Helm',
+            fontsize=11, ha='center', color='#666666')
     
     # ============================================================================
     # PIPELINE STAGES - VERTICAL FLOW
@@ -299,8 +302,8 @@ def create_pipeline_flow():
         'Development: Auto-deploy every push',
         'Staging: E2E testing environment',
         'Production: Manual approval required',
-        'Infrastructure: AWS EKS (us-east-1)',
-        'Monitoring: GitHub Actions + AWS'
+        'Infrastructure: AWS EKS + Helm Charts',
+        'Monitoring: Prometheus + Grafana + GitHub Actions'
     ]
     
     for i, env in enumerate(environments):

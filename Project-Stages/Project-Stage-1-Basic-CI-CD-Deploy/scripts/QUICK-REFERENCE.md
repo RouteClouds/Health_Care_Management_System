@@ -12,6 +12,12 @@ cd /home/ubuntu/Projects/Health_Care_Management_System/Project-Stages/Project-St
 # 2. Run comprehensive cleanup (15 min)
 ./cleanup-cloudformation.sh
 
+# 2b. If stack is stuck in DELETE_FAILED (5 min)
+./force-delete-failed-stack.sh
+
+# 2c. If specific resources are stuck (10 min)
+./manual-cleanup-stuck-resources.sh
+
 # 3. Verify everything is gone (3 min)
 ./verify-complete-cleanup.sh
 

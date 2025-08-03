@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: healthcare-backend
+  namespace: healthcare
+  labels:
+    app: healthcare-backend
+    tier: backend
+    stage: stage-1-basic
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: healthcare-backend
+  template:
+    metadata:
+      labels:
+        app: healthcare-backend
+        tier: backend
+        stage: stage-1-basic
+    spec:
+      initContainers:
+      - name: db-init
+        image: routeclouds/healthcare-backend:v1.0
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: DATABASE_URL
+          value: "postgresql://healthcare_user:healthcare_password@postgres-service:5432/healthcare_db"
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          echo "🗄️ Initializing database schema..."
+          npx prisma db push --accept-data-loss || echo "Schema push completed"
+          echo "✅ Database initialization complete"
+      containers:
+      - name: backend
+        image: routeclouds/healthcare-backend:v1.0  # Testing version - auto-updated on rebuild
+        ports:
+        - containerPort: 3002
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3002"
+        - name: DATABASE_URL
+          value: "postgresql://healthcare_user:healthcare_password@postgres-service:5432/healthcare_db"
+        - name: JWT_SECRET
+          value: "healthcare_jwt_secret_key_2024_stage1"
+        - name: CORS_ORIGIN
+          value: "*"
+        - name: API_BASE_URL
+          value: "/api"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3002
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/ready
+            port: 3002
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: healthcare
+  labels:
+    app: healthcare-backend
+    tier: backend
+    stage: stage-1-basic
+spec:
+  selector:
+    app: healthcare-backend
+  ports:
+  - port: 3002
+    targetPort: 3002
+    protocol: TCP
+    name: http
+  type: ClusterIP
+
+

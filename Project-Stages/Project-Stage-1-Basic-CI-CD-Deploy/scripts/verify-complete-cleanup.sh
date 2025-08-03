@@ -47,9 +47,9 @@ check_resource "EKS Cluster" \
     "aws eks describe-cluster --name $CLUSTER_NAME --region $REGION --query 'cluster.name' --output text" \
     "not_found"
 
-# 2. Check CloudFormation stacks
+# 2. Check CloudFormation stacks (exclude DELETE_COMPLETE status)
 check_resource "CloudFormation Stacks" \
-    "aws cloudformation list-stacks --region $REGION --query 'StackSummaries[?contains(StackName, \`healthcare\`) || contains(StackName, \`eksctl-healthcare\`)].StackName' --output text" \
+    "aws cloudformation list-stacks --region $REGION --query 'StackSummaries[?(contains(StackName, \`healthcare\`) || contains(StackName, \`eksctl-healthcare\`)) && StackStatus!=\`DELETE_COMPLETE\`].StackName' --output text" \
     "empty"
 
 # 3. Check EC2 instances

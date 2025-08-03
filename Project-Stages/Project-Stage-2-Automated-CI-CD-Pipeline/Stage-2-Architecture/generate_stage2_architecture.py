@@ -33,12 +33,15 @@ def create_stage2_architecture():
     }
     
     # Title
-    ax.text(50, 95, 'Stage 2: Automated CI/CD Pipeline Architecture', 
+    ax.text(50, 95, 'Stage 2: Enhanced CI/CD Pipeline Architecture',
             fontsize=24, fontweight='bold', ha='center',
             bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', alpha=0.8))
-    
-    ax.text(50, 92, 'Healthcare Management System - Jest + Selenium + SonarQube + Trivy Stack', 
+
+    ax.text(50, 92, 'Healthcare Management System - Complete Stack with Helm & Monitoring',
             fontsize=16, ha='center', style='italic')
+
+    ax.text(50, 89, 'Jest + Selenium + SonarQube + Trivy + Prometheus + Grafana + Helm',
+            fontsize=11, ha='center', color='#666666')
     
     # ============================================================================
     # SECTION 1: SOURCE CODE & VERSION CONTROL (Top Left)
@@ -199,17 +202,30 @@ def create_stage2_architecture():
     ax.text(88, 83, 'Production Infrastructure', fontsize=9, 
             ha='center', va='center', color='white')
     
+    # Helm Deployment Layer
+    helm_box = FancyBboxPatch((78, 82), 20, 8,
+                             boxstyle="round,pad=0.3",
+                             facecolor='#326ce5',
+                             edgecolor='black', linewidth=2)
+    ax.add_patch(helm_box)
+    ax.text(88, 87, '⚙️ Helm Charts', fontsize=11, fontweight='bold',
+            ha='center', va='center', color='white')
+    ax.text(88, 85, 'Multi-Environment Deployment', fontsize=9,
+            ha='center', va='center', color='white')
+    ax.text(88, 83, 'Dev | Staging | Production', fontsize=9,
+            ha='center', va='center', color='white')
+
     # EKS Cluster
-    eks_box = FancyBboxPatch((78, 55), 20, 25, 
-                            boxstyle="round,pad=0.3", 
-                            facecolor=colors['k8s'], 
+    eks_box = FancyBboxPatch((78, 55), 20, 25,
+                            boxstyle="round,pad=0.3",
+                            facecolor=colors['k8s'],
                             edgecolor='black', linewidth=2)
     ax.add_patch(eks_box)
-    ax.text(88, 75, '⚙️ EKS Cluster', fontsize=12, fontweight='bold', 
+    ax.text(88, 75, '☸️ EKS Cluster', fontsize=12, fontweight='bold',
             ha='center', va='center', color='white')
-    ax.text(88, 73, 'healthcare-cluster', fontsize=10, 
+    ax.text(88, 73, 'healthcare-cluster', fontsize=10,
             ha='center', va='center', color='white')
-    ax.text(88, 71, 'Kubernetes v1.32', fontsize=9, 
+    ax.text(88, 71, 'Kubernetes v1.32', fontsize=9,
             ha='center', va='center', color='white')
     
     # Node Groups
@@ -271,22 +287,38 @@ def create_stage2_architecture():
     # SECTION 7: MONITORING & OBSERVABILITY (Bottom Right)
     # ============================================================================
     
-    monitoring_box = FancyBboxPatch((75, 25), 23, 15, 
-                                   boxstyle="round,pad=0.3", 
-                                   facecolor=colors['monitoring'], 
+    # Prometheus Monitoring
+    prometheus_box = FancyBboxPatch((75, 35), 23, 12,
+                                   boxstyle="round,pad=0.3",
+                                   facecolor=colors['monitoring'],
                                    edgecolor='black', linewidth=2)
-    ax.add_patch(monitoring_box)
-    ax.text(86.5, 35, '📊 Monitoring & Alerts', fontsize=12, fontweight='bold', 
+    ax.add_patch(prometheus_box)
+    ax.text(86.5, 43, '📊 Prometheus Monitoring', fontsize=12, fontweight='bold',
             ha='center', va='center', color='white')
-    ax.text(86.5, 33, 'Pipeline & Application Health', fontsize=10, 
+    ax.text(86.5, 41, 'Healthcare Metrics & Alerts', fontsize=10,
             ha='center', va='center', color='white')
-    ax.text(86.5, 31, '• GitHub Actions Status', fontsize=9, 
+    ax.text(86.5, 39, '• Patient data access metrics', fontsize=9,
             ha='center', va='center', color='white')
-    ax.text(86.5, 29.5, '• SonarQube Quality Gates', fontsize=9, 
+    ax.text(86.5, 37.5, '• API performance monitoring', fontsize=9,
             ha='center', va='center', color='white')
-    ax.text(86.5, 28, '• Trivy Security Alerts', fontsize=9, 
+    ax.text(86.5, 36, '• HIPAA compliance alerts', fontsize=9,
             ha='center', va='center', color='white')
-    ax.text(86.5, 26.5, '• EKS Cluster Health', fontsize=9, 
+
+    # Grafana Visualization
+    grafana_box = FancyBboxPatch((75, 20), 23, 12,
+                                boxstyle="round,pad=0.3",
+                                facecolor='#ff6b35',
+                                edgecolor='black', linewidth=2)
+    ax.add_patch(grafana_box)
+    ax.text(86.5, 28, '📈 Grafana Dashboards', fontsize=12, fontweight='bold',
+            ha='center', va='center', color='white')
+    ax.text(86.5, 26, 'Real-time Visualization', fontsize=10,
+            ha='center', va='center', color='white')
+    ax.text(86.5, 24, '• Healthcare KPI dashboards', fontsize=9,
+            ha='center', va='center', color='white')
+    ax.text(86.5, 22.5, '• System health overview', fontsize=9,
+            ha='center', va='center', color='white')
+    ax.text(86.5, 21, '• Business metrics tracking', fontsize=9,
             ha='center', va='center', color='white')
     
     # ============================================================================

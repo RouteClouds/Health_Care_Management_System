@@ -1,9 +1,29 @@
-# 🛠️ **Stage 2 Operations Guide**
-## **Healthcare Management System - CI/CD Pipeline Operations & Maintenance**
+# ⚙️ **06-STAGE-2-OPERATIONS-GUIDE.md**
+## **Stage 2: Automated CI/CD Pipeline - Operations & Maintenance Manual**
+
+### **📖 Document Content Index**
+- [🎯 Purpose](#-purpose)
+- [📊 Pipeline Monitoring](#-pipeline-monitoring--health-checks)
+- [🚀 Deployment Procedures](#-deployment-procedures)
+- [🔧 Maintenance Tasks](#-maintenance-tasks--schedules)
+- [📈 Performance Optimization](#-performance-optimization)
+- [💾 Backup & Recovery](#-backup--recovery-procedures)
+- [🔒 Security Operations](#-security-operations)
+- [📋 Compliance & Auditing](#-compliance--auditing)
+- [🚨 Incident Response](#-incident-response-procedures)
+
+**Document Purpose**: Day-to-day operations and maintenance procedures
+**Target Audience**: DevOps engineers and operations teams
+**Estimated Read Time**: 20 minutes
+**Last Updated**: August 2, 2025 (Phase B Complete)
+
+---
 
 ### **🎯 Purpose**
 
 This guide covers **operational procedures** for Stage 2 automated CI/CD pipeline including workflow monitoring, environment management, deployment strategies, and maintenance procedures.
+
+**Phase B Status**: Core pipeline components (Jest + Selenium + SonarQube + Trivy) are configured and ready for operational monitoring.
 
 **Use this guide for**:
 - 📊 Pipeline monitoring and health checks
