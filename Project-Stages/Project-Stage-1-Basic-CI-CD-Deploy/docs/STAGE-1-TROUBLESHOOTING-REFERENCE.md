@@ -1,6 +1,25 @@
 # 🔍 **Stage 1 Troubleshooting Reference**
 ## **Healthcare Management System - Comprehensive Issue Resolution Database**
 
+### **📖 Document Content Index**
+- [🎯 Purpose](#-purpose)
+- [📑 Quick Reference Index](#-quick-reference-index)
+- [🚨 Critical Issues](#-critical-issues-start-here)
+- [☸️ EKS Cluster Issues](#️-eks-cluster-issues)
+- [🐳 Docker & Container Issues](#-docker--container-issues)
+- [🌐 Networking & Connectivity](#-networking--connectivity)
+- [💰 Cost & Billing Issues](#-cost--billing-issues)
+- [🔑 Authentication & Permissions](#-authentication--permissions)
+- [📊 Monitoring & Diagnostics](#-monitoring--diagnostics)
+- [🛠️ Tool-Specific Issues](#️-tool-specific-issues)
+
+**Document Purpose**: Comprehensive troubleshooting and issue resolution database
+**Target Audience**: DevOps engineers and system administrators
+**Estimated Read Time**: 40 minutes
+**Last Updated**: August 2, 2025
+
+---
+
 ### **🎯 Purpose**
 
 This is the **comprehensive troubleshooting database** for Stage 1 deployment issues. Use this guide when you encounter problems during setup, deployment, or operation.

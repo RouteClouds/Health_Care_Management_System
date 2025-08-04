@@ -1,6 +1,23 @@
 # 📋 **Stage 1 Documentation Index**
 ## **Healthcare Management System - Basic CI/CD Deployment**
 
+### **📖 Document Content Index**
+- [🎯 Welcome to Stage 1](#-welcome-to-stage-1)
+- [🚀 Quick Start - Choose Your Path](#-quick-start---choose-your-path)
+- [📚 Complete Documentation Suite](#-complete-documentation-suite)
+- [🏗️ Architecture & Visual Guides](#️-architecture--visual-guides)
+- [🛠️ Scripts & Automation](#️-scripts--automation)
+- [💰 Cost Management](#-cost-management)
+- [🔄 Stage Comparison](#-stage-comparison)
+- [🆘 Getting Help](#-getting-help)
+
+**Document Purpose**: Master navigation hub for all Stage 1 documentation
+**Target Audience**: All Stage 1 users (beginners to advanced)
+**Estimated Read Time**: 15 minutes
+**Last Updated**: August 2, 2025
+
+---
+
 ### **🎯 Welcome to Stage 1**
 
 This is your **single entry point** for all Stage 1 documentation. Stage 1 establishes a basic containerized deployment workflow using AWS EKS with proper IAM roles, security groups, and version compatibility.
