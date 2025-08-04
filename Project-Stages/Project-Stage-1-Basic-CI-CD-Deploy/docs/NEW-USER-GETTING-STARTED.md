@@ -1,6 +1,25 @@
 # 🚀 **New User Getting Started Guide**
 ## **Stage 1: Healthcare Management System Basic CI/CD**
 
+### **📖 Document Content Index**
+- [👋 Welcome to Stage 1](#-welcome-to-stage-1)
+- [🎯 What You'll Learn](#-what-youll-learn)
+- [📍 Step-by-Step Roadmap](#-step-by-step-roadmap-10-steps)
+- [📚 Phase 1: Understanding the Project](#-phase-1-understanding-the-project-steps-1-3)
+- [🛠️ Phase 2: Tools Setup](#️-phase-2-tools-setup-steps-4-5)
+- [🏗️ Phase 3: Infrastructure Deployment](#️-phase-3-infrastructure-deployment-steps-6-8)
+- [✅ Phase 4: Verification & Management](#-phase-4-verification--management-steps-9-10)
+- [🗂️ Quick Reference](#️-quick-reference-where-to-find-everything)
+- [⚠️ Important Notes](#️-important-notes-for-new-users)
+- [🎉 Success Indicators](#-success-indicators)
+
+**Document Purpose**: Step-by-step onboarding guide for new Stage 1 users
+**Target Audience**: New developers, DevOps engineers, and team members
+**Estimated Read Time**: 30 minutes
+**Last Updated**: August 2, 2025
+
+---
+
 ### **👋 Welcome to Stage 1!**
 **New to this project?** This guide will get you up and running quickly with our basic CI/CD pipeline using AWS EKS and Docker Hub.
 

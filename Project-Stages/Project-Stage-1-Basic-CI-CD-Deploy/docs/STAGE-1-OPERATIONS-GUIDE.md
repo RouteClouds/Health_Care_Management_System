@@ -1,6 +1,25 @@
 # 🛠️ **Stage 1 Operations Guide**
 ## **Healthcare Management System - Deployment, Verification & Cleanup**
 
+### **📖 Document Content Index**
+- [🎯 Purpose](#-purpose)
+- [✅ Pre-Deployment Verification](#-pre-deployment-verification)
+- [🚀 Deployment Procedures](#-deployment-procedures)
+- [🧪 Post-Deployment Testing](#-post-deployment-testing)
+- [📊 Monitoring & Health Checks](#-monitoring--health-checks)
+- [🔧 Maintenance Operations](#-maintenance-operations)
+- [💰 Cost Management](#-cost-management)
+- [🧹 Complete Cleanup Procedures](#-complete-cleanup-procedures)
+- [🆘 Emergency Procedures](#-emergency-procedures)
+- [📋 Operational Checklists](#-operational-checklists)
+
+**Document Purpose**: Operational procedures for deployment, verification, and cleanup
+**Target Audience**: Operations teams and system administrators
+**Estimated Read Time**: 35 minutes
+**Last Updated**: August 2, 2025
+
+---
+
 ### **🎯 Purpose**
 
 This guide covers **operational procedures** for Stage 1 deployment including pre-deployment verification, post-deployment testing, cleanup procedures, and cost management.

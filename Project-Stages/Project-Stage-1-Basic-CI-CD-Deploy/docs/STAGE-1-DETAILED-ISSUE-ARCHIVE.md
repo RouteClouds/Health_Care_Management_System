@@ -1,6 +1,25 @@
 # 📚 **Stage 1 Detailed Issue Archive**
 ## **Healthcare Management System - Complete Historical Issue Documentation**
 
+### **📖 Document Content Index**
+- [📋 Archive Purpose](#-archive-purpose)
+- [📊 Issue Categories Overview](#-issue-categories-overview)
+- [🚨 Critical Issues Archive](#-critical-issues-archive)
+- [☸️ EKS Cluster Issues](#️-eks-cluster-issues)
+- [🐳 Docker & Container Issues](#-docker--container-issues)
+- [🌐 Networking Issues](#-networking-issues)
+- [🔑 Authentication Issues](#-authentication-issues)
+- [💰 Cost & Billing Issues](#-cost--billing-issues)
+- [📊 Issue Statistics](#-issue-statistics)
+- [📋 Lessons Learned](#-lessons-learned)
+
+**Document Purpose**: Complete historical issue documentation and knowledge base
+**Target Audience**: DevOps engineers and support teams
+**Estimated Read Time**: 50 minutes
+**Last Updated**: August 2, 2025
+
+---
+
 ### 📋 **Archive Purpose**
 This archive contains the **complete detailed documentation** of all issues encountered during Stage 1 development and troubleshooting. This file serves as a comprehensive historical record and detailed reference.
 

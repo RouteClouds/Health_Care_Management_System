@@ -1,6 +1,25 @@
 # 🚀 **New User Getting Started Guide**
 ## **Stage 2: Healthcare Management System CI/CD Pipeline**
 
+### **📖 Document Content Index**
+- [👋 Welcome to Stage 2](#-welcome-to-stage-2)
+- [🎯 What You'll Learn](#-what-youll-learn)
+- [📍 Step-by-Step Roadmap](#-step-by-step-roadmap)
+- [📚 Phase 1: Understanding the Project](#-phase-1-understanding-the-project-steps-1-3)
+- [💻 Phase 2: Source Code Exploration](#-phase-2-source-code-exploration-steps-4-6)
+- [🏗️ Phase 3: Infrastructure Setup](#️-phase-3-infrastructure-setup-steps-7-9)
+- [🚀 Phase 4: Deployment & Monitoring](#-phase-4-deployment--monitoring-steps-10-12)
+- [🗂️ Quick Reference](#️-quick-reference-where-to-find-everything)
+- [⚠️ Important Notes](#️-important-notes-for-new-users)
+- [🎉 Success Indicators](#-success-indicators)
+
+**Document Purpose**: Step-by-step onboarding guide for new Stage 2 users
+**Target Audience**: New developers, DevOps engineers, and team members
+**Estimated Read Time**: 25 minutes
+**Last Updated**: August 2, 2025 (Phase D Complete)
+
+---
+
 ### **👋 Welcome to Stage 2!**
 **New to this project?** This guide will get you up and running quickly with our enterprise-grade healthcare CI/CD pipeline.
 

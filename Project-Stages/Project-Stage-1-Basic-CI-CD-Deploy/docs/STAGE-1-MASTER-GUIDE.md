@@ -1,12 +1,31 @@
 # 🚀 **Stage 1 Master Setup Guide**
 ## **Healthcare Management System - Complete Deployment Workflow**
 
+### **📖 Document Content Index**
+- [🎯 Overview](#-overview)
+- [📋 Prerequisites](#-prerequisites)
+- [⚙️ Step 1: Tool Installation](#️-step-1-tool-installation)
+- [🔑 Step 2: AWS Configuration](#-step-2-aws-configuration)
+- [☸️ Step 3: EKS Cluster Creation](#️-step-3-eks-cluster-creation)
+- [🚀 Step 4: Application Deployment](#-step-4-application-deployment)
+- [✅ Step 5: Verification](#-step-5-verification)
+- [💰 Step 6: Cleanup](#-step-6-cleanup)
+- [🔧 Troubleshooting](#-troubleshooting)
+- [📊 Success Criteria](#-success-criteria)
+
+**Document Purpose**: Complete end-to-end deployment workflow
+**Target Audience**: DevOps engineers and technical implementers
+**Estimated Read Time**: 45 minutes
+**Last Updated**: August 2, 2025
+
+---
+
 ### **🎯 Overview**
 
 This guide provides the **complete end-to-end process** for deploying the Healthcare Management System using AWS EKS. Follow this guide from start to finish for a successful deployment.
 
-**Time Required**: 45-60 minutes  
-**Skill Level**: Intermediate (basic AWS and Docker knowledge helpful)  
+**Time Required**: 45-60 minutes
+**Skill Level**: Intermediate (basic AWS and Docker knowledge helpful)
 **Cost**: ~$0.30-0.50/hour while running
 
 ---
