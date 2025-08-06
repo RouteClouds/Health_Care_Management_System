@@ -5,11 +5,16 @@
 
 set -e
 
+# Determine the correct path to docs directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STAGE_DIR="$(dirname "$SCRIPT_DIR")"
+DOCS_DIR="$STAGE_DIR/docs"
+
 echo "🧹 Stage 1: Cleaning up Health Care Management System Resources"
 echo "=============================================================="
 echo ""
 echo "📖 For detailed step-by-step deletion process, see:"
-echo "    docs/stage-1-deletion-process.md"
+echo "    $DOCS_DIR/stage-1-deletion-process.md"
 echo ""
 
 # Colors for output

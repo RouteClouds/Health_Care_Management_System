@@ -39,11 +39,22 @@ if ! kubectl cluster-info &> /dev/null; then
     exit 1
 fi
 
+# Determine the correct path to k8s directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STAGE_DIR="$(dirname "$SCRIPT_DIR")"
+K8S_DIR="$STAGE_DIR/k8s"
+
 # Check if k8s directory exists
-if [ ! -d "k8s" ]; then
-    print_error "k8s directory not found. Please run this script from the Stage 1 directory."
+if [ ! -d "$K8S_DIR" ]; then
+    print_error "k8s directory not found at: $K8S_DIR"
+    print_info "Expected structure:"
+    print_info "Project-Stage-1-Basic-CI-CD-Deploy/"
+    print_info "├── scripts/ (current location)"
+    print_info "└── k8s/ (required directory)"
     exit 1
 fi
+
+print_info "Using k8s directory: $K8S_DIR"
 
 print_info "Current cluster context:"
 kubectl config current-context
@@ -56,12 +67,12 @@ print_info "Deploying application components..."
 
 # Deploy namespace
 print_info "Creating healthcare namespace..."
-kubectl apply -f k8s/namespace.yaml
+kubectl apply -f "$K8S_DIR/namespace.yaml"
 print_status "Namespace created"
 
 # Deploy database
 print_info "Deploying PostgreSQL database..."
-kubectl apply -f k8s/database-deployment.yaml
+kubectl apply -f "$K8S_DIR/database-deployment.yaml"
 print_status "Database deployment created"
 
 # Wait for database to be ready
@@ -71,7 +82,7 @@ print_status "Database is ready"
 
 # Deploy backend
 print_info "Deploying backend API..."
-kubectl apply -f k8s/backend-deployment.yaml
+kubectl apply -f "$K8S_DIR/backend-deployment.yaml"
 print_status "Backend deployment created"
 
 # Wait for backend to be ready
@@ -81,7 +92,7 @@ print_status "Backend is ready"
 
 # Deploy frontend
 print_info "Deploying frontend application..."
-kubectl apply -f k8s/frontend-deployment.yaml
+kubectl apply -f "$K8S_DIR/frontend-deployment.yaml"
 print_status "Frontend deployment created"
 
 # Wait for frontend to be ready
@@ -92,15 +103,16 @@ print_status "Frontend is ready"
 # Initialize database automatically
 echo ""
 print_info "Initializing database with schema and sample data..."
-if [ -f "scripts/init-database.sh" ]; then
-    ./scripts/init-database.sh
+INIT_SCRIPT="$SCRIPT_DIR/init-database.sh"
+if [ -f "$INIT_SCRIPT" ]; then
+    "$INIT_SCRIPT"
     if [ $? -eq 0 ]; then
         print_status "Database initialized successfully"
     else
         print_warning "Database initialization had issues, but deployment continues"
     fi
 else
-    print_warning "Database initialization script not found, skipping..."
+    print_warning "Database initialization script not found at: $INIT_SCRIPT"
 fi
 
 echo ""

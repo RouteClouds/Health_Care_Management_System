@@ -115,8 +115,8 @@ print_warning "IMPORTANT: You may need to log out and log back in for Docker gro
 print_info "Next steps:"
 echo "1. Configure AWS credentials: aws configure"
 echo "2. Build and push Docker images to Docker Hub"
-echo "3. Run: ./scripts/create-eks-cluster.sh (creates EKS 1.32 cluster)"
-echo "4. Run: ./scripts/deploy-to-eks.sh"
+echo "3. Run: ./scripts/deployment/create-eks-cluster.sh (creates EKS cluster)"
+echo "4. Run: ./scripts/deploy-healthcare.sh (deploys with Helm)"
 
 echo ""
-print_status "Setup completed! Ready for Stage 1 deployment."
+print_status "Setup completed! Ready for Stage 2 deployment."

@@ -5,6 +5,7 @@ Healthcare Management System - Complete Diagram Suite
 Generates all architecture and workflow diagrams
 
 Created: August 2, 2025
+Updated: August 4, 2025 - 100% Complete Production-Ready
 Purpose: One-click generation of all Stage 2 visual documentation
 """
 
@@ -59,27 +60,22 @@ def main():
         print("\n❌ Cannot proceed without required dependencies")
         sys.exit(1)
     
-    # List of diagrams to generate
+    # List of diagrams to generate (updated for essential files only)
     diagrams = [
         {
-            'script': 'generate_stage2_architecture.py',
-            'description': 'Original Stage 2 Architecture Diagram',
-            'output': 'Stage-2-Architecture-Diagram.png'
-        },
-        {
             'script': 'generate_enhanced_stage2_architecture.py',
-            'description': 'Enhanced Stage 2 Architecture (Complete)',
+            'description': 'Complete Stage 2 Architecture (Production-Ready)',
             'output': 'Stage-2-Enhanced-Architecture.png'
         },
         {
             'script': 'generate_pipeline_flow.py',
-            'description': 'CI/CD Pipeline Flow Diagram',
+            'description': 'CI/CD Pipeline Flow Diagram (9-Job Pipeline)',
             'output': 'Stage-2-Pipeline-Flow-Diagram.png'
         },
         {
-            'script': 'generate_onboarding_roadmap.py',
-            'description': 'New User Onboarding Roadmap',
-            'output': 'Stage-2-Onboarding-Roadmap.png'
+            'script': 'generate_updated_onboarding_roadmap.py',
+            'description': 'Updated Onboarding Roadmap (All Recent Changes)',
+            'output': 'Stage-2-Updated-Onboarding-Roadmap.png'
         }
     ]
     

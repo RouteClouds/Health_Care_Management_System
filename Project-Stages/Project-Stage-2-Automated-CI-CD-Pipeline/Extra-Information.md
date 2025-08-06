@@ -16,7 +16,9 @@
 **Document Purpose**: Comprehensive technical reference and alternatives analysis
 **Target Audience**: Technical architects and advanced users
 **Estimated Read Time**: 45 minutes
-**Last Updated**: August 2, 2025 (Phase B Complete)
+**Last Updated**: August 6, 2025 (Updated for stage-specific structure)
+
+**⚠️ Structure Update**: All paths updated for stage-specific source code directories
 
 ---
 
@@ -37,13 +39,13 @@ This document provides comprehensive analysis of testing tools, alternatives, an
 1. git add .
 2. git commit -m "Add feature"
 3. git push origin main
-4. cd src-code
+4. cd Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy/src-code
 5. npm test                                    # Manual testing
 6. docker build -f Dockerfile.backend -t backend:v1.1 .
 7. docker build -f Dockerfile.frontend -t frontend:v1.1 .
 8. docker push backend:v1.1
 9. docker push frontend:v1.1
-10. cd ../Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy
+10. cd ../../Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy
 11. kubectl set image deployment/backend backend=backend:v1.1
 12. kubectl set image deployment/frontend frontend=frontend:v1.1
 13. kubectl rollout status deployment/backend
@@ -389,21 +391,21 @@ jobs:
         
     - name: Install dependencies
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm ci
-        
+
     - name: Run tests with coverage
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm run test:coverage
-        
+
     - name: SonarQube Scan
       uses: sonarqube-quality-gate-action@master
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       with:
-        projectBaseDir: src-code
+        projectBaseDir: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         args: >
           -Dsonar.projectKey=healthcare-management-system
           -Dsonar.organization=your-org
@@ -465,7 +467,7 @@ jobs:
       uses: aquasecurity/trivy-action@master
       with:
         scan-type: 'fs'
-        scan-ref: 'src-code'
+        scan-ref: 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code'
         format: 'sarif'
         output: 'trivy-fs-results.sarif'
         
@@ -669,28 +671,28 @@ jobs:
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
-        cache-dependency-path: src-code/package-lock.json
+        cache-dependency-path: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/package-lock.json
 
     - name: Install dependencies
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm ci
 
     - name: Run ESLint
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm run lint
 
     - name: Run Prettier check
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm run format:check
 
     - name: Trivy filesystem scan
       uses: aquasecurity/trivy-action@master
       with:
         scan-type: 'fs'
-        scan-ref: 'src-code'
+        scan-ref: 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code'
         format: 'sarif'
         output: 'trivy-fs-results.sarif'
 
@@ -732,11 +734,11 @@ jobs:
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
-        cache-dependency-path: src-code/package-lock.json
+        cache-dependency-path: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/package-lock.json
 
     - name: Install dependencies
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm ci
 
     - name: Wait for PostgreSQL
@@ -752,7 +754,7 @@ jobs:
         DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_healthcare_db
         JWT_SECRET: test_jwt_secret_key
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm run test:coverage
 
     - name: Run integration tests
@@ -761,13 +763,13 @@ jobs:
         DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_healthcare_db
         JWT_SECRET: test_jwt_secret_key
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm run test:integration
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
-        file: src-code/coverage/lcov.info
+        file: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/coverage/lcov.info
         flags: unittests
         name: codecov-umbrella
 
@@ -777,7 +779,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       with:
-        projectBaseDir: src-code
+        projectBaseDir: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
 
   # ============================================================================
   # BUILD STAGE
@@ -822,8 +824,8 @@ jobs:
       id: build-backend
       uses: docker/build-push-action@v5
       with:
-        context: src-code
-        file: src-code/Dockerfile.backend
+        context: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
+        file: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/Dockerfile.backend
         push: true
         tags: ${{ env.IMAGE_NAME_BACKEND }}:${{ github.sha }},${{ env.IMAGE_NAME_BACKEND }}:latest
         cache-from: type=gha
@@ -833,8 +835,8 @@ jobs:
       id: build-frontend
       uses: docker/build-push-action@v5
       with:
-        context: src-code
-        file: src-code/Dockerfile.frontend.k8s
+        context: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
+        file: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/Dockerfile.frontend.k8s
         push: true
         tags: ${{ env.IMAGE_NAME_FRONTEND }}:${{ github.sha }},${{ env.IMAGE_NAME_FRONTEND }}:latest
         cache-from: type=gha
@@ -921,23 +923,23 @@ jobs:
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
-        cache-dependency-path: src-code/package-lock.json
+        cache-dependency-path: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/package-lock.json
 
     - name: Install dependencies
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm ci
 
     - name: Install Playwright browsers
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npx playwright install --with-deps
 
     - name: Run Playwright E2E tests
       env:
         STAGING_URL: ${{ needs.deploy-staging.outputs.staging-url }}
       run: |
-        cd src-code
+        cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
         npm run test:e2e -- --config baseURL=$STAGING_URL
 
     - name: Upload Playwright report
@@ -945,7 +947,7 @@ jobs:
       if: always()
       with:
         name: playwright-report
-        path: src-code/playwright-report/
+        path: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/playwright-report/
         retention-days: 30
 
   # ============================================================================

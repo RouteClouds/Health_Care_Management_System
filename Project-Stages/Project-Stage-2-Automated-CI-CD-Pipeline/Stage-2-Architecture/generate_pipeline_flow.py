@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Stage 2 Pipeline Flow Diagram Generator
-Healthcare Management System - Detailed CI/CD Workflow
-Tech Stack: Jest + Selenium + SonarQube + Trivy
+Healthcare Management System - Complete CI/CD Workflow
+Tech Stack: Jest + Selenium + SonarQube + Trivy + Multi-Environment Deployment
+Updated: August 4, 2025 - 100% Complete Production-Ready
 """
 
 import matplotlib.pyplot as plt

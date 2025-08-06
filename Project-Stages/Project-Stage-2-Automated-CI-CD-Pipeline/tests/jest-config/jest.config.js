@@ -8,7 +8,7 @@ module.exports = {
   // Test environment
   testEnvironment: 'node',
   
-  // Root directory for tests
+  // Root directory for tests (relative to Stage-2 root)
   rootDir: '../../src-code',
   
   // Test file patterns

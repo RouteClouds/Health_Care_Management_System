@@ -124,7 +124,7 @@ Docker build failures in GitHub Actions:
 
 #### **Quick Diagnosis**
 ```bash
-# Test build locally first
+# Test build locally first (from Stage-2 root)
 cd src-code
 docker build -f Dockerfile.backend -t test-backend .
 docker build -f Dockerfile.frontend.k8s -t test-frontend .

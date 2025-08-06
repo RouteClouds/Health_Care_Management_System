@@ -21,7 +21,7 @@ spec:
     spec:
       initContainers:
       - name: db-init
-        image: routeclouds/healthcare-backend:v1.0
+        image: routeclouds/healthcare-backend:v2.0
         env:
         - name: NODE_ENV
           value: "production"
@@ -36,7 +36,7 @@ spec:
           echo "✅ Database initialization complete"
       containers:
       - name: backend
-        image: routeclouds/healthcare-backend:v1.0  # Testing version - auto-updated on rebuild
+        image: routeclouds/healthcare-backend:v2.0  # Stage-2 enhanced version with testing
         ports:
         - containerPort: 3002
           name: http

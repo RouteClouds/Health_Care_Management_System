@@ -155,7 +155,7 @@ gh run list --workflow=ci-cd-pipeline.yml | grep staging
 # Comprehensive staging verification
 kubectl get all -n healthcare-staging
 
-# Run E2E tests against staging
+# Run E2E tests against staging (from Stage-2 root)
 cd src-code
 npm run test:e2e -- --env staging
 

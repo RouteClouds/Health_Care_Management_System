@@ -22,7 +22,7 @@ frontend:
   
   image:
     repository: healthcare-frontend
-    tag: "v1.0"
+    tag: "v2.0"
     pullPolicy: IfNotPresent
   
   service:
@@ -73,7 +73,7 @@ backend:
   
   image:
     repository: healthcare-backend
-    tag: "v1.0"
+    tag: "v2.0"
     pullPolicy: IfNotPresent
   
   service:
