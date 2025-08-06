@@ -4,7 +4,7 @@
 ### **📍 Location**
 ```bash
 Scripts Location: /Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy/scripts/
-Documentation: /Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/scripts/How-Use-Scripts.md
+Documentation: /Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy/scripts/How-Use-Scripts.md
 ```
 
 ---
@@ -461,9 +461,9 @@ Solution:
 
 ## **🔗 Related Documentation**
 
-- **Stage 1 Setup**: `../Project-Stage-1-Basic-CI-CD-Deploy/README.md`
-- **Stage 2 Pipeline**: `../docs/STAGE-2-MASTER-GUIDE.md`
-- **Troubleshooting**: `../docs/STAGE-2-TROUBLESHOOTING-REFERENCE.md`
+- **Stage 1 Setup**: `../README.md`
+- **Stage 1 Master Guide**: `../docs/STAGE-1-MASTER-GUIDE.md`
+- **Troubleshooting**: `../docs/STAGE-1-TROUBLESHOOTING-REFERENCE.md`
 - **AWS EKS Documentation**: https://docs.aws.amazon.com/eks/
 
 ---

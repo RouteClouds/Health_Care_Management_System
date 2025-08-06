@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: healthcare-staging
+  labels:
+    environment: staging
+    project: healthcare-management
+    stage: "2"
+    compliance: hipaa
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: healthcare-staging-quota
+  namespace: healthcare-staging
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    persistentvolumeclaims: "6"
+    services: "15"
+    secrets: "15"
+    configmaps: "15"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: healthcare-staging-limits
+  namespace: healthcare-staging
+spec:
+  limits:
+  - default:
+      cpu: 1000m
+      memory: 1Gi
+    defaultRequest:
+      cpu: 200m
+      memory: 256Mi
+    type: Container

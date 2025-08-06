@@ -86,7 +86,7 @@ Docker + Docker Hub • AWS EKS • Kubernetes • PostgreSQL • Manual Scripts
 ### **👨‍💻 Local Development**
 ```bash
 git clone https://github.com/RouteClouds/Health_Care_Management_System.git
-cd Health_Care_Management_System/src-code
+cd Health_Care_Management_System/Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy/src-code
 docker-compose up -d
 ```
 
@@ -133,7 +133,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🎯 **Next Steps**
 
-- **🏠 Local Development**: Start with `src-code/` directory
+- **🏠 Local Development**: Start with `src-code/` directory in your chosen stage
 - **☁️ DevOps Learning**: Begin with Stage 1 for hands-on CI/CD experience
 - **📚 Documentation**: Explore comprehensive guides in each stage
 - **🤝 Community**: Join discussions and contribute to the project

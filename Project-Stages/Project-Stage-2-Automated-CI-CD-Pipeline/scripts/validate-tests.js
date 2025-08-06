@@ -90,10 +90,10 @@ seleniumFiles.forEach(file => {
 // Validate source code test configurations
 console.log('\n📋 Validating source code test configurations...\n');
 
-// Frontend test configuration
+// Frontend test configuration (relative to Stage-2 root)
 const frontendTestFiles = [
-  '../../src-code/frontend/vitest.config.ts',
-  '../../src-code/frontend/src/test/setup.ts'
+  '../src-code/frontend/vitest.config.ts',
+  '../src-code/frontend/src/test/setup.ts'
 ];
 
 frontendTestFiles.forEach(file => {
@@ -104,12 +104,12 @@ frontendTestFiles.forEach(file => {
   }
 });
 
-// Backend test configuration
+// Backend test configuration (relative to Stage-2 root)
 const backendTestFiles = [
-  '../../src-code/backend/jest.config.js',
-  '../../src-code/backend/tests/setup.ts',
-  '../../src-code/backend/tests/globalSetup.ts',
-  '../../src-code/backend/tests/globalTeardown.ts'
+  '../src-code/backend/jest.config.js',
+  '../src-code/backend/tests/setup.ts',
+  '../src-code/backend/tests/globalSetup.ts',
+  '../src-code/backend/tests/globalTeardown.ts'
 ];
 
 backendTestFiles.forEach(file => {
@@ -131,14 +131,14 @@ if (fs.existsSync(path.resolve('package.json'))) {
 
 // Frontend test dependencies
 const frontendTestDeps = ['vitest', '@testing-library/react', '@testing-library/jest-dom'];
-if (fs.existsSync(path.resolve('../../src-code/frontend/package.json'))) {
-  validateDependencies('../../src-code/frontend/package.json', frontendTestDeps);
+if (fs.existsSync(path.resolve('../src-code/frontend/package.json'))) {
+  validateDependencies('../src-code/frontend/package.json', frontendTestDeps);
 }
 
 // Backend test dependencies
 const backendTestDeps = ['jest', '@types/jest', 'supertest', 'ts-jest'];
-if (fs.existsSync(path.resolve('../../src-code/backend/package.json'))) {
-  validateDependencies('../../src-code/backend/package.json', backendTestDeps);
+if (fs.existsSync(path.resolve('../src-code/backend/package.json'))) {
+  validateDependencies('../src-code/backend/package.json', backendTestDeps);
 }
 
 // Check for test scripts
@@ -146,15 +146,15 @@ console.log('\n📋 Validating test scripts...\n');
 
 const testScripts = [
   {
-    file: '../../src-code/package.json',
+    file: '../src-code/package.json',
     scripts: ['test', 'test:unit', 'test:e2e', 'test:coverage']
   },
   {
-    file: '../../src-code/frontend/package.json',
+    file: '../src-code/frontend/package.json',
     scripts: ['test', 'test:coverage']
   },
   {
-    file: '../../src-code/backend/package.json',
+    file: '../src-code/backend/package.json',
     scripts: ['test', 'test:coverage', 'test:integration']
   }
 ];

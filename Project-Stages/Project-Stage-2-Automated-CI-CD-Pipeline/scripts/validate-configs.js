@@ -82,20 +82,20 @@ const configFiles = [
   }
 ];
 
-// Source code configurations
+// Source code configurations (relative to Stage-2 root)
 const sourceCodeFiles = [
   {
-    path: '../../src-code/package.json',
+    path: '../src-code/package.json',
     required: true,
     type: 'json'
   },
   {
-    path: '../../src-code/frontend/package.json',
+    path: '../src-code/frontend/package.json',
     required: true,
     type: 'json'
   },
   {
-    path: '../../src-code/backend/package.json',
+    path: '../src-code/backend/package.json',
     required: true,
     type: 'json'
   }

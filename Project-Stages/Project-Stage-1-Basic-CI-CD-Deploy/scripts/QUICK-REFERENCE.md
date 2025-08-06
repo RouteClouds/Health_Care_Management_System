@@ -3,8 +3,8 @@
 ## **⚡ TL;DR - Fix VPC Issue in 4 Steps**
 
 ```bash
-# Navigate to scripts directory
-cd /home/ubuntu/Projects/Health_Care_Management_System/Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy/scripts
+# Navigate to scripts directory (adjust path as needed)
+cd Project-Stages/Project-Stage-1-Basic-CI-CD-Deploy/scripts
 
 # 1. See what needs cleanup (2 min)
 ./diagnose-aws-resources.sh

@@ -13,10 +13,14 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Determine script location and set paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STAGE_DIR="$(dirname "$SCRIPT_DIR")"
+
 # Default configuration
 ENVIRONMENT="development"
 NAMESPACE="healthcare-system"
-HELM_CHART_PATH="./helm-charts/healthcare-system"
+HELM_CHART_PATH="$STAGE_DIR/helm-charts/healthcare-system"
 RELEASE_NAME="healthcare-system"
 TIMEOUT="600s"
 DRY_RUN=false
@@ -136,15 +140,16 @@ validate_deployment() {
     print_status "info" "Validating deployment configuration..."
     
     # Run infrastructure validation script
-    if [ -f "./scripts/validate-infrastructure.sh" ]; then
-        if ./scripts/validate-infrastructure.sh; then
+    local validation_script="$SCRIPT_DIR/validate-infrastructure.sh"
+    if [ -f "$validation_script" ]; then
+        if "$validation_script"; then
             print_status "success" "Infrastructure validation passed"
         else
             print_status "error" "Infrastructure validation failed"
             exit 1
         fi
     else
-        print_status "warning" "Infrastructure validation script not found"
+        print_status "warning" "Infrastructure validation script not found at: $validation_script"
     fi
     
     # Validate Helm chart
