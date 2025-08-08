@@ -16,7 +16,7 @@ export default defineConfig({
     
     // Global setup
     globals: true,
-    setupFiles: ['./frontend/src/test/setup.ts'],
+    setupFiles: ['./src/test/setup.ts'],
     
     // Coverage configuration
     coverage: {
