@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="3" failures="0" errors="0" time="3.813">
+    <testsuite name="src/App.spec.tsx" timestamp="2025-08-08T13:16:17.070Z" hostname="ip-172-31-7-6" tests="3" failures="0" errors="0" skipped="0" time="0.244">
+        <testcase classname="src/App.spec.tsx" name="App Component &gt; renders the app successfully" time="0.128">
+        </testcase>
+        <testcase classname="src/App.spec.tsx" name="App Component &gt; displays navigation elements" time="0.062">
+        </testcase>
+        <testcase classname="src/App.spec.tsx" name="App Component &gt; shows authentication buttons" time="0.052">
+        </testcase>
+    </testsuite>
+</testsuites>

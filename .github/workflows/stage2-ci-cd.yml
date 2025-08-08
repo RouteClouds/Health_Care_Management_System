@@ -117,14 +117,13 @@ jobs:
         cd frontend && npm ci
         cd ../backend && npm ci
     
-    - name: 🧪 Run Unit Tests
+    - name: 🧪 Run Jest Unit Tests
       working-directory: ${{ env.SOURCE_CODE_PATH }}
       run: |
-        echo "🧪 Running frontend tests (Vitest)..."
-        cd frontend && npm run test:coverage
-        echo "🧪 Running backend tests (Jest)..."
-        cd backend && npm run test -- --coverage --ci --watchAll=false
-        echo "📊 Unit tests completed successfully"
+        echo "🧪 Running Jest unit tests..."
+        npm run test:unit -- --coverage --ci --watchAll=false
+        echo "📊 Checking coverage threshold..."
+        npm run test:coverage-check
     
     - name: 📊 Upload Coverage Reports
       uses: codecov/codecov-action@v4
