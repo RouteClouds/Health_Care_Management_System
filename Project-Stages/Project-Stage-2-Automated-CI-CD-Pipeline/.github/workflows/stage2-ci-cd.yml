@@ -116,12 +116,12 @@ jobs:
         cd frontend && npm ci
         cd ../backend && npm ci
     
-    - name: 🧪 Run Jest Unit Tests
+    - name: 🧪 Run Unit Tests
       working-directory: ${{ env.SOURCE_CODE_PATH }}
       run: |
-        echo "🧪 Running Jest unit tests..."
-        npm run test:unit -- --coverage --ci --watchAll=false
-        echo "📊 Checking coverage threshold..."
+        echo "🧪 Running unit tests..."
+        npm run test:unit
+        echo "📊 Running coverage tests..."
         npm run test:coverage-check
     
     - name: 📊 Upload Coverage Reports
