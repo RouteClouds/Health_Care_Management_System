@@ -60,9 +60,10 @@ init_tools() {
 
     # Development Environments
     TOOL_DESCRIPTIONS["python-dev"]="Python Development Environment - Full Python setup"
-    TOOL_DESCRIPTIONS["nodejs"]="Node.js and npm - JavaScript runtime and package manager"
+    TOOL_DESCRIPTIONS["nodejs"]="Node.js and npm - JavaScript runtime and package manager (v20.x LTS)"
     TOOL_DESCRIPTIONS["yarn"]="Yarn - JavaScript package manager"
     TOOL_DESCRIPTIONS["java-dev"]="Java Development Environment - Multiple JDK versions"
+    TOOL_DESCRIPTIONS["github-cli"]="GitHub CLI - Command-line tool for GitHub operations"
 
     # Database Tools
     TOOL_DESCRIPTIONS["database-clients"]="Database Clients - PostgreSQL, MySQL, SQLite, Redis"
@@ -70,6 +71,7 @@ init_tools() {
     # Network and API Tools
     TOOL_DESCRIPTIONS["postman"]="Postman - API development and testing tool"
     TOOL_DESCRIPTIONS["network-tools"]="Network Tools - SSH server, network utilities"
+    TOOL_DESCRIPTIONS["testing-tools"]="Testing Tools - Vitest, Jest, Testing Libraries for CI/CD"
     
     # Containerized DevOps Tools
     TOOL_DESCRIPTIONS["sonarqube"]="SonarQube - Code quality analysis (Docker)"
@@ -305,6 +307,16 @@ check_tool_status() {
                 TOOL_STATUS["$tool"]="INSTALLED"
             fi
             ;;
+        "github-cli")
+            if command_exists gh; then
+                TOOL_STATUS["$tool"]="INSTALLED"
+            fi
+            ;;
+        "testing-tools")
+            if command_exists vitest && command_exists jest; then
+                TOOL_STATUS["$tool"]="INSTALLED"
+            fi
+            ;;
     esac
 }
 
@@ -395,7 +407,7 @@ show_main_menu() {
     echo ""
 
     # Development Environments
-    for tool in "python-dev" "nodejs" "yarn" "java-dev"; do
+    for tool in "python-dev" "nodejs" "yarn" "java-dev" "github-cli"; do
         check_tool_status "$tool"
         local status_icon=""
         if [ "${TOOL_STATUS[$tool]}" = "INSTALLED" ]; then
@@ -412,7 +424,7 @@ show_main_menu() {
     echo ""
 
     # Database and Network Tools
-    for tool in "database-clients" "postman" "network-tools"; do
+    for tool in "database-clients" "postman" "network-tools" "testing-tools"; do
         check_tool_status "$tool"
         local status_icon=""
         if [ "${TOOL_STATUS[$tool]}" = "INSTALLED" ]; then
@@ -472,7 +484,7 @@ show_main_menu() {
 
 # Function to get user choice
 get_user_choice() {
-    local max_choice=43
+    local max_choice=45
     while true; do
         echo ""
         print_status "MENU" "Enter your choice (1-$max_choice): "
@@ -1150,15 +1162,36 @@ install_development_environments() {
             fi
             ;;
         "nodejs")
-            print_status "STEP" "Installing Node.js and npm"
-            if execute_command "sudo apt install -y nodejs npm" "Install Node.js and npm"; then
-                print_status "SUCCESS" "Node.js and npm installed successfully"
-                print_status "INFO" "Node.js version: $(node --version 2>/dev/null || echo 'unknown')"
-                print_status "INFO" "npm version: $(npm --version 2>/dev/null || echo 'unknown')"
-                TOOL_STATUS["nodejs"]="INSTALLED"
+            print_status "STEP" "Installing Node.js v20.x LTS and npm"
+            if ! command_exists node || [[ "$(node --version)" != v20* ]]; then
+                # Install Node.js v20.x LTS from NodeSource repository
+                if execute_command "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -" "Add NodeSource repository for Node.js v20.x" && \
+                   execute_command "sudo apt install -y nodejs" "Install Node.js v20.x LTS"; then
+
+                    # Verify installation
+                    if command_exists node && command_exists npm; then
+                        print_status "SUCCESS" "Node.js v20.x LTS and npm installed successfully"
+                        print_status "INFO" "Node.js version: $(node --version)"
+                        print_status "INFO" "npm version: $(npm --version)"
+
+                        # Install global packages commonly used in CI/CD
+                        execute_command "sudo npm install -g npm@latest" "Update npm to latest version" true
+                        execute_command "sudo npm install -g typescript ts-node" "Install TypeScript globally" true
+                        execute_command "sudo npm install -g @types/node" "Install Node.js types globally" true
+
+                        TOOL_STATUS["nodejs"]="INSTALLED"
+                    else
+                        print_status "FAIL" "Node.js installation verification failed"
+                        TOOL_STATUS["nodejs"]="FAILED"
+                    fi
+                else
+                    print_status "FAIL" "Node.js v20.x LTS installation failed"
+                    TOOL_STATUS["nodejs"]="FAILED"
+                fi
             else
-                print_status "FAIL" "Node.js and npm installation failed"
-                TOOL_STATUS["nodejs"]="FAILED"
+                print_status "INFO" "Node.js v20.x already installed: $(node --version)"
+                print_status "INFO" "npm version: $(npm --version)"
+                TOOL_STATUS["nodejs"]="INSTALLED"
             fi
             ;;
         "yarn")
@@ -1188,6 +1221,102 @@ install_development_environments() {
             else
                 print_status "FAIL" "Java Development Environment installation failed"
                 TOOL_STATUS["java-dev"]="FAILED"
+            fi
+            ;;
+        "github-cli")
+            print_status "STEP" "Installing GitHub CLI"
+            if ! command_exists gh; then
+                # Install GitHub CLI from official repository
+                if execute_command "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg" "Add GitHub CLI GPG key" && \
+                   execute_command "sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg" "Set GPG key permissions" && \
+                   execute_command "echo 'deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null" "Add GitHub CLI repository" && \
+                   execute_command "sudo apt update" "Update package lists" && \
+                   execute_command "sudo apt install -y gh" "Install GitHub CLI"; then
+
+                    if command_exists gh; then
+                        print_status "SUCCESS" "GitHub CLI installed successfully"
+                        print_status "INFO" "GitHub CLI version: $(gh --version | head -1)"
+                        print_status "INFO" "To authenticate: gh auth login"
+                        TOOL_STATUS["github-cli"]="INSTALLED"
+                    else
+                        print_status "FAIL" "GitHub CLI installation verification failed"
+                        TOOL_STATUS["github-cli"]="FAILED"
+                    fi
+                else
+                    print_status "FAIL" "GitHub CLI installation failed"
+                    TOOL_STATUS["github-cli"]="FAILED"
+                fi
+            else
+                print_status "INFO" "GitHub CLI already installed: $(gh --version | head -1)"
+                TOOL_STATUS["github-cli"]="INSTALLED"
+            fi
+            ;;
+    esac
+}
+
+# Function to install testing tools
+install_testing_tools() {
+    local tool=$1
+
+    case $tool in
+        "testing-tools")
+            print_status "STEP" "Installing Testing Tools (Vitest, Jest, Testing Libraries)"
+
+            # Ensure Node.js is installed first
+            if ! command_exists node; then
+                print_status "WARNING" "Node.js not found. Installing Node.js first..."
+                install_development_environments "nodejs"
+            fi
+
+            if command_exists npm; then
+                # Install global testing tools
+                local install_success=true
+
+                # Install Jest globally
+                if execute_command "sudo npm install -g jest@latest" "Install Jest globally"; then
+                    print_status "OK" "Jest installed globally"
+                else
+                    print_status "WARNING" "Jest global installation failed"
+                    install_success=false
+                fi
+
+                # Install Vitest globally
+                if execute_command "sudo npm install -g vitest@latest" "Install Vitest globally"; then
+                    print_status "OK" "Vitest installed globally"
+                else
+                    print_status "WARNING" "Vitest global installation failed"
+                    install_success=false
+                fi
+
+                # Install testing libraries globally
+                if execute_command "sudo npm install -g @testing-library/react @testing-library/jest-dom @testing-library/user-event" "Install Testing Libraries globally"; then
+                    print_status "OK" "Testing Libraries installed globally"
+                else
+                    print_status "WARNING" "Testing Libraries global installation failed"
+                    install_success=false
+                fi
+
+                # Install coverage tools
+                if execute_command "sudo npm install -g @vitest/coverage-v8 c8" "Install Coverage Tools globally"; then
+                    print_status "OK" "Coverage tools installed globally"
+                else
+                    print_status "WARNING" "Coverage tools global installation failed"
+                    install_success=false
+                fi
+
+                if $install_success; then
+                    print_status "SUCCESS" "Testing tools installed successfully"
+                    print_status "INFO" "Jest version: $(jest --version 2>/dev/null || echo 'installed')"
+                    print_status "INFO" "Vitest version: $(vitest --version 2>/dev/null || echo 'installed')"
+                    print_status "INFO" "Available globally: jest, vitest, testing libraries, coverage tools"
+                    TOOL_STATUS["testing-tools"]="INSTALLED"
+                else
+                    print_status "FAIL" "Some testing tools installation failed"
+                    TOOL_STATUS["testing-tools"]="FAILED"
+                fi
+            else
+                print_status "FAIL" "npm not available for testing tools installation"
+                TOOL_STATUS["testing-tools"]="FAILED"
             fi
             ;;
     esac
@@ -1351,7 +1480,7 @@ install_all_packages() {
     echo ""
 
     # Confirmation prompt
-    print_status "WARNING" "This will install 32+ tools and packages. Continue? (y/N)"
+    print_status "WARNING" "This will install 35+ tools and packages including Node.js v20.x, GitHub CLI, and Testing Tools. Continue? (y/N)"
     read -r confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         print_status "INFO" "Installation cancelled by user"
@@ -1431,17 +1560,19 @@ install_all_packages() {
     install_development_environments "nodejs"
     install_development_environments "yarn"
     install_development_environments "java-dev"
+    install_development_environments "github-cli"
     print_status "SUCCESS" "✅ Development environments installation completed"
     echo ""
 
-    # Step 7: Database and Network Tools
+    # Step 7: Database, Network & Testing Tools
     ((current_step++))
-    print_status "HEADER" "STEP $current_step/$total_steps: DATABASE & NETWORK TOOLS"
-    print_status "STEP" "Installing database clients and network tools..."
+    print_status "HEADER" "STEP $current_step/$total_steps: DATABASE, NETWORK & TESTING TOOLS"
+    print_status "STEP" "Installing database clients, network tools, and testing frameworks..."
     install_database_network_tools "database-clients"
     install_database_network_tools "postman"
     install_database_network_tools "network-tools"
-    print_status "SUCCESS" "✅ Database and network tools installation completed"
+    install_testing_tools "testing-tools"
+    print_status "SUCCESS" "✅ Database, network, and testing tools installation completed"
     echo ""
 
     # Step 8: Containerized Tools (with Docker verification)
@@ -1742,18 +1873,20 @@ handle_menu_choice() {
         22) install_development_environments "nodejs" ;;
         23) install_development_environments "yarn" ;;
         24) install_development_environments "java-dev" ;;
-        25) install_database_network_tools "database-clients" ;;
-        26) install_database_network_tools "postman" ;;
-        27) install_database_network_tools "network-tools" ;;
-        28) install_containerized_tools "sonarqube" ;;
-        29) install_containerized_tools "nexus" ;;
-        30) install_containerized_tools "trivy" ;;
-        31) install_containerized_tools "prometheus" ;;
-        32) install_containerized_tools "grafana" ;;
-        33) # Install ALL Packages (Complete DevOps Environment)
+        25) install_development_environments "github-cli" ;;
+        26) install_database_network_tools "database-clients" ;;
+        27) install_database_network_tools "postman" ;;
+        28) install_database_network_tools "network-tools" ;;
+        29) install_testing_tools "testing-tools" ;;
+        30) install_containerized_tools "sonarqube" ;;
+        31) install_containerized_tools "nexus" ;;
+        32) install_containerized_tools "trivy" ;;
+        33) install_containerized_tools "prometheus" ;;
+        34) install_containerized_tools "grafana" ;;
+        35) # Install ALL Packages (Complete DevOps Environment)
             install_all_packages
             ;;
-        34) # Install All Core DevOps Tools
+        36) # Install All Core DevOps Tools
             print_status "STEP" "Installing All Core DevOps Tools"
             install_dependencies
             install_aws_cli
@@ -1766,7 +1899,7 @@ handle_menu_choice() {
             install_jenkins
             print_status "SUCCESS" "All Core DevOps Tools installation completed"
             ;;
-        35) # Install All Development Tools
+        37) # Install All Development Tools
             print_status "STEP" "Installing All Development Tools"
             install_development_tools "vscode"
             install_development_tools "sublime"
@@ -1776,21 +1909,23 @@ handle_menu_choice() {
             install_additional_tools "git"
             print_status "SUCCESS" "All Development Tools installation completed"
             ;;
-        36) # Install All Web Browsers
+        38) # Install All Web Browsers
             print_status "STEP" "Installing All Web Browsers"
             install_web_browsers "firefox"
             install_web_browsers "chrome"
             print_status "SUCCESS" "All Web Browsers installation completed"
             ;;
-        37) # Install All Development Environments
+        39) # Install All Development Environments
             print_status "STEP" "Installing All Development Environments"
             install_development_environments "python-dev"
             install_development_environments "nodejs"
             install_development_environments "yarn"
             install_development_environments "java-dev"
+            install_development_environments "github-cli"
+            install_testing_tools "testing-tools"
             print_status "SUCCESS" "All Development Environments installation completed"
             ;;
-        38) # Install All Containerized Tools
+        40) # Install All Containerized Tools
             print_status "STEP" "Installing All Containerized Tools"
             if ! command_exists docker; then
                 print_status "WARNING" "Docker not found. Installing Docker first..."
@@ -1812,24 +1947,24 @@ handle_menu_choice() {
             install_containerized_tools "grafana"
             print_status "SUCCESS" "All Containerized Tools installation completed"
             ;;
-        39) show_installation_summary ;;
-        40) # Verify and Fix Docker Access
+        41) show_installation_summary ;;
+        42) # Verify and Fix Docker Access
             print_status "STEP" "Verifying and Fixing Docker Access"
             verify_docker_access
             create_docker_activation_script
             print_status "SUCCESS" "Docker access verification completed"
             ;;
-        41) # Update System Dependencies
+        43) # Update System Dependencies
             print_status "STEP" "Updating System Dependencies"
             install_dependencies
             print_status "SUCCESS" "System dependencies updated"
             ;;
-        42) # Update and Upgrade System
+        44) # Update and Upgrade System
             print_status "STEP" "Updating and Upgrading System"
             update_and_upgrade_system
             print_status "SUCCESS" "System update and upgrade completed"
             ;;
-        43) # Exit
+        45) # Exit
             print_status "INFO" "Thank you for using Augment Master DevOps Tools Installer!"
             print_status "INFO" "Installation log saved to: $LOG_FILE"
             exit 0
