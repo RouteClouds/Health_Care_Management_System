@@ -74,6 +74,7 @@ jobs:
     - name: 📊 Upload Trivy Results to GitHub Security
       uses: github/codeql-action/upload-sarif@v3
       if: always()
+      continue-on-error: true
       with:
         sarif_file: 'trivy-fs-results.sarif'
     
@@ -270,6 +271,7 @@ jobs:
     - name: 📊 Upload Trivy Results
       uses: github/codeql-action/upload-sarif@v3
       if: always()
+      continue-on-error: true
       with:
         sarif_file: 'trivy-${{ matrix.image }}-results.sarif'
     
