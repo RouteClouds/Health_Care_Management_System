@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="3" failures="0" errors="0" time="4.238">
-    <testsuite name="src/App.spec.tsx" timestamp="2025-08-08T13:27:46.899Z" hostname="ip-172-31-7-6" tests="3" failures="0" errors="0" skipped="0" time="0.332">
-        <testcase classname="src/App.spec.tsx" name="App Component &gt; renders the app successfully" time="0.117">
+<testsuites name="vitest tests" tests="3" failures="0" errors="0" time="3.881">
+    <testsuite name="src/App.spec.tsx" timestamp="2025-08-08T13:41:21.164Z" hostname="ip-172-31-7-6" tests="3" failures="0" errors="0" skipped="0" time="0.372">
+        <testcase classname="src/App.spec.tsx" name="App Component &gt; renders the app successfully" time="0.179">
         </testcase>
-        <testcase classname="src/App.spec.tsx" name="App Component &gt; displays navigation elements" time="0.108">
+        <testcase classname="src/App.spec.tsx" name="App Component &gt; displays navigation elements" time="0.11">
         </testcase>
-        <testcase classname="src/App.spec.tsx" name="App Component &gt; shows authentication buttons" time="0.103">
+        <testcase classname="src/App.spec.tsx" name="App Component &gt; shows authentication buttons" time="0.081">
         </testcase>
     </testsuite>
 </testsuites>
