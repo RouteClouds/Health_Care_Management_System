@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Stage 1 - Create EKS Cluster Script
-# Health Care Management System - Basic CI/CD Deployment
+# Stage 2 - Create EKS Cluster Script
+# Health Care Management System - Automated CI/CD Pipeline
 
 set -e
 
-echo "🚀 Stage 1: Creating EKS Cluster for Health Care Management System"
-echo "=================================================================="
+echo "🚀 Stage 2: Creating Multi-Environment EKS Cluster for Health Care Management System"
+echo "=================================================================================="
 
 # Colors for output
 RED='\033[0;31m'
@@ -33,14 +33,14 @@ print_info() {
 }
 
 # Configuration
-CLUSTER_NAME="healthcare-cluster"
+CLUSTER_NAME="healthcare-cluster-stage2"
 CLUSTER_VERSION="1.32"
 REGION="us-east-1"
-NODE_GROUP_NAME="healthcare-nodes"
+NODE_GROUP_NAME="healthcare-nodes-stage2"
 NODE_TYPE="t3.medium"
-MIN_NODES=1
-MAX_NODES=4
-DESIRED_NODES=2
+MIN_NODES=2
+MAX_NODES=6
+DESIRED_NODES=3
 
 echo ""
 print_info "Cluster Configuration:"

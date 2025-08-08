@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Infrastructure Validation Script
+# Tool Installation Validation Script
 # Healthcare Management System - Stage 2
-# Validates Kubernetes infrastructure and Helm charts
+# Validates all required tools are properly installed and configured
 
 set -euo pipefail
 
@@ -13,13 +13,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-NAMESPACE="healthcare-system"
-HELM_CHART_PATH="./helm-charts/healthcare-system"
-TIMEOUT=300
-
-echo -e "${BLUE}🔍 Healthcare Infrastructure Validation${NC}"
-echo -e "${BLUE}======================================${NC}\n"
+echo -e "${BLUE}🔍 Stage 2 Tool Installation Validation${NC}"
+echo -e "${BLUE}========================================${NC}\n"
 
 # Function to print status
 print_status() {
@@ -42,11 +37,15 @@ print_status() {
     esac
 }
 
-# Function to check command availability
+# Function to check command availability with version
 check_command() {
     local cmd=$1
+    local expected_version=$2
+    local version_flag=$3
+
     if command -v "$cmd" &> /dev/null; then
-        print_status "success" "$cmd is available"
+        local version_output=$($cmd $version_flag 2>/dev/null | head -1)
+        print_status "success" "$cmd is available: $version_output"
         return 0
     else
         print_status "error" "$cmd is not available"
@@ -54,324 +53,176 @@ check_command() {
     fi
 }
 
-# Function to validate Kubernetes connection
-validate_k8s_connection() {
-    print_status "info" "Validating Kubernetes connection..."
-    
-    if kubectl cluster-info &> /dev/null; then
-        print_status "success" "Kubernetes cluster is accessible"
-        
-        # Get cluster info
-        local cluster_info=$(kubectl cluster-info | head -1)
-        print_status "info" "Cluster: $cluster_info"
-        
-        # Check node status
-        local ready_nodes=$(kubectl get nodes --no-headers | grep -c "Ready")
-        local total_nodes=$(kubectl get nodes --no-headers | wc -l)
-        print_status "info" "Nodes: $ready_nodes/$total_nodes Ready"
-        
+# Function to validate Node.js version
+validate_nodejs() {
+    print_status "info" "Validating Node.js installation..."
+
+    if command -v node &> /dev/null; then
+        local node_version=$(node --version)
+        local major_version=$(echo $node_version | cut -d'.' -f1 | sed 's/v//')
+
+        print_status "success" "Node.js $node_version is installed"
+
+        if [ "$major_version" -ge 20 ]; then
+            print_status "success" "Node.js version is compatible with selenium-webdriver (>=20.0.0)"
+        else
+            print_status "error" "Node.js version $node_version is too old. selenium-webdriver requires >=20.0.0"
+            return 1
+        fi
+
+        # Check npm
+        if command -v npm &> /dev/null; then
+            local npm_version=$(npm --version)
+            print_status "success" "NPM $npm_version is available"
+        else
+            print_status "error" "NPM is not available"
+            return 1
+        fi
+
         return 0
     else
-        print_status "error" "Cannot connect to Kubernetes cluster"
+        print_status "error" "Node.js is not installed"
         return 1
     fi
 }
 
-# Function to validate Helm chart
-validate_helm_chart() {
-    print_status "info" "Validating Helm chart..."
-    
-    if [ ! -d "$HELM_CHART_PATH" ]; then
-        print_status "error" "Helm chart directory not found: $HELM_CHART_PATH"
-        return 1
-    fi
-    
-    # Check Chart.yaml
-    if [ -f "$HELM_CHART_PATH/Chart.yaml" ]; then
-        print_status "success" "Chart.yaml found"
-    else
-        print_status "error" "Chart.yaml not found"
-        return 1
-    fi
-    
-    # Check values.yaml
-    if [ -f "$HELM_CHART_PATH/values.yaml" ]; then
-        print_status "success" "values.yaml found"
-    else
-        print_status "error" "values.yaml not found"
-        return 1
-    fi
-    
-    # Check templates directory
-    if [ -d "$HELM_CHART_PATH/templates" ]; then
-        local template_count=$(find "$HELM_CHART_PATH/templates" -name "*.yaml" -o -name "*.yml" | wc -l)
-        print_status "success" "Templates directory found ($template_count templates)"
-    else
-        print_status "error" "Templates directory not found"
-        return 1
-    fi
-    
-    # Validate Helm chart syntax
-    if helm lint "$HELM_CHART_PATH" &> /dev/null; then
-        print_status "success" "Helm chart syntax is valid"
-    else
-        print_status "error" "Helm chart syntax validation failed"
-        helm lint "$HELM_CHART_PATH"
-        return 1
-    fi
-    
-    return 0
-}
+# Function to validate AWS configuration
+validate_aws() {
+    print_status "info" "Validating AWS configuration..."
 
-# Function to validate environment values
-validate_environment_values() {
-    print_status "info" "Validating environment-specific values..."
-    
-    local environments=("development" "staging" "production")
-    local valid_envs=0
-    
-    for env in "${environments[@]}"; do
-        local values_file="$HELM_CHART_PATH/values/$env.yaml"
-        if [ -f "$values_file" ]; then
-            print_status "success" "$env environment values found"
-            
-            # Validate YAML syntax
-            if yq eval '.' "$values_file" &> /dev/null; then
-                print_status "success" "$env values YAML syntax is valid"
-                ((valid_envs++))
-            else
-                print_status "error" "$env values YAML syntax is invalid"
-            fi
+    if command -v aws &> /dev/null; then
+        print_status "success" "AWS CLI is installed"
+
+        # Check AWS credentials
+        if aws sts get-caller-identity &> /dev/null; then
+            local account_id=$(aws sts get-caller-identity --query Account --output text)
+            local user_arn=$(aws sts get-caller-identity --query Arn --output text)
+            print_status "success" "AWS credentials are configured"
+            print_status "info" "Account: $account_id"
+            print_status "info" "User: $user_arn"
         else
-            print_status "warning" "$env environment values not found"
+            print_status "error" "AWS credentials are not configured"
+            print_status "info" "Run: aws configure"
+            return 1
         fi
-    done
-    
-    if [ $valid_envs -gt 0 ]; then
-        print_status "success" "$valid_envs environment configurations validated"
+
         return 0
     else
-        print_status "error" "No valid environment configurations found"
+        print_status "error" "AWS CLI is not installed"
         return 1
     fi
 }
 
-# Function to validate Kubernetes manifests
-validate_k8s_manifests() {
-    print_status "info" "Validating Kubernetes manifests..."
-    
-    local manifest_dir="./k8s"
-    if [ ! -d "$manifest_dir" ]; then
-        print_status "error" "Kubernetes manifests directory not found: $manifest_dir"
-        return 1
-    fi
-    
-    local manifest_count=0
-    local valid_manifests=0
-    
-    # Find all YAML files
-    while IFS= read -r -d '' file; do
-        ((manifest_count++))
-        
-        # Validate YAML syntax
-        if yq eval '.' "$file" &> /dev/null; then
-            ((valid_manifests++))
+# Function to validate GitHub CLI
+validate_github() {
+    print_status "info" "Validating GitHub CLI..."
+
+    if command -v gh &> /dev/null; then
+        local gh_version=$(gh --version | head -1)
+        print_status "success" "GitHub CLI is installed: $gh_version"
+
+        # Check GitHub authentication
+        if gh auth status &> /dev/null; then
+            print_status "success" "GitHub CLI is authenticated"
         else
-            print_status "error" "Invalid YAML syntax in $file"
+            print_status "warning" "GitHub CLI is not authenticated"
+            print_status "info" "Run: gh auth login"
         fi
-        
-        # Validate Kubernetes resource
-        if kubectl apply --dry-run=client -f "$file" &> /dev/null; then
-            print_status "success" "$(basename "$file") is valid"
-        else
-            print_status "error" "$(basename "$file") validation failed"
-        fi
-        
-    done < <(find "$manifest_dir" -name "*.yaml" -o -name "*.yml" -print0)
-    
-    print_status "info" "Validated $valid_manifests/$manifest_count manifest files"
-    
-    if [ $valid_manifests -eq $manifest_count ] && [ $manifest_count -gt 0 ]; then
+
         return 0
     else
+        print_status "error" "GitHub CLI is not installed"
         return 1
     fi
 }
 
-# Function to validate monitoring setup
-validate_monitoring() {
-    print_status "info" "Validating monitoring configuration..."
-    
-    local monitoring_dir="./k8s/monitoring"
-    if [ ! -d "$monitoring_dir" ]; then
-        print_status "error" "Monitoring directory not found: $monitoring_dir"
-        return 1
-    fi
-    
-    # Check for Prometheus configuration
-    if [ -f "$monitoring_dir/prometheus-config.yaml" ]; then
-        print_status "success" "Prometheus configuration found"
-    else
-        print_status "error" "Prometheus configuration not found"
-        return 1
-    fi
-    
-    # Check for Prometheus deployment
-    if [ -f "$monitoring_dir/prometheus-deployment.yaml" ]; then
-        print_status "success" "Prometheus deployment found"
-    else
-        print_status "error" "Prometheus deployment not found"
-        return 1
-    fi
-    
-    return 0
-}
+# Function to validate Docker
+validate_docker() {
+    print_status "info" "Validating Docker..."
 
-# Function to validate namespace
-validate_namespace() {
-    print_status "info" "Validating namespace configuration..."
-    
-    # Check if namespace exists
-    if kubectl get namespace "$NAMESPACE" &> /dev/null; then
-        print_status "success" "Namespace '$NAMESPACE' exists"
-    else
-        print_status "warning" "Namespace '$NAMESPACE' does not exist (will be created during deployment)"
-    fi
-    
-    return 0
-}
+    if command -v docker &> /dev/null; then
+        local docker_version=$(docker --version)
+        print_status "success" "Docker is installed: $docker_version"
 
-# Function to validate storage classes
-validate_storage() {
-    print_status "info" "Validating storage configuration..."
-    
-    # Check for gp3 storage class (AWS EKS)
-    if kubectl get storageclass gp3 &> /dev/null; then
-        print_status "success" "gp3 storage class is available"
-    else
-        print_status "warning" "gp3 storage class not found (using default)"
-    fi
-    
-    # Check for default storage class
-    local default_sc=$(kubectl get storageclass -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}')
-    if [ -n "$default_sc" ]; then
-        print_status "success" "Default storage class: $default_sc"
-    else
-        print_status "warning" "No default storage class found"
-    fi
-    
-    return 0
-}
+        # Check Docker daemon
+        if docker info &> /dev/null; then
+            print_status "success" "Docker daemon is running"
+        else
+            print_status "error" "Docker daemon is not running"
+            print_status "info" "Run: sudo systemctl start docker"
+            return 1
+        fi
 
-# Function to validate ingress controller
-validate_ingress() {
-    print_status "info" "Validating ingress configuration..."
-    
-    # Check for NGINX ingress controller
-    if kubectl get pods -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx &> /dev/null; then
-        print_status "success" "NGINX ingress controller is running"
-    else
-        print_status "warning" "NGINX ingress controller not found"
-    fi
-    
-    # Check for ingress class
-    if kubectl get ingressclass nginx &> /dev/null; then
-        print_status "success" "nginx ingress class is available"
-    else
-        print_status "warning" "nginx ingress class not found"
-    fi
-    
-    return 0
-}
+        # Check Docker Hub login
+        if docker info | grep -q "Username:"; then
+            print_status "success" "Docker Hub is authenticated"
+        else
+            print_status "warning" "Docker Hub is not authenticated"
+            print_status "info" "Run: docker login"
+        fi
 
-# Function to run dry-run deployment
-validate_deployment() {
-    print_status "info" "Running dry-run deployment validation..."
-    
-    # Template the Helm chart
-    if helm template healthcare-test "$HELM_CHART_PATH" --values "$HELM_CHART_PATH/values/development.yaml" > /tmp/healthcare-manifests.yaml; then
-        print_status "success" "Helm chart templating successful"
+        return 0
     else
-        print_status "error" "Helm chart templating failed"
+        print_status "error" "Docker is not installed"
         return 1
     fi
-    
-    # Validate the templated manifests
-    if kubectl apply --dry-run=client -f /tmp/healthcare-manifests.yaml &> /dev/null; then
-        print_status "success" "Dry-run deployment validation passed"
-    else
-        print_status "error" "Dry-run deployment validation failed"
-        return 1
-    fi
-    
-    # Clean up
-    rm -f /tmp/healthcare-manifests.yaml
-    
-    return 0
 }
 
 # Main validation function
 main() {
     local exit_code=0
-    
-    echo -e "${BLUE}📋 Checking Prerequisites${NC}"
-    echo "================================"
-    
+
+    echo -e "${BLUE}📋 Checking Core Tools${NC}"
+    echo "========================"
+
     # Check required commands
-    check_command "kubectl" || exit_code=1
-    check_command "helm" || exit_code=1
-    check_command "yq" || exit_code=1
-    
+    check_command "aws" "" "--version" || exit_code=1
+    check_command "kubectl" "" "version --client --short" || exit_code=1
+    check_command "eksctl" "" "version" || exit_code=1
+    check_command "docker" "" "--version" || exit_code=1
+    check_command "gh" "" "--version" || exit_code=1
+
     echo ""
-    
-    if [ $exit_code -ne 0 ]; then
-        print_status "error" "Prerequisites check failed"
-        exit 1
-    fi
-    
-    echo -e "${BLUE}🔍 Infrastructure Validation${NC}"
-    echo "================================"
-    
-    # Run validations
-    validate_k8s_connection || exit_code=1
+
+    echo -e "${BLUE}🔍 Tool Configuration Validation${NC}"
+    echo "=================================="
+
+    # Run detailed validations
+    validate_nodejs || exit_code=1
     echo ""
-    
-    validate_namespace || exit_code=1
+
+    validate_aws || exit_code=1
     echo ""
-    
-    validate_storage || exit_code=1
+
+    validate_github || exit_code=1
     echo ""
-    
-    validate_ingress || exit_code=1
+
+    validate_docker || exit_code=1
     echo ""
-    
-    validate_helm_chart || exit_code=1
-    echo ""
-    
-    validate_environment_values || exit_code=1
-    echo ""
-    
-    validate_k8s_manifests || exit_code=1
-    echo ""
-    
-    validate_monitoring || exit_code=1
-    echo ""
-    
-    validate_deployment || exit_code=1
-    echo ""
-    
+
     # Summary
     echo -e "${BLUE}📊 Validation Summary${NC}"
     echo "====================="
-    
+
     if [ $exit_code -eq 0 ]; then
-        print_status "success" "All infrastructure validations passed!"
-        print_status "info" "Infrastructure is ready for deployment"
+        print_status "success" "All tool validations passed!"
+        print_status "info" "System is ready for Stage 2 CI/CD pipeline setup"
+        echo ""
+        print_status "info" "Next steps:"
+        echo "  1. Set up testing infrastructure: ./scripts/fix-testing-setup.sh"
+        echo "  2. Configure quality gates: node scripts/validate-configs.js"
+        echo "  3. Create EKS cluster: ./scripts/deployment/create-eks-cluster.sh"
     else
         print_status "error" "Some validations failed"
-        print_status "info" "Please fix the issues above before deployment"
+        print_status "info" "Please fix the issues above before proceeding"
+        echo ""
+        print_status "info" "Common fixes:"
+        echo "  - Run setup script: ./scripts/setup-tools.sh"
+        echo "  - Configure AWS: aws configure"
+        echo "  - Authenticate GitHub: gh auth login"
+        echo "  - Login to Docker Hub: docker login"
     fi
-    
+
     exit $exit_code
 }
 
