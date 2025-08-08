@@ -21,8 +21,8 @@ frontend:
   replicaCount: 2
   
   image:
-    repository: healthcare-frontend
-    tag: "v2.0"
+    repository: routeclouds/healthcare-frontend
+    tag: "v1.0"
     pullPolicy: IfNotPresent
   
   service:
@@ -72,8 +72,8 @@ backend:
   replicaCount: 3
   
   image:
-    repository: healthcare-backend
-    tag: "v2.0"
+    repository: routeclouds/healthcare-backend
+    tag: "v1.0"
     pullPolicy: IfNotPresent
   
   service:

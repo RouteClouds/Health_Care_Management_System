@@ -2,6 +2,8 @@
 
 A comprehensive healthcare management platform built with React, Node.js, and PostgreSQL, featuring user authentication, doctor management, and appointment booking.
 
+<!-- CI/CD Pipeline Trigger: v1.0 Synchronized Deployment - August 8, 2025 -->
+
 ## 🚀 Quick Start (Zero Configuration)
 
 ### Prerequisites

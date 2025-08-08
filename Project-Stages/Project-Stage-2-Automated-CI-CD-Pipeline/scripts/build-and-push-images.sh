@@ -17,7 +17,7 @@ SRC_CODE_DIR="$STAGE_DIR/src-code"
 DOCKER_REGISTRY="routeclouds"
 BACKEND_IMAGE="${DOCKER_REGISTRY}/healthcare-backend"
 FRONTEND_IMAGE="${DOCKER_REGISTRY}/healthcare-frontend"
-VERSION="v2.0"
+VERSION="v1.0"
 RUN_TESTS=true
 RUN_SECURITY_SCAN=true
 PUSH_IMAGES=true
@@ -75,7 +75,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --no-tests          Skip running tests before build"
             echo "  --no-security-scan  Skip security scanning"
             echo "  --no-push          Build only, don't push to registry"
-            echo "  --version VERSION   Set image version (default: v2.0)"
+            echo "  --version VERSION   Set image version (default: v1.0)"
             echo "  -h, --help         Show this help message"
             exit 0
             ;;

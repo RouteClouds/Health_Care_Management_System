@@ -18,16 +18,16 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "health-check": "./scripts/health-check.sh",
-    "test": "npm run test:unit && npm run test:integration",
+    "test": "jest",
     "test:unit": "npm run test:unit:frontend && npm run test:unit:backend",
     "test:unit:frontend": "cd frontend && npm test",
     "test:unit:backend": "cd backend && npm test",
     "test:integration": "npm run test:integration:api",
     "test:integration:api": "cd backend && npm run test:integration",
-    "test:e2e": "npm run test:e2e:chrome",
+    "test:e2e": "jest tests/e2e --testTimeout=30000",
     "test:e2e:chrome": "cd ../Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline && npm run test:e2e:chrome",
     "test:e2e:firefox": "cd ../Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline && npm run test:e2e:firefox",
-    "test:coverage": "npm run test:coverage:frontend && npm run test:coverage:backend",
+    "test:coverage": "jest --coverage",
     "test:coverage:frontend": "cd frontend && npm run test:coverage",
     "test:coverage:backend": "cd backend && npm run test:coverage",
     "lint": "npm run lint:frontend && npm run lint:backend",
@@ -45,13 +45,36 @@
     "sonar": "sonar-scanner",
     "security:scan": "npm audit && npm run security:scan:frontend && npm run security:scan:backend",
     "security:scan:frontend": "cd frontend && npm audit",
-    "security:scan:backend": "cd backend && npm audit"
+    "security:scan:backend": "cd backend && npm audit",
+    "test:watch": "jest --watch"
   },
-  "workspaces": ["frontend", "backend"],
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@babel/core": "^7.28.0",
+    "@babel/preset-env": "^7.28.0",
+    "@babel/preset-react": "^7.27.1",
+    "@testing-library/jest-dom": "^6.6.4",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "babel-jest": "^30.0.5",
+    "chromedriver": "^138.0.5",
+    "concurrently": "^8.2.2",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^30.0.5",
+    "jest-environment-jsdom": "^30.0.5",
+    "selenium-webdriver": "^4.34.0"
   },
-  "keywords": ["healthcare", "management", "react", "nodejs", "postgresql", "docker"],
+  "keywords": [
+    "healthcare",
+    "management",
+    "react",
+    "nodejs",
+    "postgresql",
+    "docker"
+  ],
   "author": "RouteClouds",
   "license": "MIT"
 }

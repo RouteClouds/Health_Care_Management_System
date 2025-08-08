@@ -32,12 +32,12 @@ env:
   # Source code configuration
   SOURCE_CODE_PATH: './Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code'
   DOCKER_REGISTRY: 'docker.io'
-  IMAGE_TAG: ${{ github.sha }}
-  
+  IMAGE_TAG: 'v1.0'  # Fixed tag for testing - change to ${{ github.sha }} for production
+
   # Application configuration
   APP_NAME: 'healthcare-management'
-  FRONTEND_IMAGE: 'healthcare-frontend'
-  BACKEND_IMAGE: 'healthcare-backend'
+  FRONTEND_IMAGE: 'routeclouds/healthcare-frontend'
+  BACKEND_IMAGE: 'routeclouds/healthcare-backend'
   
   # Quality gates configuration
   COVERAGE_THRESHOLD: 80

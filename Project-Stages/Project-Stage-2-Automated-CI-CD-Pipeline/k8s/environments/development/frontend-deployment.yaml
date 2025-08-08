@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: healthcare-frontend:latest
+        image: routeclouds/healthcare-frontend:v1.0
         ports:
         - containerPort: 80
         env:

@@ -219,10 +219,10 @@ kubectl rollout status deployment/healthcare-backend -n healthcare-prod --timeou
 #### **Blue-Green Deployment**
 ```bash
 # Blue-green deployment script
-./scripts/blue-green-deploy.sh production v2.0
+./scripts/blue-green-deploy.sh production v1.0
 
 # Switch traffic to new version
-kubectl patch service frontend-service -n healthcare-prod -p '{"spec":{"selector":{"version":"v2.0"}}}'
+kubectl patch service frontend-service -n healthcare-prod -p '{"spec":{"selector":{"version":"v1.0"}}}'
 
 # Verify new version
 curl -s http://production-url/api/version

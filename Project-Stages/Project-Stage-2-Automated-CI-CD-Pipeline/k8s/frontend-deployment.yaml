@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: routeclouds/healthcare-frontend:v2.0  # Stage-2 enhanced version with K8s optimization
+        image: routeclouds/healthcare-frontend:v1.0  # Stage-2 testing version - synchronized with CI/CD pipeline
         imagePullPolicy: Always
         ports:
         - containerPort: 80
