@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="Backend Unit Tests" tests="3" failures="0" errors="0" time="2.115">
-  <testsuite name="Healthcare Backend - Basic Tests" errors="0" failures="0" skipped="0" timestamp="2025-08-08T14:03:24" time="1.819" tests="3">
-    <testcase classname="Healthcare Backend - Basic Tests should pass basic math test" name="Healthcare Backend - Basic Tests should pass basic math test" time="0.002">
+<testsuites name="Backend Unit Tests" tests="3" failures="0" errors="0" time="2.258">
+  <testsuite name="Healthcare Backend - Basic Tests" errors="0" failures="0" skipped="0" timestamp="2025-08-08T14:12:50" time="1.971" tests="3">
+    <testcase classname="Healthcare Backend - Basic Tests should pass basic math test" name="Healthcare Backend - Basic Tests should pass basic math test" time="0.003">
     </testcase>
-    <testcase classname="Healthcare Backend - Basic Tests should validate environment setup" name="Healthcare Backend - Basic Tests should validate environment setup" time="0.001">
+    <testcase classname="Healthcare Backend - Basic Tests should validate environment setup" name="Healthcare Backend - Basic Tests should validate environment setup" time="0">
     </testcase>
     <testcase classname="Healthcare Backend - Basic Tests should have correct package name" name="Healthcare Backend - Basic Tests should have correct package name" time="0.001">
     </testcase>
