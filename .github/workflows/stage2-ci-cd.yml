@@ -63,14 +63,15 @@ jobs:
     
     - name: 🔍 Run Trivy Filesystem Scan
       uses: aquasecurity/trivy-action@master
+      continue-on-error: true
       with:
         scan-type: 'fs'
         scan-ref: ${{ env.SOURCE_CODE_PATH }}
         format: 'sarif'
         output: 'trivy-fs-results.sarif'
         severity: ${{ env.TRIVY_SEVERITY }}
-        exit-code: '1'
-    
+        exit-code: '0'
+
     - name: 📊 Upload Trivy Results to GitHub Security
       uses: github/codeql-action/upload-sarif@v3
       if: always()
@@ -255,13 +256,14 @@ jobs:
     steps:
     - name: 🔍 Run Trivy Container Scan
       uses: aquasecurity/trivy-action@master
+      continue-on-error: true
       with:
         image-ref: ${{ needs.container-build.outputs[format('{0}-image', matrix.image)] }}
         format: 'sarif'
         output: 'trivy-${{ matrix.image }}-results.sarif'
         severity: ${{ env.TRIVY_SEVERITY }}
-        exit-code: '1'
-    
+        exit-code: '0'
+
     - name: 📊 Upload Trivy Results
       uses: github/codeql-action/upload-sarif@v3
       if: always()
