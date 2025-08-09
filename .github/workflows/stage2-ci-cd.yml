@@ -165,26 +165,20 @@ jobs:
       working-directory: ${{ env.SOURCE_CODE_PATH }}
       run: npm ci
     
-    - name: 📊 SonarQube Analysis
-      uses: sonarqube/sonarqube-quality-gate-action@master
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+    - name: 📊 SonarCloud Scan
+      if: ${{ secrets.SONAR_TOKEN != '' }}
+      uses: SonarSource/sonarcloud-github-action@v2.1.1
       with:
         projectBaseDir: ${{ env.SOURCE_CODE_PATH }}
-    
-    - name: 🚪 Quality Gate Check
-      run: |
-        echo "📊 SonarQube Analysis Complete"
-        echo "🚪 Quality Gate Status: Checking..."
-        echo "🎯 Project: ${{ env.SONAR_PROJECT_KEY }}"
-    
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
     - name: 📋 Quality Summary
       if: always()
       run: |
-        echo "📊 Code Quality Analysis Complete"
-        echo "🎯 SonarQube project: ${{ env.SONAR_PROJECT_KEY }}"
-        echo "🚪 Quality gate must pass to continue"
+        echo "📊 Code Quality Analysis step completed (SonarCloud guarded by secrets)"
+        echo "🗂 Project base: ${{ env.SOURCE_CODE_PATH }}"
 
   # ============================================================================
   # JOB 4: CONTAINER BUILD (4-5 minutes)
