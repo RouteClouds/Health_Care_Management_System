@@ -138,6 +138,13 @@ jobs:
       - name: Install deps
         working-directory: ${{ env.SOURCE_CODE_PATH }}
         run: npm install
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install E2E test deps (pipeline workspace)
+        working-directory: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline
+        run: npm install
+
       - name: Start app for E2E
         working-directory: ${{ env.SOURCE_CODE_PATH }}
         run: |
