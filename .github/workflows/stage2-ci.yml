@@ -1,0 +1,125 @@
+name: Stage 2 CI (Quality Gates)
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+env:
+  SOURCE_CODE_PATH: './Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code'
+
+jobs:
+  unit-tests:
+    name: Unit Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18.x, 20.x]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: '${{ env.SOURCE_CODE_PATH }}/package-lock.json'
+      - name: Install dependencies (root + frontend + backend)
+        working-directory: ${{ env.SOURCE_CODE_PATH }}
+        run: |
+          npm ci
+          cd frontend && npm ci
+          cd ../backend && npm ci
+      - name: Run unit tests + coverage
+        working-directory: ${{ env.SOURCE_CODE_PATH }}
+        run: |
+          npm run test:unit
+          npm run test:coverage-check
+
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: '${{ env.SOURCE_CODE_PATH }}/package-lock.json'
+      - name: Install dependencies
+        working-directory: ${{ env.SOURCE_CODE_PATH }}
+        run: npm ci
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2.1.1
+        with:
+          projectBaseDir: ${{ env.SOURCE_CODE_PATH }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    name: Build images
+    runs-on: ubuntu-latest
+    needs: sonarcloud
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.SOURCE_CODE_PATH }}
+          file: ${{ env.SOURCE_CODE_PATH }}/Dockerfile.frontend
+          push: false
+      - name: Build backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.SOURCE_CODE_PATH }}
+          file: ${{ env.SOURCE_CODE_PATH }}/Dockerfile.backend
+          push: false
+
+  e2e:
+    name: E2E (will fail by design for now)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: '${{ env.SOURCE_CODE_PATH }}/package-lock.json'
+      - name: Install deps
+        working-directory: ${{ env.SOURCE_CODE_PATH }}
+        run: npm ci
+      - name: Start app for E2E
+        working-directory: ${{ env.SOURCE_CODE_PATH }}
+        run: |
+          npm run start:test &
+          sleep 20
+          curl -f http://localhost:3000
+      - name: Run E2E (chrome)
+        working-directory: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline
+        run: npm run test:e2e:chrome
+

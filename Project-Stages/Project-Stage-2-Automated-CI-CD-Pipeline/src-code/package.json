@@ -10,6 +10,7 @@
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build",
     "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "start:test": "concurrently \"cd backend && npm start\" \"cd frontend && npm run preview -- --port 3000\"",
     "start:frontend": "cd frontend && npm run preview",
     "start:backend": "cd backend && npm start",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
