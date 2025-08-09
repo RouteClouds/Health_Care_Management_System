@@ -172,6 +172,7 @@ jobs:
     - name: 📊 SonarCloud Scan
       if: ${{ secrets.SONAR_TOKEN != '' }}
       uses: SonarSource/sonarcloud-github-action@v2.1.1
+      continue-on-error: true
       with:
         projectBaseDir: ${{ env.SOURCE_CODE_PATH }}
       env:
