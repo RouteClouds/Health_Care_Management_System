@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="Backend Unit Tests" tests="3" failures="0" errors="0" time="2.251">
-  <testsuite name="Healthcare Backend - Basic Tests" errors="0" failures="0" skipped="0" timestamp="2025-08-08T17:24:58" time="1.909" tests="3">
+<testsuites name="Backend Unit Tests" tests="3" failures="0" errors="0" time="2.133">
+  <testsuite name="Healthcare Backend - Basic Tests" errors="0" failures="0" skipped="0" timestamp="2025-08-09T08:04:41" time="1.86" tests="3">
     <testcase classname="Healthcare Backend - Basic Tests should pass basic math test" name="Healthcare Backend - Basic Tests should pass basic math test" time="0.002">
     </testcase>
     <testcase classname="Healthcare Backend - Basic Tests should validate environment setup" name="Healthcare Backend - Basic Tests should validate environment setup" time="0.001">
