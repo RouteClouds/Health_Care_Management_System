@@ -126,13 +126,16 @@ jobs:
         echo "📊 Running coverage tests..."
         npm run test:coverage-check
     
-    - name: 📊 Upload Coverage Reports
+    - name: 📊 Upload Coverage Reports (Codecov)
+      if: ${{ secrets.CODECOV_TOKEN != '' }}
       uses: codecov/codecov-action@v4
+      continue-on-error: true
       with:
+        token: ${{ secrets.CODECOV_TOKEN }}
         directory: ${{ env.SOURCE_CODE_PATH }}/coverage
         flags: unittests
         name: codecov-umbrella
-    
+
     - name: 📋 Test Summary
       if: always()
       run: |
