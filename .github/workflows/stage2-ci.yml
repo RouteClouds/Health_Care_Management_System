@@ -92,14 +92,14 @@ jobs:
           context: ${{ env.SOURCE_CODE_PATH }}
           file: ${{ env.SOURCE_CODE_PATH }}/Dockerfile.frontend
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/healthcare-frontend:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/healthcare-frontend:v1.0
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
           context: ${{ env.SOURCE_CODE_PATH }}
           file: ${{ env.SOURCE_CODE_PATH }}/Dockerfile.backend
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/healthcare-backend:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/healthcare-backend:v1.0
 
   e2e:
     name: E2E (will fail by design for now)
