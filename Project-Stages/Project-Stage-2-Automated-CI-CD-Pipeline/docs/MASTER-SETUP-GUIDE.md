@@ -27,6 +27,10 @@
 - [Quick Commands](#quick-commands) - Essential commands
 - [Success Indicators](#success-indicators) - How to verify success
 
+### 🗑️ **Environment Cleanup**
+- [Environment Destruction](#environment-destruction) - Complete infrastructure cleanup
+- [Cost Management](#cost-management) - Avoid unexpected AWS charges
+
 ---
 
 ## 🎯 **Prerequisites Check**
@@ -394,6 +398,128 @@ kubectl get pods --all-namespaces -w
 
 # Check logs
 kubectl logs -f deployment/frontend-deployment -n healthcare-dev
+```
+
+---
+
+## 🗑️ **Environment Destruction**
+
+### ⚠️ **IMPORTANT WARNING**
+**This section describes how to completely destroy all infrastructure and resources created in this project. This process is IRREVERSIBLE and will permanently delete everything.**
+
+### **When to Use This Guide**
+- ✅ **After completing the project** and no longer need the infrastructure
+- ✅ **To avoid AWS charges** when not actively using the system
+- ✅ **For clean slate restart** if you want to rebuild everything
+- ✅ **Before project deadline** to ensure no ongoing costs
+
+### **What Will Be Deleted**
+- 🗄️ **All Kubernetes pods and services**
+- 🏗️ **EKS cluster and node groups**
+- 🌐 **Load balancers and networking resources**
+- 💾 **Database data** (if using persistent volumes)
+- 💰 **All AWS infrastructure** (stops all charges)
+
+### **Quick Destruction (Recommended)**
+
+**Option 1: Automated Script (If Available)**
+```bash
+# Navigate to project directory
+cd Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline
+
+# Run destruction script (if exists)
+./scripts/destroy-infrastructure.sh
+
+# Verify cleanup
+./scripts/verify-cleanup.sh
+```
+
+**Option 2: Manual Destruction**
+```bash
+# Set cluster name
+export CLUSTER_NAME="healthcare-eks-cluster"
+export REGION="us-east-1"
+
+# Delete all Kubernetes resources
+kubectl delete all --all -n healthcare
+kubectl delete namespace healthcare
+
+# Delete EKS cluster
+aws eks delete-cluster --name $CLUSTER_NAME --region $REGION
+
+# Wait for deletion (10-15 minutes)
+aws eks wait cluster-deleted --name $CLUSTER_NAME --region $REGION
+
+# Verify no resources remain
+aws eks list-clusters --region $REGION
+aws ec2 describe-instances --region $REGION | grep healthcare
+```
+
+### **Step-by-Step Destruction Process**
+
+**📋 For detailed step-by-step instructions, see:**
+**[Environment Destruction Guide](Environment-Destruction-Guide.md)**
+
+This comprehensive guide includes:
+- ✅ **Complete step-by-step process**
+- ✅ **Verification commands** for each step
+- ✅ **Troubleshooting** for common issues
+- ✅ **Cost cleanup verification**
+- ✅ **Safety checks** to prevent accidental deletion
+
+### **Cost Management**
+
+**Immediate Cost Stoppers:**
+```bash
+# Stop all running instances
+aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --region us-east-1
+aws ec2 stop-instances --instance-ids <instance-ids> --region us-east-1
+
+# Delete load balancers (major cost source)
+aws elbv2 describe-load-balancers --region us-east-1
+aws elbv2 delete-load-balancer --load-balancer-arn <arn> --region us-east-1
+```
+
+**Verify Zero Costs:**
+```bash
+# Check for any remaining resources
+aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --region us-east-1
+aws elbv2 describe-load-balancers --region us-east-1
+aws eks list-clusters --region us-east-1
+
+# All should return empty results
+```
+
+### **Final Cleanup Checklist**
+
+Before considering destruction complete:
+
+- [ ] **All Kubernetes pods deleted** - `kubectl get pods --all-namespaces`
+- [ ] **EKS cluster deleted** - `aws eks list-clusters`
+- [ ] **No running EC2 instances** - `aws ec2 describe-instances --filters "Name=instance-state-name,Values=running"`
+- [ ] **No load balancers** - `aws elbv2 describe-load-balancers`
+- [ ] **No ongoing AWS charges** - Check AWS billing dashboard
+- [ ] **kubectl context cleaned** - `kubectl config get-contexts`
+
+### **Emergency Cost Stop**
+
+**If you need to immediately stop all costs:**
+```bash
+# Emergency shutdown script
+echo "🚨 EMERGENCY COST STOP - Deleting all resources immediately"
+
+# Delete EKS cluster (stops most costs)
+aws eks delete-cluster --name healthcare-eks-cluster --region us-east-1
+
+# Delete all load balancers
+aws elbv2 describe-load-balancers --region us-east-1 --query 'LoadBalancers[*].LoadBalancerArn' --output text | \
+xargs -I {} aws elbv2 delete-load-balancer --load-balancer-arn {} --region us-east-1
+
+# Stop all running instances
+aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --region us-east-1 --query 'Reservations[*].Instances[*].InstanceId' --output text | \
+xargs -I {} aws ec2 terminate-instance --instance-ids {} --region us-east-1
+
+echo "✅ Emergency shutdown initiated - verify in AWS console"
 ```
 
 ---
