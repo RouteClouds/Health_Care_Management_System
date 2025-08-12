@@ -239,14 +239,30 @@ We've created automated tools to prevent common setup issues:
 # ✅ Environment is ready for CI/CD
 ```
 
-#### 3. Pre-Commit Validation
+#### 3. Port Configuration Validation
+```bash
+# Validate port configurations (prevents frontend-backend communication issues)
+./validate-port-config.sh
+
+# This script checks:
+# ✅ Frontend API configuration (/api base URL)
+# ✅ Backend port settings (3002)
+# ✅ Nginx proxy configuration
+# ✅ Kubernetes service ports
+# ✅ No hardcoded localhost:3000 references
+# ✅ Docker Compose port mappings
+```
+
+#### 4. Pre-Commit Validation
 ```bash
 # Before committing code, always run:
-./validate-setup.sh
+./validate-setup.sh && ./validate-port-config.sh
 
 # This ensures:
 # ✅ No missing package-lock.json files
 # ✅ All builds work
+# ✅ Port configurations are correct
+# ✅ Frontend-backend communication will work
 # ✅ CI/CD pipeline will succeed
 ```
 
@@ -327,7 +343,40 @@ npm install --workspace=frontend
 npm install --workspace=backend
 ```
 
-### Issue 4: Node Version Compatibility
+### Issue 4: Frontend-Backend Communication Failure
+
+**Symptoms:**
+```
+# Frontend loads but API calls fail
+Network Error: ERR_CONNECTION_REFUSED
+API calls to localhost:3000 or localhost:3002 fail in Kubernetes
+```
+
+**Root Cause**: Hardcoded localhost URLs or incorrect port configurations.
+
+**Solution:**
+```bash
+# 1. Validate port configurations
+./validate-port-config.sh
+
+# 2. Check frontend environment configuration
+cat frontend/.env.k8s
+# Should contain: VITE_API_BASE_URL=/api
+
+# 3. Verify nginx proxy configuration
+grep "proxy_pass" nginx/nginx.k8s.conf
+# Should show: proxy_pass http://backend-service:3002;
+
+# 4. Check Kubernetes service configurations
+kubectl get services -n healthcare
+# frontend-service should expose port 80
+# backend-service should expose port 3002
+
+# 5. Test API connectivity from frontend pod
+kubectl exec -it <frontend-pod> -n healthcare -- curl http://backend-service:3002/health
+```
+
+### Issue 5: Node Version Compatibility
 
 **Symptoms:**
 ```

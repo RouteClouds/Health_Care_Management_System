@@ -28,8 +28,8 @@ spec:
         env:
         - name: NODE_ENV
           value: "development"
-        - name: REACT_APP_API_URL
-          value: "http://healthcare-backend-service:3001"
+        - name: VITE_API_BASE_URL
+          value: "/api"
         resources:
           requests:
             cpu: 100m

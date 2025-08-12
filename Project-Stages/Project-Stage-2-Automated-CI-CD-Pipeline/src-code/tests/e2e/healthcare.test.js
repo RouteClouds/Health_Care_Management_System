@@ -14,13 +14,13 @@ describe('Healthcare Application E2E Tests', () => {
   });
   
   test('should load homepage', async () => {
-    await driver.get('http://localhost:3000');
+    await driver.get('http://localhost:5173');
     const title = await driver.getTitle();
     expect(title).toContain('Healthcare');
   });
-  
+
   test('should navigate to doctor search', async () => {
-    await driver.get('http://localhost:3000');
+    await driver.get('http://localhost:5173');
     const searchButton = await driver.findElement(By.css('[data-testid="find-doctor"]'));
     await searchButton.click();
     

@@ -18,7 +18,7 @@ afterEach(() => {
 // Mock environment variables
 Object.defineProperty(window, 'env', {
   value: {
-    VITE_API_URL: 'http://localhost:3000/api',
+    VITE_API_URL: 'http://localhost:5173/api',
     VITE_APP_NAME: 'Healthcare Management System',
     NODE_ENV: 'test'
   },

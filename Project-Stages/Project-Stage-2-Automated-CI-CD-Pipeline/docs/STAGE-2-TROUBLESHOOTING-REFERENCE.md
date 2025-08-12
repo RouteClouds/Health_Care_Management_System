@@ -413,7 +413,7 @@ class WebDriverConfig {
 
 - name: Run Selenium E2E tests
   env:
-    TEST_URL: http://localhost:3000
+    TEST_URL: http://localhost:5173
   run: |
     cd src-code
     npm run test:e2e:chrome
