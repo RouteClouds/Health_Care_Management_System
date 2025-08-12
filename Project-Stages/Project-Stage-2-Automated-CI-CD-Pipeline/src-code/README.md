@@ -1,5 +1,7 @@
 # 💻 **Source Code - Quick Setup**
 
+🚀 **AUTOMATED PIPELINE TESTING** - This change tests the fully automated CI/CD pipeline!
+
 ## 📖 **Quick Index**
 
 ### ⚡ **Automated Setup (Recommended)**
