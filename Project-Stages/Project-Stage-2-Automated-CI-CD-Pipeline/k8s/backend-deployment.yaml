@@ -32,9 +32,10 @@ spec:
         args:
         - -c
         - |
-          echo "🗄️ Initializing database schema..."
-          npx prisma db push --accept-data-loss || echo "Schema push completed"
-          echo "✅ Database initialization complete"
+          echo "🗄️ Running database initialization with seeding..."
+          chmod +x scripts/init-db.sh
+          ./scripts/init-db.sh
+          echo "✅ Database initialization and seeding complete"
       containers:
       - name: backend
         image: routeclouds/healthcare-backend:latest  # Always pull latest image for automatic updates
