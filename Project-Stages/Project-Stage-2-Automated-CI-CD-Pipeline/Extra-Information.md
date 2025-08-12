@@ -223,7 +223,7 @@ const { defineConfig } = require('cypress')
 
 module.exports = defineConfig({
   e2e: {
-    baseUrl: 'http://localhost:3000',
+    baseUrl: 'http://localhost:5173',
     supportFile: 'cypress/support/e2e.js',
     specPattern: 'cypress/e2e/**/*.cy.{js,jsx,ts,tsx}',
     video: true,
@@ -295,7 +295,7 @@ module.exports = defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure'
@@ -1168,7 +1168,7 @@ module.exports = defineConfig({
   // Shared settings for all projects
   use: {
     // Base URL for tests
-    baseURL: process.env.STAGING_URL || 'http://localhost:3000',
+    baseURL: process.env.STAGING_URL || 'http://localhost:5173',
 
     // Collect trace when retrying the failed test
     trace: 'on-first-retry',
@@ -1215,7 +1215,7 @@ module.exports = defineConfig({
   // Run local dev server before starting tests
   webServer: {
     command: 'npm run start',
-    port: 3000,
+    port: 5173,
     reuseExistingServer: !process.env.CI,
     timeout: 120000
   }

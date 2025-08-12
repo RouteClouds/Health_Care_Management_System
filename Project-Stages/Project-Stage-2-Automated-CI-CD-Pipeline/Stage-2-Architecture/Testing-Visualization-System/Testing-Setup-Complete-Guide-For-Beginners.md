@@ -145,7 +145,7 @@ Tests: 3 passed, 3 total
 ```
 
 **Why This Failed**:
-- **ERR_CONNECTION_REFUSED**: No application running on localhost:3000
+- **ERR_CONNECTION_REFUSED**: No application running on localhost:5173
 - **Expected Behavior**: E2E tests need a running application to test
 - **Not a Problem**: This will work once we deploy our application
 
@@ -191,13 +191,13 @@ test('should be able to run basic tests', () => {
 ```javascript
 test('should have access to testing environment variables', () => {
   expect(process.env.NODE_ENV).toBe('test');
-  expect(process.env.REACT_APP_API_URL).toBe('http://localhost:3002/api');
+  expect(process.env.VITE_API_BASE_URL).toBe('/api');
 });
 ```
 **Purpose**: Confirms test environment is properly configured
-**Checks**: 
+**Checks**:
 - Test mode is active
-- API connections point to test servers (not production!)
+- API connections use relative URLs (/api) for proper routing
 **Why Important**: Prevents accidentally testing against live patient data
 
 #### **Test 3: DOM Testing Capabilities**
@@ -624,7 +624,7 @@ expect(1 + 1).toBe(2);
 #### **Test 2: Environment Configuration**
 ```javascript
 expect(process.env.NODE_ENV).toBe('test');
-expect(process.env.REACT_APP_API_URL).toBe('http://localhost:3002/api');
+expect(process.env.VITE_API_BASE_URL).toBe('/api');
 ```
 - **Purpose**: Verify test environment variables are set correctly
 - **Time**: 1ms (instant)
@@ -647,18 +647,18 @@ expect(element).toHaveTextContent('Hello World');
 
 #### **Test 1: Homepage Loading**
 ```javascript
-await driver.get('http://localhost:3000');
+await driver.get('http://localhost:5173');
 const title = await driver.getTitle();
 expect(title).toContain('Healthcare');
 ```
 - **Error**: `net::ERR_CONNECTION_REFUSED`
-- **Reason**: No application running on port 3000
+- **Reason**: No application running on port 5173
 - **Expected**: Yes, this is normal behavior
 - **Solution**: Deploy application first, then run E2E tests
 
 #### **Test 2: Navigation Testing**
 ```javascript
-await driver.get('http://localhost:3000');
+await driver.get('http://localhost:5173');
 const searchButton = await driver.findElement(By.css('[data-testid="find-doctor"]'));
 await searchButton.click();
 ```

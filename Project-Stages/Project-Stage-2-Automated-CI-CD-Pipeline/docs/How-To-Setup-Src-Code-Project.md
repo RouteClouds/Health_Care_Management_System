@@ -546,6 +546,47 @@ Your setup is complete when:
 5. ✅ Docker build completes without errors
 6. ✅ GitHub Actions pipeline runs successfully
 
+## 🔧 **Port Configuration Validation**
+
+### **New Validation Tool Added**
+
+We've added a comprehensive port configuration validation script to prevent frontend-backend communication issues:
+
+```bash
+# Validate port configurations
+./validate-port-config.sh
+
+# This script checks:
+# ✅ Frontend API configuration (/api base URL)
+# ✅ Backend port settings (3002)
+# ✅ Nginx proxy configuration
+# ✅ Kubernetes service ports
+# ✅ No hardcoded localhost:3000 references
+# ✅ Docker Compose port mappings
+```
+
+### **Why This Validation is Important**
+
+**Common Issue**: Students often face frontend-backend communication failures in Kubernetes due to:
+- Hardcoded localhost URLs in test files
+- Incorrect port configurations in manifests
+- Missing environment variables
+
+**Our Solution**: Automated validation that catches these issues before deployment.
+
+### **When to Run Port Validation**
+
+```bash
+# Before committing code
+./validate-setup.sh && ./validate-port-config.sh
+
+# After making configuration changes
+./validate-port-config.sh
+
+# When troubleshooting communication issues
+./validate-port-config.sh
+```
+
 ---
 
 **Version**: 1.0
@@ -553,3 +594,4 @@ Your setup is complete when:
 **Target Audience**: DevOps Students
 **Estimated Setup Time**: 15-20 minutes
 **Troubleshooting Time**: 5-10 minutes (if issues occur)
+**Port Validation**: Added comprehensive frontend-backend communication validation

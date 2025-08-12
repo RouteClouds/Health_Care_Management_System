@@ -684,7 +684,7 @@ cat > src/test/setup.js << 'EOF'
 require('@testing-library/jest-dom');
 
 // Mock environment variables
-process.env.REACT_APP_API_URL = 'http://localhost:3002/api';
+process.env.VITE_API_BASE_URL = '/api';
 process.env.NODE_ENV = 'test';
 EOF
 ```
@@ -736,13 +736,13 @@ describe('Healthcare Application E2E Tests', () => {
   });
   
   test('should load homepage', async () => {
-    await driver.get('http://localhost:3000');
+    await driver.get('http://localhost:5173');
     const title = await driver.getTitle();
     expect(title).toContain('Healthcare');
   });
-  
+
   test('should navigate to doctor search', async () => {
-    await driver.get('http://localhost:3000');
+    await driver.get('http://localhost:5173');
     const searchButton = await driver.findElement(By.css('[data-testid="find-doctor"]'));
     await searchButton.click();
     
@@ -772,7 +772,7 @@ describe('Jest Setup Verification', () => {
 
   test('should have access to testing environment variables', () => {
     expect(process.env.NODE_ENV).toBe('test');
-    expect(process.env.REACT_APP_API_URL).toBe('http://localhost:3002/api');
+    expect(process.env.VITE_API_BASE_URL).toBe('/api');
   });
 
   test('should have jest-dom matchers available', () => {
