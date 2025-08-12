@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: routeclouds/healthcare-frontend:v1.0  # Stage-2 testing version - synchronized with CI/CD pipeline
+        image: routeclouds/healthcare-frontend:latest  # Always pull latest image for automatic updates
         imagePullPolicy: Always
         ports:
         - containerPort: 80

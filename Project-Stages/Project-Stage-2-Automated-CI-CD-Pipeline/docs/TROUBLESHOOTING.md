@@ -64,6 +64,40 @@ cd src-code/frontend && npm run build
 cd ../backend && npm run build
 ```
 
+#### **Issue: Pods Not Updating Despite Successful Pipeline**
+**Symptoms**:
+- Pipeline shows "deployment unchanged"
+- Old pods remain running for hours
+- Code changes not reflected in application
+
+**Root Cause**: Kubernetes doesn't detect changes when using static image tags
+
+**Complete Solution**:
+```bash
+# 1. Check current pod ages (if > 30 minutes, they're likely stuck)
+kubectl get pods -n healthcare -o wide
+
+# 2. Check image tags in use
+kubectl get pods -n healthcare -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}'
+
+# 3. Force immediate pod restart (temporary fix)
+kubectl rollout restart deployment/healthcare-frontend -n healthcare
+kubectl rollout restart deployment/healthcare-backend -n healthcare
+
+# 4. Wait for rollout
+kubectl rollout status deployment/healthcare-frontend -n healthcare --timeout=300s
+kubectl rollout status deployment/healthcare-backend -n healthcare --timeout=300s
+
+# 5. Verify new pods are running
+kubectl get pods -n healthcare -o wide
+```
+
+**Permanent Fix Applied**:
+- ✅ Kubernetes manifests now use `latest` tag with `imagePullPolicy: Always`
+- ✅ CI/CD pipeline adds restart annotations to force pod recreation
+- ✅ Automatic rollout restart ensures new images are always pulled
+- ✅ No manual intervention required for future deployments
+
 #### **Issue: Tests Failing in CI but Passing Locally**
 **Symptoms**: Tests pass on local machine but fail in GitHub Actions
 **Solution**:
@@ -466,6 +500,130 @@ eksctl delete cluster --name healthcare-cluster-stage2 --region us-east-1
 
 # 4. Validate everything
 ./scripts/validate-stage2-setup.sh
+```
+
+---
+
+## 🔄 **Deployment Update Troubleshooting - Complete Guide**
+
+### **Problem: Pods Not Updating After Code Changes**
+
+This is a common issue where the CI/CD pipeline completes successfully but pods remain unchanged.
+
+#### **Step 1: Identify the Problem**
+```bash
+# Check pod ages (if > 30 minutes after pipeline, they're stuck)
+kubectl get pods -n healthcare -o wide
+
+# Check pipeline status
+gh run list --limit 3
+
+# Look for "deployment unchanged" in pipeline logs
+gh run view <run-id> --log | grep -i "unchanged\|rollout"
+```
+
+#### **Step 2: Immediate Diagnosis**
+```bash
+# Check what images pods are actually using
+kubectl get pods -n healthcare -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}' | column -t
+
+# Check deployment image configuration
+kubectl get deployment healthcare-frontend -n healthcare -o yaml | grep -A 2 "image:"
+kubectl get deployment healthcare-backend -n healthcare -o yaml | grep -A 2 "image:"
+
+# Check if imagePullPolicy is set correctly
+kubectl get deployment healthcare-frontend -n healthcare -o yaml | grep -A 1 "imagePullPolicy"
+```
+
+#### **Step 3: Immediate Fix (Manual)**
+```bash
+# Force restart all deployments
+kubectl rollout restart deployment/healthcare-frontend -n healthcare
+kubectl rollout restart deployment/healthcare-backend -n healthcare
+
+# Wait for completion
+kubectl rollout status deployment/healthcare-frontend -n healthcare --timeout=300s
+kubectl rollout status deployment/healthcare-backend -n healthcare --timeout=300s
+
+# Verify new pods
+kubectl get pods -n healthcare -o wide
+```
+
+#### **Step 4: Verify Fix Applied**
+```bash
+# Check pod ages (should be < 5 minutes)
+kubectl get pods -n healthcare -o wide
+
+# Test application
+FRONTEND_URL=$(kubectl get service frontend-service -n healthcare -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -I http://${FRONTEND_URL}
+curl -I http://${FRONTEND_URL}/api/health
+
+# Check logs for any issues
+kubectl logs deployment/healthcare-frontend -n healthcare --tail=10
+kubectl logs deployment/healthcare-backend -n healthcare --tail=10
+```
+
+### **Permanent Solution Implemented**
+
+The following changes ensure this issue never happens again:
+
+#### **1. Kubernetes Manifests Updated**
+```yaml
+# frontend-deployment.yaml and backend-deployment.yaml now use:
+image: routeclouds/healthcare-frontend:latest
+imagePullPolicy: Always  # Forces image pull on every deployment
+```
+
+#### **2. CI/CD Pipeline Enhanced**
+```yaml
+# Pipeline now includes automatic restart annotations:
+kubectl patch deployment healthcare-frontend -n healthcare -p '{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"'$(date +%s)'"}}}}}'
+```
+
+#### **3. Verification Process**
+Every pipeline run now:
+- ✅ Builds and pushes images with `latest` tag
+- ✅ Applies manifests with `imagePullPolicy: Always`
+- ✅ Adds restart annotations to force pod recreation
+- ✅ Waits for rollout completion
+- ✅ Verifies all pods are running with new images
+
+### **Why This Solution Works**
+
+1. **`latest` Tag**: Always references the most recent image
+2. **`imagePullPolicy: Always`**: Forces Kubernetes to pull the image every time
+3. **Restart Annotations**: Guarantees pod recreation even with same image tag
+4. **Automatic Process**: No manual intervention required
+
+### **Monitoring Deployment Success**
+
+```bash
+# Watch deployments in real-time
+kubectl get pods -n healthcare -w
+
+# Check deployment history
+kubectl rollout history deployment/healthcare-frontend -n healthcare
+kubectl rollout history deployment/healthcare-backend -n healthcare
+
+# Verify image pull events
+kubectl get events -n healthcare --sort-by='.lastTimestamp' | grep -i "pull"
+```
+
+### **Common Deployment Patterns**
+
+```bash
+# Pattern 1: Check if deployment is progressing
+kubectl get deployment healthcare-frontend -n healthcare -o wide
+
+# Pattern 2: Check replica set status
+kubectl get rs -n healthcare
+
+# Pattern 3: Check pod events for issues
+kubectl describe pod <pod-name> -n healthcare
+
+# Pattern 4: Force image pull verification
+kubectl get pods -n healthcare -o yaml | grep -A 5 "imagePullPolicy"
 ```
 
 ---
