@@ -49,9 +49,54 @@ src-code/
 └── docker-compose.yml        # Local development setup
 ```
 
-## 🔧 Step-by-Step Setup Process
+## 🔧 Setup Methods
 
-### Step 1: Clone and Navigate
+### Method 1: Automated Setup (Recommended for Students)
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd Health_Care_Management_System/Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
+
+# Run the automated setup script
+./setup-environment.sh
+
+# Expected output:
+# 🏥 Healthcare Management System - Automated Setup
+# =================================================
+#
+# 🔍 Checking Prerequisites...
+# ✅ Node.js version: v18.x.x
+# ✅ npm version: 8.x.x
+#
+# 📁 Verifying Project Structure...
+# ✅ Found package.json - in correct directory
+# ✅ Frontend and backend directories found
+#
+# 🔧 Installing Dependencies...
+# ✅ Root dependencies installed
+# ✅ Frontend dependencies installed
+# ✅ Backend dependencies installed
+#
+# 🔒 Verifying Package Lock Files...
+# ✅ package-lock.json exists
+# ✅ frontend/package-lock.json exists
+# ✅ backend/package-lock.json exists
+#
+# 🏗️ Testing Build Processes...
+# ✅ Frontend build successful
+# ✅ Backend build successful
+#
+# 🎉 Setup Complete!
+```
+
+**✅ This method prevents all common setup issues automatically!**
+
+### Method 2: Manual Step-by-Step Setup
+
+If you prefer to understand each step or the automated script fails:
+
+#### Step 1: Clone and Navigate
 ```bash
 # Clone the repository
 git clone <your-repo-url>
@@ -161,6 +206,62 @@ docker build -f Dockerfile.frontend.k8s -t test-frontend .
 
 # Expected: Successful build without errors
 ```
+
+## 🛡️ Issue Prevention Strategies
+
+### Automated Prevention Tools
+
+We've created automated tools to prevent common setup issues:
+
+#### 1. Setup Environment Script
+```bash
+# Run this after cloning the repository
+./setup-environment.sh
+
+# This script:
+# ✅ Validates prerequisites
+# ✅ Installs all dependencies correctly
+# ✅ Generates all required package-lock.json files
+# ✅ Tests build processes
+# ✅ Prevents Docker build failures
+```
+
+#### 2. Setup Validation Script
+```bash
+# Run this anytime to check your environment
+./validate-setup.sh
+
+# This script checks:
+# ✅ Node.js and npm versions
+# ✅ All package-lock.json files exist
+# ✅ Dependencies are installed
+# ✅ Build processes work
+# ✅ Environment is ready for CI/CD
+```
+
+#### 3. Pre-Commit Validation
+```bash
+# Before committing code, always run:
+./validate-setup.sh
+
+# This ensures:
+# ✅ No missing package-lock.json files
+# ✅ All builds work
+# ✅ CI/CD pipeline will succeed
+```
+
+### Why These Issues Occurred
+
+1. **Missing package-lock.json**: npm workspaces don't always generate individual lock files
+2. **Docker build failures**: Using `--only=production` excludes dev dependencies needed for builds
+3. **Environment inconsistencies**: Different Node.js/npm versions across systems
+
+### How We Fixed Them
+
+1. **Generated all required lock files** and committed them to git
+2. **Fixed Dockerfile** to include dev dependencies for build stage
+3. **Created validation scripts** to catch issues before they cause problems
+4. **Added automated setup** to ensure consistent environments
 
 ## 🚨 Common Issues & Troubleshooting
 

@@ -4,18 +4,33 @@ A comprehensive healthcare management platform built with React, Node.js, and Po
 
 <!-- CI/CD Pipeline Trigger: v1.0 Synchronized Deployment - August 12, 2025 - Stage 2 Pipeline Active -->
 
-## 🚀 Quick Start (Zero Configuration)
+## 🚀 Quick Start (Automated Setup)
 
 ### Prerequisites
-- Docker and Docker Compose installed
+- Node.js 18.x or 20.x
+- npm 8.x or higher
+- Docker and Docker Compose (for containerized deployment)
 - Git
 
-### Clone and Run
+### Option 1: Automated Setup (Recommended for Students)
 ```bash
 # Clone the repository
 git clone <your-repo-url>
 cd Health_Care_Management_System/Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
 
+# Run automated setup script
+./setup-environment.sh
+
+# This script will:
+# ✅ Validate prerequisites
+# ✅ Install all dependencies (root, frontend, backend)
+# ✅ Generate required package-lock.json files
+# ✅ Test build processes
+# ✅ Verify environment is ready for CI/CD
+```
+
+### Option 2: Docker Compose (Zero Configuration)
+```bash
 # Start all services (database, backend, frontend)
 docker compose up -d
 
@@ -24,6 +39,19 @@ docker compose up -d
 # ✅ Initialize database schema
 # ✅ Seed with sample data (4 departments, 5 doctors)
 # ✅ Start all services
+```
+
+### Validation
+```bash
+# Validate your setup anytime
+./validate-setup.sh
+
+# This will check:
+# ✅ Node.js and npm versions
+# ✅ Project structure
+# ✅ Package lock files
+# ✅ Dependencies installation
+# ✅ Build processes
 ```
 
 ### Access the Application
