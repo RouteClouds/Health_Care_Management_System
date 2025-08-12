@@ -1,6 +1,26 @@
 # 🚀 **Stage 2: Automated CI/CD Pipeline**
 ## **Healthcare Management System - GitHub Actions Automation**
 
+## 📖 **Quick Navigation Index**
+
+### 🚀 **Getting Started**
+- [🛠️ Complete Setup Guide](docs/MASTER-SETUP-GUIDE.md) - **START HERE** for new users
+- [📜 Scripts Guide](scripts/README.md) - Automation tools and usage
+- [💻 Source Code Setup](src-code/README.md) - Quick source code configuration
+
+### 📚 **Documentation**
+- [🔍 Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Issue resolution and fixes
+- [🛠️ Operations Guide](docs/OPERATIONS.md) - Pipeline management and maintenance
+- [🏗️ Architecture Guide](docs/ARCHITECTURE.md) - System design and technical specs
+
+### 🎯 **Quick Actions**
+- **New Users**: Start with [Master Setup Guide](docs/MASTER-SETUP-GUIDE.md)
+- **Experienced**: Use [Scripts Guide](scripts/README.md) for automation
+- **Issues**: Check [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+- **Operations**: See [Operations Guide](docs/OPERATIONS.md)
+
+---
+
 ### **📋 Overview**
 
 Stage 2 transforms the manual deployment process from Stage 1 into a **fully automated CI/CD pipeline** using GitHub Actions. This stage implements automated testing, building, and deployment with environment-specific configurations and rollback capabilities.

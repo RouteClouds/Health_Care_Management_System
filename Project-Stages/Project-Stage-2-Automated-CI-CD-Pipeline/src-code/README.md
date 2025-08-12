@@ -1,25 +1,231 @@
-# 🏥 Health Care Management System
+# 💻 **Source Code - Quick Setup**
 
-A comprehensive healthcare management platform built with React, Node.js, and PostgreSQL, featuring user authentication, doctor management, and appointment booking.
+## 📖 **Quick Index**
 
-<!-- CI/CD Pipeline Trigger: v1.0 Synchronized Deployment - August 12, 2025 - Stage 2 Pipeline Active -->
+### ⚡ **Automated Setup (Recommended)**
+- [One-Command Setup](#one-command-setup) - Complete environment configuration
+- [Validation](#validation) - Verify setup is correct
 
-## 🚀 Quick Start (Automated Setup)
+### 🔧 **Manual Setup (If Needed)**
+- [Dependencies](#dependencies) - Install packages manually
+- [Environment Configuration](#environment-configuration) - Manual config
+- [Build & Test](#build-test) - Manual build and testing
 
-### Prerequisites
-- Node.js 18.x or 20.x
-- npm 8.x or higher
-- Docker and Docker Compose (for containerized deployment)
-- Git
+### 🔍 **Validation Tools**
+- [Setup Validation](#setup-validation) - Environment health check
+- [Port Configuration](#port-configuration) - Frontend-backend communication
+- [Build Verification](#build-verification) - Ensure builds work
 
-### Option 1: Automated Setup (Recommended for Students)
+---
+
+## ⚡ **One-Command Setup**
+
+### **Automated Environment Setup**
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd Health_Care_Management_System/Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code
-
-# Run automated setup script
+# Complete setup in one command
 ./setup-environment.sh
+
+# This script automatically:
+# ✅ Validates Node.js and npm versions
+# ✅ Installs root workspace dependencies
+# ✅ Installs frontend dependencies
+# ✅ Installs backend dependencies
+# ✅ Generates package-lock.json files
+# ✅ Tests build processes
+# ✅ Runs basic validation tests
+```
+
+---
+
+## ✅ **Validation**
+
+### **Quick Validation**
+```bash
+# Verify everything is working
+./validate-setup.sh
+./validate-port-config.sh
+
+# Both should show all green checkmarks
+```
+
+### **What Gets Validated**
+- ✅ Node.js and npm versions
+- ✅ Project structure and dependencies
+- ✅ Package lock files exist
+- ✅ Build processes work
+- ✅ Port configurations are correct
+- ✅ Frontend-backend communication setup
+
+---
+
+## 🔧 **Manual Setup (If Needed)**
+
+### **Dependencies**
+```bash
+# Install root dependencies
+npm install
+
+# Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# Install backend dependencies
+cd backend && npm install && cd ..
+```
+
+### **Environment Configuration**
+```bash
+# Frontend environment (already configured)
+cat frontend/.env.k8s
+# Should show: VITE_API_BASE_URL=/api
+
+# Backend environment (already configured)
+cat backend/.env.k8s
+# Should show: PORT=3002
+```
+
+### **Build & Test**
+```bash
+# Test builds
+cd frontend && npm run build && cd ..
+cd backend && npm run build && cd ..
+
+# Run tests
+npm test -- --testPathIgnorePatterns=tests/e2e
+```
+
+---
+
+## 🔍 **Validation Tools**
+
+### **Setup Validation**
+```bash
+# Complete environment check
+./validate-setup.sh
+
+# Checks:
+# ✅ Node.js version (18.x or 20.x)
+# ✅ npm version (8.x+)
+# ✅ Project structure
+# ✅ Dependencies installed
+# ✅ Package lock files
+# ✅ Build processes
+```
+
+### **Port Configuration**
+```bash
+# Frontend-backend communication check
+./validate-port-config.sh
+
+# Checks:
+# ✅ Frontend uses /api for backend calls
+# ✅ Backend runs on port 3002
+# ✅ No hardcoded localhost URLs
+# ✅ Nginx proxy configuration
+# ✅ Kubernetes service ports
+```
+
+### **Build Verification**
+```bash
+# Verify builds work
+npm run build
+
+# Run tests
+npm test
+
+# Check for issues
+npm audit
+```
+
+---
+
+## 🚀 **Development Commands**
+
+### **Start Development Servers**
+```bash
+# Start frontend (port 5173)
+cd frontend && npm run dev
+
+# Start backend (port 3002)
+cd backend && npm run dev
+
+# Start both with Docker Compose
+docker-compose up
+```
+
+### **Testing Commands**
+```bash
+# Unit tests only
+npm test -- --testPathIgnorePatterns=tests/e2e
+
+# All tests (requires running application)
+npm test
+
+# E2E tests (requires running application)
+npm run test:e2e
+```
+
+### **Build Commands**
+```bash
+# Build frontend
+cd frontend && npm run build
+
+# Build backend
+cd backend && npm run build
+
+# Build Docker images
+docker-compose build
+```
+
+---
+
+## 📁 **Project Structure**
+```
+src-code/
+├── frontend/           # React application
+├── backend/            # Node.js API server
+├── nginx/              # Nginx configuration
+├── k8s/                # Kubernetes manifests
+├── docker-compose.yml  # Local development
+├── setup-environment.sh    # Automated setup
+├── validate-setup.sh       # Environment validation
+└── validate-port-config.sh # Port validation
+```
+
+---
+
+## 🎯 **Success Indicators**
+
+### **Setup Complete**
+- [ ] `./setup-environment.sh` runs without errors
+- [ ] `./validate-setup.sh` shows all green checkmarks
+- [ ] `./validate-port-config.sh` shows all green checkmarks
+- [ ] `npm test` passes (unit tests)
+- [ ] `npm run build` succeeds
+
+### **Ready for Development**
+- [ ] Frontend starts on port 5173
+- [ ] Backend starts on port 3002
+- [ ] API calls work between frontend and backend
+- [ ] Docker builds succeed
+
+---
+
+## 📞 **Support**
+
+### **Common Issues**
+- **Node.js Version**: Use Node.js 18.x or 20.x
+- **Permission Errors**: Run `chmod +x *.sh` for script permissions
+- **Port Conflicts**: Check if ports 5173 or 3002 are in use
+- **Build Failures**: Run `./setup-environment.sh` to reset
+
+### **Getting Help**
+1. **First**: Run validation scripts to identify issues
+2. **Second**: Check [Troubleshooting Guide](../docs/TROUBLESHOOTING.md)
+3. **Third**: Review [Master Setup Guide](../docs/MASTER-SETUP-GUIDE.md)
+
+---
+
+**💻 This source code is ready for Stage 2 CI/CD pipeline deployment with comprehensive automation and validation.**
 
 # This script will:
 # ✅ Validate prerequisites
