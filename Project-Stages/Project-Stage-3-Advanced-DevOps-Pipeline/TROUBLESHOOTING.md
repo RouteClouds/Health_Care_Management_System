@@ -384,6 +384,103 @@ gh run list --workflow="Stage 3 CI (Advanced DevOps)" --limit 3
 - Resource conflicts in AWS (Terraform state locks)
 - Failed deployments due to concurrent infrastructure changes
 
+### **Issue: Unit Tests Failing in GitHub Actions Pipeline**
+
+**Problem**: GitHub Actions pipeline fails at "Unit Tests (Node 20.x)" job with React component import errors.
+
+**Error Messages**:
+```
+Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.
+
+FAIL  src/App.spec.tsx > App Component > renders the app successfully
+FAIL  src/App.spec.tsx > App Component > displays navigation elements
+FAIL  src/App.spec.tsx > App Component > shows authentication buttons
+```
+
+**Root Cause Analysis**:
+1. **Frontend Issue**: Conflicting `App.js` and `App.tsx` files where test imports from wrong file
+2. **Backend Issue**: Test expects different package name than actual package.json
+
+**Solution Steps**:
+
+1. **Fix Frontend Import Conflict**:
+```bash
+# Check for conflicting App files
+ls -la src-code/frontend/src/App.*
+
+# Remove incomplete App.js if it exists
+rm src-code/frontend/src/App.js
+
+# Verify App.tsx exists and is complete
+cat src-code/frontend/src/App.tsx | head -20
+```
+
+2. **Fix Backend Package Name Test**:
+```bash
+# Check actual package name
+grep '"name"' src-code/backend/package.json
+
+# Update test to match actual package name
+# Edit src-code/backend/src/app.test.ts
+# Change: expect(packageJson.name).toBe('healthcare-backend');
+# To: expect(packageJson.name).toBe('healthcare-backend-stage3');
+```
+
+3. **Test Locally Before Pushing**:
+```bash
+# Test frontend
+cd src-code && npm run test:unit:frontend
+
+# Test backend
+npm run test:unit:backend
+
+# Test complete suite
+npm run test:unit
+```
+
+**Expected Test Results**:
+```
+✅ Frontend Tests:
+ ✓ src/App.spec.tsx (3)
+   ✓ App Component (3)
+     ✓ renders the app successfully
+     ✓ displays navigation elements
+     ✓ shows authentication buttons
+
+✅ Backend Tests:
+ ✓ src/app.test.ts (3)
+   ✓ Healthcare Backend - Basic Tests (3)
+     ✓ should pass basic math test
+     ✓ should validate environment setup
+     ✓ should have correct package name
+
+Total: 6/6 tests passed
+```
+
+4. **Commit and Push Fix**:
+```bash
+git add .
+git commit -m "fix: resolve unit test failures in Stage-3 pipeline
+
+Frontend Fix:
+- Removed incomplete App.js file conflicting with App.tsx
+- App.spec.tsx now correctly imports from App.tsx component
+
+Backend Fix:
+- Updated app.test.ts to expect correct package name
+- Fixed package name assertion to match actual package.json
+
+Test Results: ✅ 6/6 tests passed"
+
+git push origin main
+```
+
+**Prevention**:
+- Always test locally before pushing: `npm run test:unit`
+- Avoid creating duplicate component files (App.js vs App.tsx)
+- Keep test assertions in sync with actual package.json values
+- Use consistent naming conventions across environments
+
 ### **Quick Reference Commands**
 
 **Git Repository Cleanup**:
