@@ -11,7 +11,7 @@ describe('Healthcare Backend - Basic Tests', () => {
 
   it('should have correct package name', () => {
     const packageJson = require('../package.json');
-    expect(packageJson.name).toBe('healthcare-backend');
+    expect(packageJson.name).toBe('healthcare-backend-stage3');
     expect(packageJson.version).toBe('1.0.0');
   });
 });
