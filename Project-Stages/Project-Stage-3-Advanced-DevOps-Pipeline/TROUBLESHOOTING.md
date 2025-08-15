@@ -1217,6 +1217,64 @@ aws s3 ls | grep your-project-prefix
 **Resources Cleaned**: 7 major AWS services with 15+ individual resources
 **Automation Level**: Fully automated cleanup script + manual verification
 
+### **Issue: GitOps Repository Permission Denied**
+
+**Problem**: GitHub Actions workflow fails at GitOps deployment stage when trying to push updated image tags back to the repository.
+
+**Error Message**:
+```
+remote: Permission to RouteClouds/Health_Care_Management_System.git denied to github-actions[bot].
+fatal: unable to access 'https://github.com/RouteClouds/Health_Care_Management_System/': The requested URL returned error: 403
+Error: Process completed with exit code 128.
+```
+
+**Root Cause**:
+- GitHub Actions workflow lacks `contents: write` permission
+- Default `GITHUB_TOKEN` has limited permissions for security
+- GitOps step tries to push changes but is denied access
+- Improper git configuration for automated commits
+
+**Solution Applied**:
+
+1. **Added Workflow Permissions**:
+```yaml
+permissions:
+  contents: write          # Required to push changes back to repository
+  pull-requests: read      # Required to read PR information
+  actions: read           # Required to read workflow information
+  security-events: write  # Required for security scanning results
+```
+
+2. **Fixed Checkout Step**:
+```yaml
+- name: Checkout
+  uses: actions/checkout@v4
+  with:
+    token: ${{ secrets.GITHUB_TOKEN }}
+    fetch-depth: 0
+```
+
+3. **Enhanced Git Configuration**:
+```yaml
+- name: Commit and push changes
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: |
+    git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+    git config --local user.name "github-actions[bot]"
+
+    if git diff --quiet && git diff --staged --quiet; then
+      echo "No changes to commit"
+      exit 0
+    fi
+
+    git add Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/
+    git commit -m "Update Stage-3 image tags to ${{ github.sha }}"
+    git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main
+```
+
+**Expected Success**: GitOps stage will now successfully update image tags and push changes to repository.
+
 ### **Quick Reference Commands**
 
 **Git Repository Cleanup**:
