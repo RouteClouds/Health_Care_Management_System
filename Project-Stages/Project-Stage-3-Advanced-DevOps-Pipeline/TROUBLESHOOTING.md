@@ -1275,6 +1275,70 @@ permissions:
 
 **Expected Success**: GitOps stage will now successfully update image tags and push changes to repository.
 
+### **Issue: Persistent GitOps Permission Denied (Advanced Solution)**
+
+**Problem**: Even after adding workflow permissions, GitOps deployment continues to fail with 403 errors.
+
+**Advanced Solutions Applied**:
+
+1. **Dedicated Git Action (Recommended)**:
+```yaml
+- name: Commit and push changes
+  uses: stefanzweifel/git-auto-commit-action@v5
+  with:
+    commit_message: "Update Stage-3 image tags to ${{ github.sha }}"
+    file_pattern: "Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/"
+    commit_user_name: "github-actions[bot]"
+    commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
+    commit_author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+```
+
+2. **Job-Level Permissions**:
+```yaml
+update-gitops:
+  permissions:
+    contents: write
+    actions: read
+```
+
+3. **Enhanced Checkout Configuration**:
+```yaml
+- name: Checkout
+  uses: actions/checkout@v4
+  with:
+    token: ${{ github.token }}
+    persist-credentials: true
+```
+
+**Manual Fallback Solution**:
+
+If GitHub Actions continues to fail, use the manual script:
+
+```bash
+# Update image tags manually
+./scripts/gitops/update-image-tags.sh c1bc0c062492e0496faf56b5cd466a70184f1874
+
+# Show current tags
+./scripts/gitops/update-image-tags.sh show
+
+# Get help
+./scripts/gitops/update-image-tags.sh help
+```
+
+**Script Features**:
+- ✅ **Automated Updates**: Updates both frontend and backend image tags
+- ✅ **Verification**: Confirms changes were applied correctly
+- ✅ **Git Integration**: Handles commit and push operations
+- ✅ **Error Handling**: Comprehensive error checking and reporting
+- ✅ **Flexible Usage**: Can be used in CI/CD or manually
+
+**Why git-auto-commit-action Works Better**:
+- **Built-in Authentication**: Handles GitHub token authentication automatically
+- **Proven Solution**: Widely used in GitHub Actions workflows
+- **Error Handling**: Built-in handling of no-changes scenarios
+- **Maintenance**: Actively maintained and updated
+- **Compatibility**: Works with various GitHub repository configurations
+
 ### **Quick Reference Commands**
 
 **Git Repository Cleanup**:
