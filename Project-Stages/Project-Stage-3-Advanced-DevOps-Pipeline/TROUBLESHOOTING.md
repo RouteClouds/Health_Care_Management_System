@@ -734,6 +734,133 @@ Plan: 72 to add, 0 to change, 0 to destroy.
 - Handle existing resources with data sources or import
 - Avoid circular dependencies between providers and resources
 
+### **Issue: Resource Already Exists Conflicts**
+
+**Problem**: Terraform apply fails because AWS resources already exist from previous deployment attempts.
+
+**Error Messages**:
+```
+Error: creating KMS Alias: AlreadyExistsException: An alias with the name arn:aws:kms:us-east-1:867344452513:alias/eks/healthcare-eks-stage3-dev already exists
+
+Error: creating CloudWatch Logs Log Group: ResourceAlreadyExistsException: The specified log group already exists
+
+Error: creating RDS DB Subnet Group: DBSubnetGroupAlreadyExists: The DB subnet group 'healthcare-eks-stage3-dev-db-subnet-group' already exists
+
+Error: creating S3 Bucket: BucketAlreadyExists
+```
+
+**Root Cause**:
+- Previous Terraform deployment was partially completed
+- Infrastructure was created but not properly tracked in Terraform state
+- Manual cleanup or failed deployment left orphaned resources
+
+**Diagnosis Steps**:
+
+1. **Check existing resources**:
+```bash
+# Check KMS alias
+aws kms list-aliases --query 'Aliases[?AliasName==`alias/eks/healthcare-eks-stage3-dev`]' --output table
+
+# Check CloudWatch log group
+aws logs describe-log-groups --log-group-name-prefix "/aws/eks/healthcare-eks-stage3-dev" --query 'logGroups[0].logGroupName' --output text
+
+# Check S3 bucket
+aws s3 ls | grep healthcare-assets-stage3-dev
+
+# Check RDS subnet group
+aws rds describe-db-subnet-groups --db-subnet-group-name healthcare-eks-stage3-dev-db-subnet-group
+```
+
+2. **Verify Terraform state**:
+```bash
+cd terraform/environments/dev
+terraform state list
+# Should show if resources are tracked in state
+```
+
+**Solution: Automated Cleanup Script**
+
+**Use the provided cleanup script to remove conflicting resources:**
+
+```bash
+# Run the automated cleanup script
+./scripts/cleanup/cleanup-existing-resources.sh
+```
+
+**Manual Cleanup (if script fails)**:
+
+1. **Clean up S3 bucket**:
+```bash
+# Empty and delete S3 bucket
+aws s3 rm s3://healthcare-assets-stage3-dev-867344452513 --recursive
+aws s3 rb s3://healthcare-assets-stage3-dev-867344452513
+```
+
+2. **Clean up RDS DB subnet group**:
+```bash
+# Delete DB subnet group
+aws rds delete-db-subnet-group --db-subnet-group-name healthcare-eks-stage3-dev-db-subnet-group
+```
+
+3. **Clean up CloudWatch log group**:
+```bash
+# Delete log group
+aws logs delete-log-group --log-group-name /aws/eks/healthcare-eks-stage3-dev/cluster
+```
+
+4. **Clean up KMS alias and key**:
+```bash
+# Delete KMS alias
+aws kms delete-alias --alias-name alias/eks/healthcare-eks-stage3-dev
+
+# Get key ID and schedule deletion
+KEY_ID=$(aws kms list-aliases --query "Aliases[?AliasName=='alias/eks/healthcare-eks-stage3-dev'].TargetKeyId" --output text)
+aws kms schedule-key-deletion --key-id $KEY_ID --pending-window-in-days 7
+```
+
+**Verification**:
+
+1. **Test Terraform plan after cleanup**:
+```bash
+cd terraform/environments/dev
+terraform plan
+# Should show: Plan: 15 to add, 0 to change, 0 to destroy.
+```
+
+2. **Verify no conflicts**:
+```bash
+# Should return empty or not found
+aws kms describe-key --key-id alias/eks/healthcare-eks-stage3-dev 2>/dev/null || echo "KMS alias cleaned up"
+aws logs describe-log-groups --log-group-name-prefix "/aws/eks/healthcare-eks-stage3-dev" --query 'logGroups[0]' 2>/dev/null || echo "Log group cleaned up"
+aws s3 ls | grep healthcare-assets-stage3-dev || echo "S3 bucket cleaned up"
+```
+
+**Expected Success Output**:
+```bash
+# Cleanup script success
+🎉 All conflicting resources cleaned up successfully!
+
+# Terraform plan success
+Plan: 15 to add, 0 to change, 0 to destroy.
+```
+
+**Alternative: Import Existing Resources (Advanced)**
+
+If you want to keep existing resources and import them into Terraform state:
+
+```bash
+# Import existing resources (complex, use cleanup instead)
+terraform import module.healthcare_infrastructure.aws_s3_bucket.healthcare_assets healthcare-assets-stage3-dev-867344452513
+terraform import module.healthcare_infrastructure.aws_db_subnet_group.healthcare healthcare-eks-stage3-dev-db-subnet-group
+# Note: Importing nested module resources is complex and error-prone
+```
+
+**Prevention**:
+- Always run `terraform destroy` before redeploying if previous deployment failed
+- Use cleanup script before fresh deployments
+- Monitor Terraform state consistency
+- Implement proper CI/CD pipeline with state management
+
 ### **Quick Reference Commands**
 
 **Git Repository Cleanup**:
