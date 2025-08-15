@@ -569,6 +569,171 @@ AWS_SECRET_ACCESS_KEY=<your-secret-key>
 - Verify AWS credentials and permissions
 - Use ECR repository creation script for consistent setup
 
+### **Issue: Infrastructure Deployment Stage Failure**
+
+**Problem**: Terraform apply fails during infrastructure deployment with multiple errors.
+
+**Common Error Messages**:
+```
+Error: Have got the following error while validating the existence of the ConfigMap "aws-auth":
+Get "http://localhost/api/v1/namespaces/kube-system/configmaps/aws-auth": dial tcp [::1]:80: connect: connection refused
+
+Error: creating RDS DB Instance: Cannot find version 15.4 for postgres
+
+Error: creating ECR Repository: RepositoryAlreadyExistsException: The repository with name 'healthcare-frontend-stage3' already exists
+```
+
+**Root Causes**:
+1. **Kubernetes provider dependency cycle** - Can't connect to EKS cluster during creation
+2. **PostgreSQL version not supported** - Version 15.4 not available in AWS RDS
+3. **ECR repositories already exist** - Terraform tries to create existing repositories
+4. **AWS auth ConfigMap issues** - EKS module tries to manage ConfigMap before cluster is ready
+
+**Diagnosis Steps**:
+
+1. **Check PostgreSQL version availability**:
+```bash
+# Check available PostgreSQL versions
+aws rds describe-db-engine-versions --engine postgres --query 'DBEngineVersions[?starts_with(EngineVersion, `15`)].EngineVersion' --output table --region us-east-1
+```
+
+2. **Verify ECR repositories exist**:
+```bash
+# Check if ECR repositories exist
+aws ecr describe-repositories --repository-names healthcare-frontend-stage3 --region us-east-1
+aws ecr describe-repositories --repository-names healthcare-backend-stage3 --region us-east-1
+```
+
+3. **Test Terraform plan**:
+```bash
+cd terraform/environments/dev
+terraform plan
+```
+
+**Solution Steps**:
+
+1. **Fix PostgreSQL Version**:
+```bash
+# Update postgres_version in variables.tf from 15.4 to 15.8
+# File: terraform/modules/healthcare-platform/variables.tf
+variable "postgres_version" {
+  description = "PostgreSQL version"
+  type        = string
+  default     = "15.8"  # Changed from 15.4
+}
+```
+
+2. **Fix ECR Repository Conflicts**:
+```bash
+# Convert ECR resources to data sources in main.tf
+# File: terraform/modules/healthcare-platform/main.tf
+
+# Replace resource blocks with data sources:
+data "aws_ecr_repository" "frontend" {
+  name = "healthcare-frontend-stage3"
+}
+
+data "aws_ecr_repository" "backend" {
+  name = "healthcare-backend-stage3"
+}
+```
+
+3. **Fix Kubernetes Provider Configuration**:
+```bash
+# Create providers.tf with minimal Kubernetes provider config
+# File: terraform/environments/dev/providers.tf
+
+provider "kubernetes" {
+  # Use empty configuration during initial deployment
+  # This will be properly configured after EKS cluster is created
+}
+```
+
+4. **Disable AWS Auth ConfigMap Management**:
+```bash
+# Update EKS module configuration in main.tf
+# File: terraform/modules/healthcare-platform/main.tf
+
+module "eks" {
+  # ... other configuration ...
+
+  # Disable aws-auth ConfigMap management to avoid connection issues
+  manage_aws_auth_configmap = false
+  create_aws_auth_configmap = false
+}
+```
+
+5. **Update ECR Outputs**:
+```bash
+# Update outputs.tf to reference data sources
+# File: terraform/modules/healthcare-platform/outputs.tf
+
+output "ecr_repository_frontend_url" {
+  description = "URL of the frontend ECR repository"
+  value       = data.aws_ecr_repository.frontend.repository_url  # Changed from aws_ecr_repository
+}
+```
+
+**Verification**:
+
+1. **Test Terraform Plan**:
+```bash
+cd terraform/environments/dev
+terraform init -reconfigure
+terraform plan
+
+# Should show: Plan: 72 to add, 0 to change, 0 to destroy.
+```
+
+2. **Verify PostgreSQL Version**:
+```bash
+# Check that plan shows postgres version 15.8
+terraform plan | grep engine_version
+# Should show: engine_version = "15.8"
+```
+
+3. **Verify ECR Data Sources**:
+```bash
+# Check that ECR repositories are read as data sources
+terraform plan | grep "data.aws_ecr_repository"
+# Should show data sources being read, not resources being created
+```
+
+**Expected Success Output**:
+```bash
+# Terraform plan success
+Plan: 72 to add, 0 to change, 0 to destroy.
+
+# No dependency cycle errors
+# No PostgreSQL version errors
+# No ECR repository conflicts
+# No Kubernetes provider connection errors
+```
+
+**Troubleshooting Specific Errors**:
+
+1. **"Cannot find version 15.4 for postgres"**:
+   - Update postgres_version variable to "15.8"
+   - Check available versions with AWS CLI command above
+
+2. **"RepositoryAlreadyExistsException"**:
+   - Convert ECR resources to data sources
+   - Update outputs to reference data sources
+
+3. **"dial tcp [::1]:80: connect: connection refused"**:
+   - Disable aws-auth ConfigMap management
+   - Use minimal Kubernetes provider configuration
+
+4. **"Dependency cycle" errors**:
+   - Ensure Kubernetes provider doesn't reference EKS module outputs
+   - Use empty provider configuration during initial deployment
+
+**Prevention**:
+- Always test Terraform plan before apply
+- Use supported AWS service versions
+- Handle existing resources with data sources or import
+- Avoid circular dependencies between providers and resources
+
 ### **Quick Reference Commands**
 
 **Git Repository Cleanup**:
