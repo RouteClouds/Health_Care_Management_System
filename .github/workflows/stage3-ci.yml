@@ -4,12 +4,28 @@ on:
   push:
     branches: [ main, develop ]
     paths:
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/k8s/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/helm-charts/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/monitoring/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/logging/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/*.md'
       - '.github/workflows/stage3-ci.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/k8s/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/helm-charts/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/monitoring/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/logging/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/*.md'
   workflow_dispatch:
     inputs:
       environment:
