@@ -1,0 +1,69 @@
+# Terraform files
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/terraform.tfvars
+**/terraform.tfvars.json
+**/*.tfplan
+**/*.tfstate
+**/.terraform.tfstate.lock.info
+
+# AWS credentials
+**/.aws/
+**/aws-credentials
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Node modules
+**/node_modules/
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# Docker
+**/.dockerignore
+
+# Kubernetes
+**/kubeconfig
+**/.kube/
+
+# Backup files
+**/backup/
+**/migration-backup*/
+
+# Temporary files
+**/tmp/
+**/temp/
+**/.tmp/
+
+# Environment files
+**/.env
+**/.env.local
+**/.env.production
+
+# Build outputs
+**/dist/
+**/build/
+**/target/
+
+# Coverage reports
+**/coverage/
+**/.nyc_output/
+
+# Package files
+**/*.tgz
+**/*.tar.gz
