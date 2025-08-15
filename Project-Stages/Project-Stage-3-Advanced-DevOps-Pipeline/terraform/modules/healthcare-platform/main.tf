@@ -85,16 +85,9 @@ module "eks" {
   }
 
   # Cluster access configuration
-  # For EKS module version 19.x, we use manage_aws_auth_configmap
-  manage_aws_auth_configmap = true
-
-  aws_auth_roles = [
-    {
-      rolearn  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-      username = "admin"
-      groups   = ["system:masters"]
-    }
-  ]
+  # Disable aws-auth ConfigMap management to avoid connection issues during initial deployment
+  manage_aws_auth_configmap = false
+  create_aws_auth_configmap = false
 
   tags = var.tags
 }
@@ -162,32 +155,18 @@ resource "aws_db_instance" "healthcare" {
   })
 }
 
-# ECR Repositories
-resource "aws_ecr_repository" "frontend" {
-  name                 = "healthcare-frontend-stage3"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = var.tags
+# ECR Repositories - Use existing repositories created by setup script
+data "aws_ecr_repository" "frontend" {
+  name = "healthcare-frontend-stage3"
 }
 
-resource "aws_ecr_repository" "backend" {
-  name                 = "healthcare-backend-stage3"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = var.tags
+data "aws_ecr_repository" "backend" {
+  name = "healthcare-backend-stage3"
 }
 
-# ECR Lifecycle Policies
+# ECR Lifecycle Policies - Only create if repositories don't have policies
 resource "aws_ecr_lifecycle_policy" "frontend" {
-  repository = aws_ecr_repository.frontend.name
+  repository = data.aws_ecr_repository.frontend.name
 
   policy = jsonencode({
     rules = [
@@ -209,7 +188,7 @@ resource "aws_ecr_lifecycle_policy" "frontend" {
 }
 
 resource "aws_ecr_lifecycle_policy" "backend" {
-  repository = aws_ecr_repository.backend.name
+  repository = data.aws_ecr_repository.backend.name
 
   policy = jsonencode({
     rules = [

@@ -103,22 +103,22 @@ output "db_parameter_group_name" {
 # ECR Outputs
 output "ecr_repository_frontend_url" {
   description = "URL of the frontend ECR repository"
-  value       = aws_ecr_repository.frontend.repository_url
+  value       = data.aws_ecr_repository.frontend.repository_url
 }
 
 output "ecr_repository_backend_url" {
   description = "URL of the backend ECR repository"
-  value       = aws_ecr_repository.backend.repository_url
+  value       = data.aws_ecr_repository.backend.repository_url
 }
 
 output "ecr_repository_frontend_arn" {
   description = "ARN of the frontend ECR repository"
-  value       = aws_ecr_repository.frontend.arn
+  value       = data.aws_ecr_repository.frontend.arn
 }
 
 output "ecr_repository_backend_arn" {
   description = "ARN of the backend ECR repository"
-  value       = aws_ecr_repository.backend.arn
+  value       = data.aws_ecr_repository.backend.arn
 }
 
 # S3 Outputs
