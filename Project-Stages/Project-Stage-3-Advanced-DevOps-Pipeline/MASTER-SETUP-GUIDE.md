@@ -21,12 +21,14 @@ This guide provides **complete step-by-step instructions** for deploying the Hea
 1. [Prerequisites Verification](#prerequisites-verification)
 2. [Environment Preparation](#environment-preparation)
 3. [AWS Backend Setup](#aws-backend-setup)
-4. [GitHub Configuration](#github-configuration)
-5. [Infrastructure Deployment](#infrastructure-deployment)
-6. [Application Deployment](#application-deployment)
-7. [Monitoring Setup](#monitoring-setup)
-8. [Validation & Testing](#validation--testing)
-9. [Troubleshooting](#troubleshooting)
+4. [ECR Repository Setup](#ecr-repository-setup)
+5. [AWS Account ID Replacement](#aws-account-id-replacement)
+6. [GitHub Configuration](#github-configuration)
+7. [Infrastructure Deployment](#infrastructure-deployment)
+8. [Application Deployment](#application-deployment)
+9. [Monitoring Setup](#monitoring-setup)
+10. [Validation & Testing](#validation--testing)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -319,6 +321,132 @@ aws s3 ls s3://healthcare-terraform-state-stage3-867344452513
 ```
 
 **⏱️ Estimated Time: 10 minutes**
+
+---
+
+## 🐳 ECR Repository Setup
+
+**CRITICAL STEP:** Before running the CI/CD pipeline, you must create ECR repositories for Docker images.
+
+### **What are ECR Repositories?**
+Amazon Elastic Container Registry (ECR) repositories store Docker images that will be built and deployed by the CI/CD pipeline. The pipeline will fail if these repositories don't exist.
+
+### **🚀 Option 1: Automated ECR Setup (Recommended)**
+
+**Use our automated script to create ECR repositories:**
+
+```bash
+# Navigate to project directory
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+
+# Run ECR repository creation script
+./scripts/setup/create-ecr-repositories.sh
+```
+
+**Expected Output:**
+```
+🏗️ ECR Repository Setup for Stage-3
+====================================
+✅ Created repository: healthcare-frontend-stage3
+✅ Created repository: healthcare-backend-stage3
+🎉 All ECR repositories created successfully!
+```
+
+### **🔧 Option 2: Manual ECR Setup**
+
+**If you prefer manual setup:**
+
+```bash
+# Create frontend repository
+aws ecr create-repository \
+    --repository-name healthcare-frontend-stage3 \
+    --region us-east-1 \
+    --image-scanning-configuration scanOnPush=true
+
+# Create backend repository
+aws ecr create-repository \
+    --repository-name healthcare-backend-stage3 \
+    --region us-east-1 \
+    --image-scanning-configuration scanOnPush=true
+```
+
+### **Verification**
+
+**Verify repositories were created:**
+```bash
+# List ECR repositories
+aws ecr describe-repositories --region us-east-1 | grep healthcare
+
+# Expected output:
+# "repositoryName": "healthcare-frontend-stage3"
+# "repositoryName": "healthcare-backend-stage3"
+```
+
+**⏱️ Estimated Time: 5 minutes**
+
+---
+
+## 🔄 AWS Account ID Replacement
+
+**IMPORTANT:** The project contains hardcoded AWS Account ID `867344452513` that must be replaced with your AWS Account ID.
+
+### **Step 1: Get Your AWS Account ID**
+
+```bash
+# Get your AWS Account ID
+aws sts get-caller-identity --query Account --output text
+
+# Example output: 123456789012
+```
+
+### **Step 2: Replace AWS Account ID in Configuration Files**
+
+**Files that need AWS Account ID replacement:**
+
+1. **Terraform Variables** (`terraform/environments/dev/terraform.tfvars`)
+2. **S3 Bucket Names** (various configuration files)
+3. **ECR Registry URLs** (Kubernetes manifests)
+
+**🚀 Option 1: Automated Replacement (Recommended)**
+
+```bash
+# Replace AWS Account ID automatically
+# Replace 867344452513 with your actual AWS Account ID
+export YOUR_AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Run replacement in terraform files
+find terraform/ -name "*.tf" -o -name "*.tfvars" | xargs sed -i "s/867344452513/$YOUR_AWS_ACCOUNT_ID/g"
+
+# Run replacement in Kubernetes manifests
+find k8s/ -name "*.yaml" -o -name "*.yml" | xargs sed -i "s/867344452513/$YOUR_AWS_ACCOUNT_ID/g"
+
+# Run replacement in scripts
+find scripts/ -name "*.sh" | xargs sed -i "s/867344452513/$YOUR_AWS_ACCOUNT_ID/g"
+
+echo "✅ AWS Account ID replacement completed for: $YOUR_AWS_ACCOUNT_ID"
+```
+
+**🔧 Option 2: Manual Replacement**
+
+**Search and replace `867344452513` with your AWS Account ID in these files:**
+
+- `terraform/environments/dev/terraform.tfvars`
+- `k8s/applications/frontend/deployment.yaml`
+- `k8s/applications/backend/deployment.yaml`
+- `scripts/setup/create-ecr-repositories.sh`
+
+### **Step 3: Verification**
+
+**Verify replacement was successful:**
+```bash
+# Check if old AWS Account ID still exists
+grep -r "867344452513" terraform/ k8s/ scripts/ || echo "✅ All AWS Account IDs replaced successfully"
+
+# Verify your AWS Account ID is present
+grep -r "$YOUR_AWS_ACCOUNT_ID" terraform/environments/dev/terraform.tfvars
+```
+
+**⏱️ Estimated Time: 5 minutes**
 
 ---
 
