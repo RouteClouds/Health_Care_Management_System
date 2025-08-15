@@ -47,22 +47,29 @@ test_phase1() {
     else
         log_success "✅ Terraform modules directory exists"
     fi
-    
+
     # Check GitOps structure
+    if [ ! -d "gitops/environments" ]; then
+        log_error "❌ GitOps environments directory missing"
+        ((errors++))
+    else
+        log_success "✅ GitOps environments directory exists"
+    fi
+
     if [ ! -d "gitops/applications" ]; then
         log_error "❌ GitOps applications directory missing"
         ((errors++))
     else
         log_success "✅ GitOps applications directory exists"
     fi
-    
+
     # Check required files
     local required_files=(
         "terraform/backend.tf"
         "terraform/environments/dev/main.tf"
         "terraform/modules/healthcare-platform/main.tf"
-        "gitops/applications/frontend-stage3.yaml"
-        "gitops/applications/backend-stage3.yaml"
+        "gitops/environments/dev/frontend.yaml"
+        "gitops/environments/dev/backend.yaml"
     )
     
     for file in "${required_files[@]}"; do
@@ -90,14 +97,14 @@ test_phase2() {
     local errors=0
     
     # Check GitHub Actions workflow
-    if [ ! -f "../../.github/workflows/stage3-ci.yml" ]; then
+    if [ ! -f "../../../Health_Care_Management_System/.github/workflows/stage3-ci.yml" ]; then
         log_error "❌ GitHub Actions workflow missing"
         ((errors++))
     else
         log_success "✅ GitHub Actions workflow exists"
-        
+
         # Check workflow syntax
-        if grep -q "Project-Stage-3-Advanced-DevOps-Pipeline" "../../.github/workflows/stage3-ci.yml"; then
+        if grep -q "Project-Stage-3-Advanced-DevOps-Pipeline" "../../../Health_Care_Management_System/.github/workflows/stage3-ci.yml"; then
             log_success "✅ Workflow paths are correct"
         else
             log_error "❌ Workflow paths are incorrect"
@@ -168,8 +175,6 @@ test_phase3() {
     # Check GitOps manifests syntax
     log_info "Validating GitOps manifests..."
     local manifest_files=(
-        "gitops/applications/frontend-stage3.yaml"
-        "gitops/applications/backend-stage3.yaml"
         "gitops/environments/dev/frontend.yaml"
         "gitops/environments/dev/backend.yaml"
     )
