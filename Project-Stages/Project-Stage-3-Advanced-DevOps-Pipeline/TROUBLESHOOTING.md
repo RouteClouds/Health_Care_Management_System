@@ -3,15 +3,420 @@
 ## 📋 Table of Contents
 
 1. [Quick Diagnostic Commands](#quick-diagnostic-commands)
-2. [ECR & Container Issues](#ecr--container-issues)
-3. [Terraform Infrastructure Issues](#terraform-infrastructure-issues)
-4. [GitOps & ArgoCD Issues](#gitops--argocd-issues)
-5. [Monitoring & Observability Issues](#monitoring--observability-issues)
-6. [Application-Specific Issues](#application-specific-issues)
-7. [Network & Connectivity Issues](#network--connectivity-issues)
-8. [Performance Issues](#performance-issues)
-9. [Security Issues](#security-issues)
-10. [Emergency Procedures](#emergency-procedures)
+2. [Git & Repository Issues](#git--repository-issues)
+3. [GitHub Actions Pipeline Issues](#github-actions-pipeline-issues)
+4. [ECR & Container Issues](#ecr--container-issues)
+5. [Terraform Infrastructure Issues](#terraform-infrastructure-issues)
+6. [GitOps & ArgoCD Issues](#gitops--argocd-issues)
+7. [Monitoring & Observability Issues](#monitoring--observability-issues)
+8. [Application-Specific Issues](#application-specific-issues)
+9. [Network & Connectivity Issues](#network--connectivity-issues)
+10. [Performance Issues](#performance-issues)
+11. [Security Issues](#security-issues)
+12. [Emergency Procedures](#emergency-procedures)
+
+---
+
+## 📁 Git & Repository Issues
+
+### **Issue: Large Files Blocking Git Push**
+
+**Problem**: Git push fails with errors about large files exceeding GitHub's limits.
+
+**Error Messages**:
+```
+remote: error: File Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/environments/dev/.terraform/providers/registry.terraform.io/hashicorp/aws/5.100.0/linux_amd64/terraform-provider-aws_v5.100.0_x5 is 674.20 MB; this exceeds GitHub's file size limit of 100.00 MB
+remote: error: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.
+```
+
+**Root Cause**: Terraform provider files and `.terraform` directories were accidentally committed to the repository.
+
+**Solution Steps**:
+
+1. **Check for large files**:
+```bash
+# Find large files in repository
+find . -type f -size +50M -exec ls -lh {} \;
+
+# Check git status for large files
+git status --porcelain | grep -E "\.terraform|terraform-provider"
+```
+
+2. **Create proper .gitignore files**:
+```bash
+# Root .gitignore
+cat > .gitignore << 'EOF'
+# Terraform files
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/terraform.tfvars
+**/terraform.tfvars.json
+**/*.tfplan
+**/*.tfstate
+**/.terraform.tfstate.lock.info
+
+# AWS credentials
+**/.aws/
+**/aws-credentials
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Node modules
+**/node_modules/
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# Docker
+**/.dockerignore
+
+# Kubernetes
+**/kubeconfig
+**/.kube/
+
+# Backup files
+**/backup/
+**/migration-backup*/
+
+# Temporary files
+**/tmp/
+**/temp/
+**/.tmp/
+
+# Environment files
+**/.env
+**/.env.local
+**/.env.production
+
+# Build outputs
+**/dist/
+**/build/
+**/target/
+
+# Coverage reports
+**/coverage/
+**/.nyc_output/
+
+# Package files
+**/*.tgz
+**/*.tar.gz
+EOF
+
+# Terraform-specific .gitignore
+cat > Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/.gitignore << 'EOF'
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files, which are likely to contain sensitive data
+*.tfvars
+*.tfvars.json
+
+# Ignore override files as they are usually used to override resources locally
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Include override files you do wish to add to version control using negated pattern
+# !example_override.tf
+
+# Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
+*tfplan*
+
+# Ignore CLI configuration files
+.terraformrc
+terraform.rc
+
+# Terraform lock file (optional - some teams commit this)
+.terraform.lock.hcl
+EOF
+```
+
+3. **Remove large files from git tracking**:
+```bash
+# Remove .terraform directories from git cache
+git rm -r --cached "Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/environments/dev/.terraform" 2>/dev/null || echo "Terraform directory not in cache"
+
+# Clean up any remaining terraform state files
+find . -name "*.tfstate*" -delete 2>/dev/null || echo "Cleaned up tfstate files"
+```
+
+4. **Use git filter-branch to remove from history**:
+```bash
+# Remove large files from entire git history
+git filter-branch --force --index-filter 'git rm --cached --ignore-unmatch -r "Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/environments/dev/.terraform"' --prune-empty --tag-name-filter cat -- --all
+```
+
+5. **Commit the fixes**:
+```bash
+# Add .gitignore files
+git add .gitignore Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/.gitignore
+
+# Commit the fix
+git commit -m "fix: remove large Terraform provider files and add proper .gitignore
+
+- Added comprehensive .gitignore files to prevent large file commits
+- Removed .terraform directories from git tracking
+- Added Terraform-specific .gitignore in terraform directory
+- Prevents future issues with large provider files (674MB AWS provider)
+- Ensures only source code and configuration files are tracked"
+```
+
+6. **Force push to update remote repository**:
+```bash
+# Force push to update remote (WARNING: This rewrites history)
+git push --force origin main
+```
+
+**Prevention**:
+- Always add `.gitignore` files before running `terraform init`
+- Never commit `.terraform/` directories
+- Use `git status` before committing to check for large files
+- Set up pre-commit hooks to prevent large file commits
+
+---
+
+## 🔄 GitHub Actions Pipeline Issues
+
+### **Issue: Multiple Pipelines Triggering Simultaneously**
+
+**Problem**: Both Stage-2 and Stage-3 pipelines trigger when making changes to Stage-3 source code.
+
+**Symptoms**:
+- Both "Stage 2 CI (Quality Gates)" and "Stage 3 CI (Advanced DevOps)" workflows run simultaneously
+- Resource conflicts in AWS (Terraform state locks)
+- Unexpected pipeline executions
+- Confusion about which pipeline should be running
+
+**Root Cause**: Overlapping or incorrect path patterns in GitHub Actions workflow trigger conditions.
+
+**Diagnosis Steps**:
+
+1. **Check current workflow trigger patterns**:
+```bash
+# Check Stage-2 pipeline triggers
+grep -A 20 "paths:" .github/workflows/stage2-ci.yml
+
+# Check Stage-3 pipeline triggers
+grep -A 20 "paths:" .github/workflows/stage3-ci.yml
+```
+
+2. **Analyze recent commits and their triggers**:
+```bash
+# Check what files were changed in recent commits
+git log --oneline -5
+git show --name-only HEAD
+git show --name-only HEAD~1
+```
+
+3. **Test pipeline isolation**:
+```bash
+# Run the pipeline isolation test script
+./scripts/validation/test-pipeline-isolation.sh
+```
+
+**Solution Steps**:
+
+1. **Fix Stage-2 pipeline triggers** (make them specific):
+```yaml
+# .github/workflows/stage2-ci.yml
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/**'
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/k8s/**'
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/helm-charts/**'
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/scripts/**'
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/docs/**'
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/*.md'
+      - '.github/workflows/stage2-ci.yml'
+```
+
+2. **Fix Stage-3 pipeline triggers** (comprehensive paths):
+```yaml
+# .github/workflows/stage3-ci.yml
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/k8s/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/helm-charts/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/monitoring/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/logging/**'
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/*.md'
+      - '.github/workflows/stage3-ci.yml'
+```
+
+3. **Commit the pipeline isolation fixes**:
+```bash
+git add .github/workflows/stage2-ci.yml .github/workflows/stage3-ci.yml
+git commit -m "fix: implement proper pipeline isolation between Stage-2 and Stage-3
+
+- Updated Stage-2 pipeline to use specific directory paths instead of wildcards
+- Updated Stage-3 pipeline with comprehensive path specifications
+- Removed problematic path exclusion patterns that don't work reliably
+- Added pipeline isolation testing script for validation
+- Ensures Stage-2 and Stage-3 pipelines trigger independently
+- Prevents simultaneous pipeline execution conflicts"
+
+git push origin main
+```
+
+4. **Test the isolation**:
+```bash
+# Make a Stage-3 specific change to test
+echo "// Stage-3 pipeline isolation test - $(date)" >> src-code/frontend/src/App.js
+git add src-code/frontend/src/App.js
+git commit -m "test: verify Stage-3 pipeline isolation
+
+- Added test comment to Stage-3 frontend App.js
+- This change should trigger ONLY Stage-3 pipeline
+- Testing pipeline isolation after workflow path fixes"
+git push origin main
+```
+
+**Verification**:
+1. Visit GitHub Actions: https://github.com/USERNAME/Health_Care_Management_System/actions
+2. Verify only the expected pipeline runs for each commit
+3. Check that workflow file changes trigger their respective pipelines (expected behavior)
+
+**Expected Behavior**:
+- **Stage-3 src-code changes** → Only Stage-3 pipeline triggers
+- **Stage-2 src-code changes** → Only Stage-2 pipeline triggers
+- **Workflow file changes** → Respective pipeline triggers (correct behavior)
+- **No simultaneous execution** conflicts
+
+**Pipeline Isolation Test Results**:
+```bash
+# Expected output from test-pipeline-isolation.sh
+🔍 Pipeline Isolation Testing
+=============================
+
+[SUCCESS] ✅ Stage-2 pipeline properly isolated from Stage-3
+[SUCCESS] ✅ Stage-3 pipeline properly isolated from Stage-2
+[SUCCESS] ✅ No overlapping paths found between pipelines
+[SUCCESS] 🎉 All pipeline isolation tests PASSED!
+```
+
+**Common Mistakes to Avoid**:
+- Using `paths-ignore` with `paths` (not supported together)
+- Using overly broad wildcard patterns like `**`
+- Forgetting that workflow file changes trigger their respective pipelines
+- Not testing pipeline isolation after making changes
+
+### **Pipeline Monitoring & Validation**
+
+**Monitor Pipeline Execution**:
+```bash
+# Check recent commits and their expected triggers
+git log --oneline -5
+
+# Analyze what files changed in a specific commit
+git show --name-only COMMIT_HASH
+
+# Check if a commit should trigger Stage-2 or Stage-3
+echo "Checking commit: $(git rev-parse HEAD)"
+echo "Files changed:"
+git show --name-only HEAD | grep -E "(Stage-2|Stage-3)"
+```
+
+**Validate Pipeline Behavior**:
+```bash
+# Test scenarios for pipeline triggers
+echo "📋 Pipeline Trigger Test Scenarios:"
+echo "=================================="
+echo ""
+echo "1. Stage-2 src-code change:"
+echo "   File: Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/app.js"
+echo "   Expected: ✅ Stage-2 triggers, ❌ Stage-3 does NOT trigger"
+echo ""
+echo "2. Stage-3 src-code change:"
+echo "   File: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/README.md"
+echo "   Expected: ❌ Stage-2 does NOT trigger, ✅ Stage-3 triggers"
+echo ""
+echo "3. Stage-3 terraform change:"
+echo "   File: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/main.tf"
+echo "   Expected: ❌ Stage-2 does NOT trigger, ✅ Stage-3 triggers"
+```
+
+**GitHub Actions Monitoring Commands**:
+```bash
+# Quick check of GitHub Actions status (requires gh CLI)
+gh workflow list
+gh run list --limit 5
+
+# Check specific workflow runs
+gh run view --log  # View latest run logs
+gh run list --workflow="Stage 3 CI (Advanced DevOps)" --limit 3
+```
+
+**Warning Signs of Pipeline Issues**:
+- Both pipelines running simultaneously for the same commit
+- Unexpected pipeline triggers (Stage-2 triggering on Stage-3 changes)
+- Resource conflicts in AWS (Terraform state locks)
+- Failed deployments due to concurrent infrastructure changes
+
+### **Quick Reference Commands**
+
+**Git Repository Cleanup**:
+```bash
+# Emergency cleanup for large files
+git filter-branch --force --index-filter 'git rm --cached --ignore-unmatch -r "**/.terraform"' --prune-empty --tag-name-filter cat -- --all
+git push --force origin main
+
+# Check repository size
+du -sh .git/
+git count-objects -vH
+```
+
+**Pipeline Trigger Testing**:
+```bash
+# Test Stage-3 pipeline trigger
+echo "// Pipeline test - $(date)" >> src-code/frontend/src/App.js
+git add src-code/frontend/src/App.js
+git commit -m "test: Stage-3 pipeline trigger test"
+git push origin main
+
+# Validate pipeline isolation
+./scripts/validation/test-pipeline-isolation.sh
+```
+
+**GitHub Actions Quick Check**:
+```bash
+# Check workflow files
+grep -A 10 "paths:" .github/workflows/stage2-ci.yml
+grep -A 10 "paths:" .github/workflows/stage3-ci.yml
+
+# Monitor at: https://github.com/USERNAME/Health_Care_Management_System/actions
+```
 
 ---
 
