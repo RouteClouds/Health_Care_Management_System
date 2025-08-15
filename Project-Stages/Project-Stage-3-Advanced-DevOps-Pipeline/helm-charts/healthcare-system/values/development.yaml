@@ -1,0 +1,191 @@
+# Development Environment Values
+# Healthcare Management System - Stage 3
+
+environment: development
+
+# Frontend configuration for development
+frontend:
+  replicaCount: 1
+  
+  image:
+    tag: "dev-latest"
+    pullPolicy: Always
+  
+  ingress:
+    hosts:
+      - host: healthcare-stage3-dev.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []  # No TLS for local development
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  autoscaling:
+    enabled: false
+  
+  env:
+    REACT_APP_API_URL: "http://api-healthcare-stage3-dev.local"
+    REACT_APP_ENVIRONMENT: "development"
+    REACT_APP_LOG_LEVEL: "debug"
+
+# Backend configuration for development
+backend:
+  replicaCount: 1
+  
+  image:
+    tag: "dev-latest"
+    pullPolicy: Always
+  
+  ingress:
+    hosts:
+      - host: api-healthcare-stage3-dev.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []  # No TLS for local development
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  
+  autoscaling:
+    enabled: false
+  
+  env:
+    NODE_ENV: "development"
+    LOG_LEVEL: "debug"
+    DATABASE_URL: "postgresql://healthcare_stage3:password@healthcare-system-stage3-postgresql:5432/healthcare_stage3_db"
+    JWT_SECRET: "dev-jwt-secret-key"
+    CORS_ORIGIN: "http://healthcare-stage3-dev.local"
+    ENABLE_SWAGGER: "true"
+    RATE_LIMIT_ENABLED: "false"
+
+# Database configuration for development
+database:
+  postgresql:
+    auth:
+      postgresPassword: "postgres123"
+      username: "healthcare_stage3"
+      password: "password"
+      database: "healthcare_stage3_db"
+    
+    primary:
+      persistence:
+        enabled: true
+        size: 5Gi
+      
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 250m
+          memory: 256Mi
+
+# Monitoring configuration for development
+monitoring:
+  enabled: true
+  
+  prometheus:
+    enabled: true
+    server:
+      persistentVolume:
+        size: 5Gi
+      resources:
+        limits:
+          cpu: 500m
+          memory: 1Gi
+        requests:
+          cpu: 100m
+          memory: 256Mi
+  
+  grafana:
+    enabled: true
+    persistence:
+      enabled: true
+      size: 2Gi
+    
+    adminPassword: "admin123"
+    
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+# Logging configuration for development
+logging:
+  enabled: false  # Disable ELK stack for development
+  
+  # Simple logging to stdout
+  fluentd:
+    enabled: false
+
+# Security configuration for development
+security:
+  networkPolicies:
+    enabled: false  # Disabled for easier development
+  
+  podSecurityPolicy:
+    enabled: false  # Disabled for easier development
+
+# Backup configuration for development
+backup:
+  enabled: false  # No backups needed for development
+
+# Development-specific settings
+development:
+  # Enable debug features
+  debug:
+    enabled: true
+    profiling: true
+    metrics: true
+  
+  # Hot reload settings
+  hotReload:
+    enabled: true
+    watchFiles: true
+  
+  # Development tools
+  tools:
+    adminer:
+      enabled: true
+    mailhog:
+      enabled: true
+    redis-commander:
+      enabled: true
+
+# Resource quotas for development namespace
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "2"
+    requests.memory: "4Gi"
+    limits.cpu: "4"
+    limits.memory: "8Gi"
+    persistentvolumeclaims: "10"
+
+# Limit ranges for development
+limitRange:
+  enabled: true
+  limits:
+    - default:
+        cpu: "200m"
+        memory: "256Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      type: Container

@@ -1,0 +1,322 @@
+# Default values for healthcare-system
+# Stage 2 Enhanced Infrastructure
+
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: "gp3"
+  
+# Environment configuration
+environment: development
+
+# Namespace configuration
+namespace:
+  create: true
+  name: healthcare-system
+
+# Frontend configuration
+frontend:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    repository: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3
+    tag: "v1.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: healthcare-dev.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: healthcare-frontend-tls
+        hosts:
+          - healthcare-dev.example.com
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  env:
+    REACT_APP_API_URL: "https://api-healthcare-dev.example.com"
+    REACT_APP_ENVIRONMENT: "development"
+
+# Backend configuration
+backend:
+  enabled: true
+  replicaCount: 3
+  
+  image:
+    repository: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-backend-stage3
+    tag: "v1.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: api-healthcare-dev.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: healthcare-backend-tls
+        hosts:
+          - api-healthcare-dev.example.com
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 15
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  env:
+    NODE_ENV: "development"
+    PORT: "3000"
+    DATABASE_URL: "postgresql://healthcare:password@postgres-service:5432/healthcare_db"
+    JWT_SECRET: "your-jwt-secret-key"
+    CORS_ORIGIN: "https://healthcare-dev.example.com"
+  
+  # Health checks
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 3000
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# Database configuration
+database:
+  enabled: true
+  
+  # Use external PostgreSQL or internal
+  external: false
+  
+  # Internal PostgreSQL configuration
+  postgresql:
+    enabled: true
+    auth:
+      postgresPassword: "postgres123"
+      username: "healthcare"
+      password: "password"
+      database: "healthcare_db"
+    
+    primary:
+      persistence:
+        enabled: true
+        size: 20Gi
+        storageClass: "gp3"
+      
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+    
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  
+  prometheus:
+    enabled: true
+    server:
+      persistentVolume:
+        size: 20Gi
+        storageClass: "gp3"
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 250m
+          memory: 512Mi
+  
+  grafana:
+    enabled: true
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: "gp3"
+    
+    adminPassword: "admin123"
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    
+    dashboardProviders:
+      dashboardproviders.yaml:
+        apiVersion: 1
+        providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+    
+    dashboards:
+      default:
+        healthcare-overview:
+          gnetId: 1860
+          revision: 27
+          datasource: Prometheus
+
+# Logging configuration
+logging:
+  enabled: true
+  
+  fluentd:
+    enabled: true
+    image:
+      repository: fluent/fluentd-kubernetes-daemonset
+      tag: "v1.16-debian-elasticsearch7-1"
+    
+    elasticsearch:
+      host: "elasticsearch-service"
+      port: 9200
+      scheme: "http"
+  
+  elasticsearch:
+    enabled: true
+    replicas: 1
+    
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+    
+    persistence:
+      enabled: true
+      size: 30Gi
+      storageClass: "gp3"
+  
+  kibana:
+    enabled: true
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+# Security configuration
+security:
+  networkPolicies:
+    enabled: true
+  
+  podSecurityPolicy:
+    enabled: true
+  
+  rbac:
+    create: true
+  
+  serviceAccount:
+    create: true
+    name: ""
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention: "30d"
+  
+  s3:
+    bucket: "healthcare-backups"
+    region: "us-west-2"
+    accessKey: ""
+    secretKey: ""
+
+# Secrets management
+secrets:
+  external: false
+  
+  # AWS Secrets Manager integration
+  awsSecretsManager:
+    enabled: false
+    region: "us-west-2"
+    secretName: "healthcare-secrets"
+
+# Node affinity and tolerations
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

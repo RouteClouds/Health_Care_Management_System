@@ -1,0 +1,177 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: healthcare-backend
+  namespace: healthcare
+  labels:
+    app: healthcare-backend
+    tier: backend
+    stage: stage-1-basic
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: healthcare-backend
+  template:
+    metadata:
+      labels:
+        app: healthcare-backend
+        tier: backend
+        stage: stage-1-basic
+    spec:
+      initContainers:
+      - name: db-init
+        image: routeclouds/healthcare-backend:latest
+        imagePullPolicy: Always
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: DATABASE_URL
+          value: "postgresql://healthcare_user:healthcare_password@postgres-service:5432/healthcare_db"
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          echo "🗄️ Running database initialization with seeding..."
+
+          # Try to run the init script first
+          if [ -f scripts/init-db.sh ]; then
+            echo "📜 Found init-db.sh script, attempting to run..."
+            chmod +x scripts/init-db.sh
+            if ./scripts/init-db.sh; then
+              echo "✅ Script-based initialization completed successfully"
+              exit 0
+            else
+              echo "⚠️ Script failed, falling back to inline initialization..."
+            fi
+          else
+            echo "⚠️ init-db.sh not found, using inline initialization..."
+          fi
+
+          # Fallback: inline initialization and seeding
+          echo "🔧 Running basic database setup..."
+          npx prisma db push --accept-data-loss || echo "Schema push completed"
+          npx prisma generate || echo "Generate completed"
+
+          echo "🌱 Running inline seeding..."
+          node -e "
+          (async () => {
+            const { PrismaClient } = require('@prisma/client');
+            const prisma = new PrismaClient();
+            try {
+              console.log('🔍 Checking existing data...');
+              const doctorCount = await prisma.doctor.count();
+              console.log('Found', doctorCount, 'existing doctors');
+
+              if (doctorCount === 0) {
+                console.log('🏢 Creating departments...');
+                const cardiology = await prisma.department.create({
+                  data: { name: 'Cardiology', code: 'CARD', description: 'Heart and cardiovascular system' }
+                });
+                const pulmonology = await prisma.department.create({
+                  data: { name: 'Pulmonology', code: 'PULM', description: 'Lungs and respiratory system' }
+                });
+                const neurology = await prisma.department.create({
+                  data: { name: 'Neurology', code: 'NEUR', description: 'Brain and nervous system' }
+                });
+                const orthopedics = await prisma.department.create({
+                  data: { name: 'Orthopedics', code: 'ORTH', description: 'Bones, joints, and muscles' }
+                });
+
+                console.log('👨‍⚕️ Creating doctors...');
+                await prisma.doctor.create({
+                  data: { firstName: 'John', lastName: 'Smith', email: 'john.smith@hospital.com', specialization: 'Cardiologist', departmentId: cardiology.id, qualifications: ['MD', 'FACC'], experienceYears: 10, consultationFee: 200.0 }
+                });
+                await prisma.doctor.create({
+                  data: { firstName: 'Sarah', lastName: 'Johnson', email: 'sarah.johnson@hospital.com', specialization: 'Pulmonologist', departmentId: pulmonology.id, qualifications: ['MD', 'FCCP'], experienceYears: 8, consultationFee: 180.0 }
+                });
+                await prisma.doctor.create({
+                  data: { firstName: 'Michael', lastName: 'Brown', email: 'michael.brown@hospital.com', specialization: 'Neurologist', departmentId: neurology.id, qualifications: ['MD', 'PhD'], experienceYears: 15, consultationFee: 250.0 }
+                });
+                await prisma.doctor.create({
+                  data: { firstName: 'Emily', lastName: 'Davis', email: 'emily.davis@hospital.com', specialization: 'Orthopedic Surgeon', departmentId: orthopedics.id, qualifications: ['MD', 'FAAOS'], experienceYears: 12, consultationFee: 300.0 }
+                });
+                await prisma.doctor.create({
+                  data: { firstName: 'David', lastName: 'Wilson', email: 'david.wilson@hospital.com', specialization: 'Interventional Cardiologist', departmentId: cardiology.id, qualifications: ['MD', 'FACC', 'FSCAI'], experienceYears: 18, consultationFee: 350.0 }
+                });
+
+                console.log('✅ Database seeded with 4 departments and 5 doctors');
+              } else {
+                console.log('✅ Database already has doctors, skipping seed');
+              }
+            } catch (error) {
+              console.error('❌ Seeding error:', error.message);
+              console.error('Stack:', error.stack);
+            } finally {
+              await prisma.\$disconnect();
+            }
+          })();
+          "
+
+          echo "✅ Database initialization and seeding complete"
+      containers:
+      - name: backend
+        image: routeclouds/healthcare-backend:latest  # Always pull latest image for automatic updates
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3002
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3002"
+        - name: DATABASE_URL
+          value: "postgresql://healthcare_user:healthcare_password@postgres-service:5432/healthcare_db"
+        - name: JWT_SECRET
+          value: "healthcare_jwt_secret_key_2024_stage1"
+        - name: CORS_ORIGIN
+          value: "*"
+        - name: API_BASE_URL
+          value: "/api"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3002
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/ready
+            port: 3002
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: healthcare
+  labels:
+    app: healthcare-backend
+    tier: backend
+    stage: stage-1-basic
+spec:
+  selector:
+    app: healthcare-backend
+  ports:
+  - port: 3002
+    targetPort: 3002
+    protocol: TCP
+    name: http
+  type: ClusterIP
+
+

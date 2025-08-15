@@ -4,13 +4,14 @@ on:
   push:
     branches: [ main, develop ]
     paths:
-      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/**'
-      - '.github/workflows/**'
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/**'
+      - '.github/workflows/stage2-ci.yml'
+      - '!Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/**'  # Exclude Stage-3
   pull_request:
     branches: [ main ]
     paths:
-      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/src-code/**'
-      - '.github/workflows/**'
+      - 'Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/**'
+      - '!Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/**'  # Exclude Stage-3
   workflow_dispatch:
 
 env:

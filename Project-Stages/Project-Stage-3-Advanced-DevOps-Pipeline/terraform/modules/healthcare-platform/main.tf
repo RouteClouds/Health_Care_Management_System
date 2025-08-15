@@ -1,0 +1,249 @@
+# Healthcare Platform Infrastructure Module
+# Stage-3 Advanced DevOps Pipeline
+
+# Data sources
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+data "aws_caller_identity" "current" {}
+
+# VPC Module
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+  version = "~> 5.0"
+
+  name = "${var.cluster_name}-vpc"
+  cidr = var.vpc_cidr
+
+  azs             = slice(data.aws_availability_zones.available.names, 0, 3)
+  private_subnets = var.private_subnets
+  public_subnets  = var.public_subnets
+
+  enable_nat_gateway = true
+  enable_vpn_gateway = false
+  enable_dns_hostnames = true
+  enable_dns_support = true
+
+  # EKS specific tags
+  public_subnet_tags = {
+    "kubernetes.io/role/elb" = "1"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+  }
+
+  private_subnet_tags = {
+    "kubernetes.io/role/internal-elb" = "1"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+  }
+
+  tags = merge(var.tags, {
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+  })
+}
+
+# EKS Cluster
+module "eks" {
+  source = "terraform-aws-modules/eks/aws"
+  version = "~> 19.0"
+
+  cluster_name    = var.cluster_name
+  cluster_version = var.kubernetes_version
+
+  vpc_id                         = module.vpc.vpc_id
+  subnet_ids                     = module.vpc.private_subnets
+  cluster_endpoint_public_access = true
+
+  # EKS Managed Node Groups
+  eks_managed_node_groups = {
+    healthcare_nodes = {
+      name = "${var.cluster_name}-nodes"
+
+      instance_types = var.node_instance_types
+      capacity_type  = "ON_DEMAND"
+
+      min_size     = var.min_nodes
+      max_size     = var.max_nodes
+      desired_size = var.desired_nodes
+
+      # Launch template configuration
+      launch_template_tags = var.tags
+      
+      # Node group scaling configuration
+      update_config = {
+        max_unavailable_percentage = 25
+      }
+
+      labels = {
+        Environment = var.environment
+        NodeGroup = "healthcare-nodes"
+      }
+
+      taints = []
+
+      tags = var.tags
+    }
+  }
+
+  # Cluster access entry
+  # To add the current caller identity as an administrator
+  enable_cluster_creator_admin_permissions = true
+
+  tags = var.tags
+}
+
+# RDS Database
+resource "aws_db_subnet_group" "healthcare" {
+  name       = "${var.cluster_name}-db-subnet-group"
+  subnet_ids = module.vpc.private_subnets
+
+  tags = merge(var.tags, {
+    Name = "${var.cluster_name}-db-subnet-group"
+  })
+}
+
+resource "aws_security_group" "rds" {
+  name_prefix = "${var.cluster_name}-rds-"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.cluster_name}-rds-sg"
+  })
+}
+
+resource "aws_db_instance" "healthcare" {
+  identifier = "${var.cluster_name}-db"
+
+  engine         = "postgres"
+  engine_version = var.postgres_version
+  instance_class = var.db_instance_class
+
+  allocated_storage     = var.db_allocated_storage
+  max_allocated_storage = var.db_max_allocated_storage
+  storage_encrypted     = true
+
+  db_name  = "healthcare_stage3_db"
+  username = "healthcare_stage3_user"
+  password = var.db_password
+
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.healthcare.name
+
+  backup_retention_period = var.environment == "prod" ? 7 : 1
+  backup_window          = "03:00-04:00"
+  maintenance_window     = "sun:04:00-sun:05:00"
+
+  skip_final_snapshot = var.environment != "prod"
+  deletion_protection = var.environment == "prod"
+
+  tags = merge(var.tags, {
+    Name = "${var.cluster_name}-database"
+  })
+}
+
+# ECR Repositories
+resource "aws_ecr_repository" "frontend" {
+  name                 = "healthcare-frontend-stage3"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = var.tags
+}
+
+resource "aws_ecr_repository" "backend" {
+  name                 = "healthcare-backend-stage3"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = var.tags
+}
+
+# ECR Lifecycle Policies
+resource "aws_ecr_lifecycle_policy" "frontend" {
+  repository = aws_ecr_repository.frontend.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 30 images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 30
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_ecr_lifecycle_policy" "backend" {
+  repository = aws_ecr_repository.backend.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 30 images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 30
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+# S3 Bucket for Application Assets
+resource "aws_s3_bucket" "healthcare_assets" {
+  bucket = "healthcare-assets-stage3-${var.environment}-${data.aws_caller_identity.current.account_id}"
+
+  tags = merge(var.tags, {
+    Name = "healthcare-assets-${var.environment}"
+  })
+}
+
+resource "aws_s3_bucket_versioning" "healthcare_assets" {
+  bucket = aws_s3_bucket.healthcare_assets.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "healthcare_assets" {
+  bucket = aws_s3_bucket.healthcare_assets.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}

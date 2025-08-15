@@ -1,0 +1,197 @@
+name: Stage 3 CI (Advanced DevOps)
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/**'
+      - '.github/workflows/stage3-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - staging
+        - prod
+
+env:
+  SOURCE_CODE_PATH: './Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code'
+  TERRAFORM_PATH: './Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform'
+  STAGE: 'stage-3'
+  AWS_REGION: 'us-east-1'
+  # ECR Registry will be dynamically detected from AWS Account ID: 867344452513
+
+jobs:
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Format Check
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: terraform fmt -check
+
+      - name: Terraform Init
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: terraform validate
+
+  unit-tests:
+    name: Unit Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18.x, 20.x]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: '${{ env.SOURCE_CODE_PATH }}/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ${{ env.SOURCE_CODE_PATH }}
+        run: |
+          npm install
+          cd frontend && npm install
+          cd ../backend && npm install
+
+      - name: Run unit tests
+        working-directory: ${{ env.SOURCE_CODE_PATH }}
+        run: npm run test:unit
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '${{ env.SOURCE_CODE_PATH }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+  build-images:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    needs: [terraform-validate, unit-tests, security-scan]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images
+        working-directory: ${{ env.SOURCE_CODE_PATH }}
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY_FRONTEND: healthcare-frontend-stage3
+          ECR_REPOSITORY_BACKEND: healthcare-backend-stage3
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build frontend
+          docker build -f Dockerfile.frontend -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG .
+          docker build -f Dockerfile.frontend -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest .
+
+          # Build backend
+          docker build -f Dockerfile.backend -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG .
+          docker build -f Dockerfile.backend -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:latest .
+
+          # Push images
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:latest
+
+  deploy-infrastructure:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: [build-images]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          terraform init
+          terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: terraform apply -auto-approve tfplan
+
+  update-gitops:
+    name: Update GitOps Repository
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update GitOps manifests
+        working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Update image tags in GitOps manifests
+          sed -i "s|image: .*healthcare-frontend.*|image: ${{ secrets.ECR_REGISTRY }}/healthcare-frontend-stage3:$IMAGE_TAG|g" environments/dev/frontend.yaml
+          sed -i "s|image: .*healthcare-backend.*|image: ${{ secrets.ECR_REGISTRY }}/healthcare-backend-stage3:$IMAGE_TAG|g" environments/dev/backend.yaml
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/
+          git commit -m "Update Stage-3 image tags to ${{ github.sha }}" || exit 0
+          git push

@@ -1,0 +1,306 @@
+# Production Environment Values
+# Healthcare Management System - Stage 2
+
+environment: production
+
+# Frontend configuration for production
+frontend:
+  replicaCount: 5
+  
+  image:
+    tag: "v1.0"
+    pullPolicy: IfNotPresent
+  
+  ingress:
+    hosts:
+      - host: stage3.healthcare.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: healthcare-frontend-tls
+        hosts:
+          - stage3.healthcare.example.com
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+  
+  env:
+    REACT_APP_API_URL: "https://api.stage3.healthcare.example.com"
+    REACT_APP_ENVIRONMENT: "production"
+    REACT_APP_LOG_LEVEL: "error"
+    REACT_APP_SENTRY_DSN: "https://your-sentry-dsn@sentry.io/project"
+
+# Backend configuration for production
+backend:
+  replicaCount: 10
+  
+  image:
+    tag: "v1.0"
+    pullPolicy: IfNotPresent
+  
+  ingress:
+    hosts:
+      - host: api.stage3.healthcare.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: healthcare-backend-tls
+        hosts:
+          - api.stage3.healthcare.example.com
+  
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 10
+    maxReplicas: 50
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+  
+  env:
+    NODE_ENV: "production"
+    LOG_LEVEL: "info"
+    DATABASE_URL: "postgresql://healthcare:${DB_PASSWORD}@healthcare-system-postgresql:5432/healthcare_db"
+    JWT_SECRET: "${JWT_SECRET}"
+    CORS_ORIGIN: "https://stage3.healthcare.example.com"
+    ENABLE_SWAGGER: "false"
+    RATE_LIMIT_ENABLED: "true"
+    SENTRY_DSN: "https://your-sentry-dsn@sentry.io/project"
+
+# Database configuration for production
+database:
+  # Use external managed database for production
+  external: true
+  externalConnectionString: "postgresql://healthcare:${DB_PASSWORD}@prod-db.cluster-xyz.us-west-2.rds.amazonaws.com:5432/healthcare_db"
+  
+  postgresql:
+    enabled: false  # Disable internal PostgreSQL
+
+# Monitoring configuration for production
+monitoring:
+  enabled: true
+  
+  prometheus:
+    enabled: true
+    server:
+      persistentVolume:
+        size: 100Gi
+      resources:
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+      
+      # High availability
+      replicaCount: 2
+      
+      # Retention settings
+      retention: "90d"
+      retentionSize: "80GB"
+  
+  grafana:
+    enabled: true
+    persistence:
+      enabled: true
+      size: 20Gi
+    
+    adminPassword: "${GRAFANA_ADMIN_PASSWORD}"
+    
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+    
+    # High availability
+    replicas: 2
+
+# Logging configuration for production
+logging:
+  enabled: true
+  
+  fluentd:
+    enabled: true
+    
+    elasticsearch:
+      host: "elasticsearch-service"
+      port: 9200
+      scheme: "https"
+      user: "elastic"
+      password: "${ELASTICSEARCH_PASSWORD}"
+  
+  elasticsearch:
+    enabled: true
+    replicas: 3
+    
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+    
+    persistence:
+      enabled: true
+      size: 200Gi
+  
+  kibana:
+    enabled: true
+    
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+# Security configuration for production
+security:
+  networkPolicies:
+    enabled: true
+  
+  podSecurityPolicy:
+    enabled: true
+  
+  # Additional security measures
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    fsGroup: 1001
+    seccompProfile:
+      type: RuntimeDefault
+
+# Backup configuration for production
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention: "90d"
+  
+  s3:
+    bucket: "healthcare-prod-backups"
+    region: "us-west-2"
+    accessKey: "${AWS_ACCESS_KEY_ID}"
+    secretKey: "${AWS_SECRET_ACCESS_KEY}"
+
+# Secrets management for production
+secrets:
+  external: true
+  
+  awsSecretsManager:
+    enabled: true
+    region: "us-west-2"
+    secretName: "healthcare-prod-secrets"
+
+# Production-specific settings
+production:
+  # High availability
+  multiAZ: true
+  
+  # Performance optimization
+  performance:
+    caching:
+      enabled: true
+      redis:
+        enabled: true
+        cluster: true
+        replicas: 3
+    
+    cdn:
+      enabled: true
+      provider: "cloudfront"
+  
+  # Compliance
+  compliance:
+    hipaa: true
+    sox: true
+    gdpr: true
+    
+    audit:
+      enabled: true
+      retention: "7y"
+  
+  # Disaster recovery
+  disasterRecovery:
+    enabled: true
+    rto: "4h"  # Recovery Time Objective
+    rpo: "1h"  # Recovery Point Objective
+    
+    crossRegionBackup:
+      enabled: true
+      region: "us-east-1"
+
+# Resource quotas for production namespace
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "50"
+    requests.memory: "100Gi"
+    limits.cpu: "100"
+    limits.memory: "200Gi"
+    persistentvolumeclaims: "50"
+
+# Limit ranges for production
+limitRange:
+  enabled: true
+  limits:
+    - default:
+        cpu: "1000m"
+        memory: "1Gi"
+      defaultRequest:
+        cpu: "500m"
+        memory: "512Mi"
+      type: Container
+
+# Pod disruption budgets for high availability
+podDisruptionBudget:
+  enabled: true
+  minAvailable: "50%"
+
+# Node affinity for production workloads
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: node-type
+          operator: In
+          values:
+          - production
+  
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - healthcare-system
+        topologyKey: kubernetes.io/hostname

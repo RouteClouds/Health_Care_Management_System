@@ -1,0 +1,411 @@
+# Security Policies Configuration
+# Healthcare Management System - Stage 2
+# Comprehensive security policies and enforcement rules
+
+# Global security policy
+global:
+  # Policy version
+  version: "2.0.0"
+  
+  # Policy enforcement level
+  enforcement: strict
+  
+  # Compliance frameworks
+  compliance:
+    - hipaa
+    - sox
+    - fda
+    - gdpr
+    
+  # Security contact
+  contact:
+    email: security@healthcare.com
+    team: Security Team
+
+# Vulnerability management policies
+vulnerabilities:
+  # Severity-based policies
+  severity:
+    critical:
+      # Block deployment
+      block_deployment: true
+      
+      # Maximum allowed
+      max_allowed: 0
+      
+      # SLA for remediation (hours)
+      remediation_sla: 24
+      
+      # Notification level
+      notification: immediate
+      
+    high:
+      block_deployment: true
+      max_allowed: 0
+      remediation_sla: 72
+      notification: immediate
+      
+    medium:
+      block_deployment: false
+      max_allowed: 5
+      remediation_sla: 168  # 1 week
+      notification: daily
+      
+    low:
+      block_deployment: false
+      max_allowed: 20
+      remediation_sla: 720  # 30 days
+      notification: weekly
+      
+  # Age-based policies
+  age:
+    # Block vulnerabilities older than X days
+    critical_max_age: 0
+    high_max_age: 7
+    medium_max_age: 30
+    low_max_age: 90
+    
+  # CVSS-based policies
+  cvss:
+    # Minimum CVSS score to flag
+    min_score: 4.0
+    
+    # Block deployment threshold
+    block_threshold: 7.0
+    
+    # Version preference
+    version: "3.1"
+
+# Secret detection policies
+secrets:
+  # Types of secrets to detect
+  types:
+    - api_keys
+    - passwords
+    - tokens
+    - certificates
+    - database_credentials
+    - cloud_credentials
+    
+  # Enforcement rules
+  enforcement:
+    # Block on any secret detection
+    block_on_detection: true
+    
+    # Quarantine files with secrets
+    quarantine: true
+    
+    # Notification level
+    notification: immediate
+    
+  # Allowed patterns (for testing)
+  allowed_patterns:
+    - "test_api_key_*"
+    - "mock_password_*"
+    - "dummy_token_*"
+    
+  # File exclusions
+  exclude_files:
+    - "*.test.*"
+    - "*.spec.*"
+    - "test/**"
+    - "tests/**"
+    - "__tests__/**"
+    - "*.example.*"
+    - "*.template.*"
+
+# License compliance policies
+licenses:
+  # Forbidden licenses
+  forbidden:
+    - GPL-2.0
+    - GPL-3.0
+    - AGPL-1.0
+    - AGPL-3.0
+    - SSPL-1.0
+    - Commons-Clause
+    
+  # Allowed licenses
+  allowed:
+    - MIT
+    - Apache-2.0
+    - BSD-2-Clause
+    - BSD-3-Clause
+    - ISC
+    - MPL-2.0
+    - LGPL-2.1
+    - LGPL-3.0
+    
+  # Requires review
+  review_required:
+    - CC-BY-SA-4.0
+    - EPL-2.0
+    - CDDL-1.1
+    
+  # Enforcement
+  enforcement:
+    block_forbidden: true
+    require_approval: true
+    notification: immediate
+
+# Container security policies
+containers:
+  # Base image policies
+  base_images:
+    # Allowed registries
+    allowed_registries:
+      - docker.io
+      - gcr.io
+      - quay.io
+      - ghcr.io
+      
+    # Forbidden base images
+    forbidden_images:
+      - "*:latest"
+      - "alpine:*"  # Too minimal for healthcare
+      - "scratch"
+      
+    # Required image scanning
+    require_scanning: true
+    
+    # Maximum image age (days)
+    max_age: 90
+    
+  # Runtime policies
+  runtime:
+    # Disallow privileged containers
+    allow_privileged: false
+    
+    # Disallow root user
+    allow_root: false
+    
+    # Required security contexts
+    require_security_context: true
+    
+    # Network policies
+    require_network_policies: true
+    
+    # Resource limits
+    require_resource_limits: true
+
+# Infrastructure as Code policies
+iac:
+  # Kubernetes policies
+  kubernetes:
+    # Security contexts
+    security_contexts:
+      require_non_root: true
+      require_read_only_root: true
+      disallow_privileged: true
+      
+    # Network policies
+    network_policies:
+      require_network_policies: true
+      default_deny_all: true
+      
+    # RBAC policies
+    rbac:
+      require_rbac: true
+      least_privilege: true
+      
+    # Pod security standards
+    pod_security:
+      standard: restricted
+      version: latest
+      
+  # Terraform policies
+  terraform:
+    # AWS policies
+    aws:
+      require_encryption: true
+      require_versioning: true
+      disallow_public_access: true
+      
+    # Security groups
+    security_groups:
+      disallow_0_0_0_0: true
+      require_description: true
+      
+  # Docker policies
+  docker:
+    # Dockerfile best practices
+    dockerfile:
+      require_user: true
+      disallow_latest_tag: true
+      require_healthcheck: true
+      minimize_layers: true
+
+# Healthcare-specific policies
+healthcare:
+  # HIPAA compliance
+  hipaa:
+    # Data encryption
+    encryption:
+      require_at_rest: true
+      require_in_transit: true
+      min_key_length: 256
+      
+    # Access controls
+    access_control:
+      require_mfa: true
+      session_timeout: 900  # 15 minutes
+      password_complexity: high
+      
+    # Audit logging
+    audit:
+      log_all_access: true
+      log_data_changes: true
+      retention_period: 2555  # 7 years in days
+      
+    # Data handling
+    data:
+      require_data_classification: true
+      disallow_phi_in_logs: true
+      require_anonymization: true
+      
+  # FDA requirements
+  fda:
+    # Software validation
+    validation:
+      require_testing: true
+      min_coverage: 80
+      require_documentation: true
+      
+    # Change control
+    change_control:
+      require_approval: true
+      require_testing: true
+      require_documentation: true
+      
+    # Risk management
+    risk_management:
+      require_risk_assessment: true
+      require_mitigation_plan: true
+      
+  # SOX compliance
+  sox:
+    # Change management
+    change_management:
+      require_approval: true
+      require_segregation: true
+      require_audit_trail: true
+      
+    # Access controls
+    access_controls:
+      require_least_privilege: true
+      require_periodic_review: true
+      require_termination_process: true
+
+# Notification policies
+notifications:
+  # Channels
+  channels:
+    email:
+      enabled: true
+      recipients:
+        critical: ["security@healthcare.com", "cto@healthcare.com"]
+        high: ["security@healthcare.com", "dev-leads@healthcare.com"]
+        medium: ["security@healthcare.com"]
+        low: ["security@healthcare.com"]
+        
+    slack:
+      enabled: true
+      channels:
+        critical: "#security-critical"
+        high: "#security-alerts"
+        medium: "#security-alerts"
+        low: "#security-reports"
+        
+    jira:
+      enabled: true
+      project: "SEC"
+      issue_types:
+        critical: "Security Incident"
+        high: "Security Bug"
+        medium: "Security Task"
+        low: "Security Improvement"
+        
+  # Escalation
+  escalation:
+    # Time-based escalation (minutes)
+    critical: 15
+    high: 60
+    medium: 240
+    low: 1440
+    
+    # Escalation chain
+    chain:
+      - security_team
+      - dev_leads
+      - engineering_manager
+      - cto
+
+# Remediation policies
+remediation:
+  # Automatic remediation
+  automatic:
+    # Enable auto-remediation
+    enabled: true
+    
+    # Actions to take
+    actions:
+      - quarantine_file
+      - block_deployment
+      - create_issue
+      - notify_team
+      
+    # Conditions for auto-remediation
+    conditions:
+      - severity >= HIGH
+      - confidence >= 0.9
+      - not_in_exclusions
+      
+  # Manual remediation
+  manual:
+    # Require manual review
+    require_review: true
+    
+    # Approval process
+    approval:
+      required_approvers: 2
+      approver_roles:
+        - security_engineer
+        - senior_developer
+        - tech_lead
+        
+    # Documentation requirements
+    documentation:
+      require_justification: true
+      require_mitigation_plan: true
+      require_timeline: true
+
+# Reporting policies
+reporting:
+  # Report generation
+  generation:
+    # Frequency
+    daily: true
+    weekly: true
+    monthly: true
+    
+    # Recipients
+    recipients:
+      daily: ["security@healthcare.com"]
+      weekly: ["security@healthcare.com", "dev-leads@healthcare.com"]
+      monthly: ["security@healthcare.com", "management@healthcare.com"]
+      
+  # Metrics to include
+  metrics:
+    - vulnerability_count_by_severity
+    - remediation_time_by_severity
+    - compliance_status
+    - trend_analysis
+    - top_vulnerable_components
+    
+  # Retention
+  retention:
+    # Keep reports for X days
+    days: 2555  # 7 years for healthcare compliance
+    
+    # Archive location
+    archive: "s3://healthcare-security-reports/"
