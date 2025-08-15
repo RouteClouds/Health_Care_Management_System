@@ -56,7 +56,7 @@ module "eks" {
   # EKS Managed Node Groups
   eks_managed_node_groups = {
     healthcare_nodes = {
-      name = "${var.cluster_name}-nodes"
+      name = "healthcare-nodes"
 
       instance_types = var.node_instance_types
       capacity_type  = "ON_DEMAND"
@@ -84,9 +84,17 @@ module "eks" {
     }
   }
 
-  # Cluster access entry
-  # To add the current caller identity as an administrator
-  enable_cluster_creator_admin_permissions = true
+  # Cluster access configuration
+  # For EKS module version 19.x, we use manage_aws_auth_configmap
+  manage_aws_auth_configmap = true
+
+  aws_auth_roles = [
+    {
+      rolearn  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+      username = "admin"
+      groups   = ["system:masters"]
+    }
+  ]
 
   tags = var.tags
 }
