@@ -53,21 +53,110 @@ check_aws_cli() {
     log_info "Using AWS Region: $AWS_REGION"
 }
 
+# Clean up EKS Node Groups
+cleanup_eks_nodegroups() {
+    log_info "Checking EKS node groups for cluster: $CLUSTER_NAME"
+
+    if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$AWS_REGION" &> /dev/null; then
+        local nodegroups=$(aws eks list-nodegroups --cluster-name "$CLUSTER_NAME" --region "$AWS_REGION" --query 'nodegroups' --output text 2>/dev/null)
+
+        if [[ -n "$nodegroups" && "$nodegroups" != "None" ]]; then
+            log_warning "Found node groups: $nodegroups"
+
+            for nodegroup in $nodegroups; do
+                log_info "Deleting node group: $nodegroup"
+                if aws eks delete-nodegroup --cluster-name "$CLUSTER_NAME" --nodegroup-name "$nodegroup" --region "$AWS_REGION"; then
+                    log_success "✅ Initiated deletion of node group: $nodegroup"
+                else
+                    log_error "❌ Failed to delete node group: $nodegroup"
+                    return 1
+                fi
+            done
+
+            # Wait for node groups to be deleted
+            log_info "Waiting for node groups to be deleted (this may take 5-10 minutes)..."
+            for nodegroup in $nodegroups; do
+                local max_wait=600  # 10 minutes
+                local wait_time=0
+
+                while [ $wait_time -lt $max_wait ]; do
+                    if ! aws eks describe-nodegroup --cluster-name "$CLUSTER_NAME" --nodegroup-name "$nodegroup" --region "$AWS_REGION" &> /dev/null; then
+                        log_success "✅ Node group $nodegroup deleted successfully"
+                        break
+                    fi
+
+                    log_info "Still waiting for node group $nodegroup to be deleted... ($wait_time/$max_wait seconds)"
+                    sleep 30
+                    wait_time=$((wait_time + 30))
+                done
+
+                if [ $wait_time -ge $max_wait ]; then
+                    log_error "❌ Timeout waiting for node group $nodegroup to be deleted"
+                    return 1
+                fi
+            done
+        else
+            log_info "No node groups found for cluster $CLUSTER_NAME"
+        fi
+    else
+        log_info "EKS cluster $CLUSTER_NAME does not exist"
+    fi
+}
+
+# Clean up EKS Cluster
+cleanup_eks_cluster() {
+    log_info "Checking EKS cluster: $CLUSTER_NAME"
+
+    if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$AWS_REGION" &> /dev/null; then
+        log_warning "EKS cluster $CLUSTER_NAME exists. Deleting..."
+
+        if aws eks delete-cluster --name "$CLUSTER_NAME" --region "$AWS_REGION"; then
+            log_success "✅ Initiated deletion of EKS cluster: $CLUSTER_NAME"
+
+            # Wait for cluster to be deleted
+            log_info "Waiting for EKS cluster to be deleted (this may take 10-15 minutes)..."
+            local max_wait=900  # 15 minutes
+            local wait_time=0
+
+            while [ $wait_time -lt $max_wait ]; do
+                if ! aws eks describe-cluster --name "$CLUSTER_NAME" --region "$AWS_REGION" &> /dev/null; then
+                    log_success "✅ EKS cluster $CLUSTER_NAME deleted successfully"
+                    break
+                fi
+
+                log_info "Still waiting for EKS cluster to be deleted... ($wait_time/$max_wait seconds)"
+                sleep 60
+                wait_time=$((wait_time + 60))
+            done
+
+            if [ $wait_time -ge $max_wait ]; then
+                log_error "❌ Timeout waiting for EKS cluster to be deleted"
+                return 1
+            fi
+        else
+            log_error "❌ Failed to delete EKS cluster: $CLUSTER_NAME"
+            return 1
+        fi
+    else
+        log_info "EKS cluster $CLUSTER_NAME does not exist"
+    fi
+}
+
 # Clean up KMS Alias
 cleanup_kms_alias() {
     log_info "Checking KMS alias: $KMS_ALIAS"
-    
+
     if aws kms describe-key --key-id "$KMS_ALIAS" --region "$AWS_REGION" &> /dev/null; then
         log_warning "KMS alias $KMS_ALIAS exists. Deleting..."
-        
+
         # Get the target key ID
         local key_id=$(aws kms list-aliases --query "Aliases[?AliasName=='$KMS_ALIAS'].TargetKeyId" --output text --region "$AWS_REGION")
-        
+
         if [[ -n "$key_id" ]]; then
             # Delete the alias first
             if aws kms delete-alias --alias-name "$KMS_ALIAS" --region "$AWS_REGION"; then
                 log_success "✅ Deleted KMS alias: $KMS_ALIAS"
-                
+
                 # Schedule key deletion (minimum 7 days)
                 if aws kms schedule-key-deletion --key-id "$key_id" --pending-window-in-days 7 --region "$AWS_REGION" &> /dev/null; then
                     log_success "✅ Scheduled KMS key deletion: $key_id"
@@ -154,10 +243,17 @@ main() {
     check_aws_cli
     
     local errors=0
-    
-    # Clean up resources in reverse dependency order
+
+    # Clean up resources in proper dependency order
+    # 1. First clean up application-level resources
     cleanup_s3_bucket || ((errors++))
     cleanup_db_subnet_group || ((errors++))
+
+    # 2. Then clean up EKS resources (node groups first, then cluster)
+    cleanup_eks_nodegroups || ((errors++))
+    cleanup_eks_cluster || ((errors++))
+
+    # 3. Finally clean up supporting resources
     cleanup_log_group || ((errors++))
     cleanup_kms_alias || ((errors++))
     
