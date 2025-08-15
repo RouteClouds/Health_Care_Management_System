@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: healthcare-backend-stage3
+  namespace: argocd
+  labels:
+    app: healthcare-backend
+    stage: stage-3
+    component: backend
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/RouteClouds/Health_Care_Management_System.git
+    targetRevision: main
+    path: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
+    directory:
+      include: backend.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10
+  info:
+  - name: Description
+    value: Healthcare Management System Backend Application
+  - name: Environment
+    value: Development
+  - name: Stage
+    value: Stage-3 Advanced DevOps Pipeline
