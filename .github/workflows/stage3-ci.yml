@@ -38,6 +38,13 @@ on:
         - staging
         - prod
 
+# Add permissions for the workflow to write to the repository
+permissions:
+  contents: write          # Required to push changes back to repository
+  pull-requests: read      # Required to read PR information
+  actions: read           # Required to read workflow information
+  security-events: write  # Required for security scanning results
+
 env:
   SOURCE_CODE_PATH: './Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code'
   TERRAFORM_PATH: './Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform'
@@ -191,9 +198,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: [deploy-infrastructure]
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+          persist-credentials: true
 
       - name: Update GitOps manifests
         working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops
@@ -204,10 +217,18 @@ jobs:
           sed -i "s|image: .*healthcare-frontend.*|image: ${{ secrets.ECR_REGISTRY }}/healthcare-frontend-stage3:$IMAGE_TAG|g" environments/dev/frontend.yaml
           sed -i "s|image: .*healthcare-backend.*|image: ${{ secrets.ECR_REGISTRY }}/healthcare-backend-stage3:$IMAGE_TAG|g" environments/dev/backend.yaml
 
+          # Verify changes were made
+          echo "=== GitOps Manifest Updates ==="
+          echo "Frontend image updated:"
+          grep "image:" environments/dev/frontend.yaml || echo "No frontend image found"
+          echo "Backend image updated:"
+          grep "image:" environments/dev/backend.yaml || echo "No backend image found"
+
       - name: Commit and push changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/
-          git commit -m "Update Stage-3 image tags to ${{ github.sha }}" || exit 0
-          git push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update Stage-3 image tags to ${{ github.sha }}"
+          file_pattern: "Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
+          commit_author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
