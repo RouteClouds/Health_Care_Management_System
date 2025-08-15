@@ -2,14 +2,150 @@
 
 ## 📋 Table of Contents
 
-1. [Daily Operations](#daily-operations)
-2. [Deployment Operations](#deployment-operations)
-3. [Monitoring Operations](#monitoring-operations)
-4. [Infrastructure Operations](#infrastructure-operations)
-5. [Security Operations](#security-operations)
-6. [Backup & Recovery](#backup--recovery)
-7. [Performance Management](#performance-management)
-8. [Incident Response](#incident-response)
+1. [Pipeline Behavior & Execution Flow](#pipeline-behavior--execution-flow)
+2. [Daily Operations](#daily-operations)
+3. [Deployment Operations](#deployment-operations)
+4. [Monitoring Operations](#monitoring-operations)
+5. [Infrastructure Operations](#infrastructure-operations)
+6. [Security Operations](#security-operations)
+7. [Backup & Recovery](#backup--recovery)
+8. [Performance Management](#performance-management)
+9. [Incident Response](#incident-response)
+
+---
+
+## 🔄 Pipeline Behavior & Execution Flow
+
+### **Understanding Stage-3 Pipeline Execution**
+
+The Stage-3 pipeline is designed to handle both **initial infrastructure creation** and **ongoing application updates** intelligently. Here's how it behaves in different scenarios:
+
+### **🚀 Scenario 1: First-Time Pipeline Execution (Fresh Deployment)**
+
+**What Happens:**
+1. **Terraform Validation** ✅ (2-3 minutes)
+2. **Unit Tests** ✅ (3-5 minutes)
+3. **Security Scanning** ✅ (2-4 minutes)
+4. **Build and Push Images** ✅ (5-8 minutes)
+5. **Infrastructure Deployment** ⏳ (25-35 minutes) - **EKS Cluster Creation**
+6. **GitOps Deployment** ⏳ (5-10 minutes) - **Application Deployment**
+
+**Total Time: 40-65 minutes**
+
+#### **Infrastructure Deployment Stage (25-35 minutes)**
+
+**What Gets Created:**
+- **VPC with subnets** (2-3 minutes)
+- **Security Groups** (1-2 minutes)
+- **EKS Cluster** (15-20 minutes) ⏰ **Longest step**
+- **EKS Node Groups** (5-8 minutes)
+- **RDS Database** (5-10 minutes)
+- **S3 Buckets** (1-2 minutes)
+- **ECR Repositories** (1-2 minutes)
+
+**Pipeline Behavior:**
+- ✅ **Pipeline WAITS** for EKS cluster to be fully ready
+- ✅ **No timeout failures** - Terraform handles the wait automatically
+- ✅ **Parallel resource creation** where possible
+- ✅ **Dependency management** ensures correct order
+
+**Why EKS Takes 15-20 Minutes:**
+- AWS provisions control plane nodes
+- Sets up networking and security
+- Configures cluster endpoints
+- Initializes cluster add-ons
+
+#### **GitOps Deployment Stage (5-10 minutes)**
+
+**What Happens After Infrastructure is Ready:**
+- ArgoCD connects to the new EKS cluster
+- Deploys frontend and backend applications
+- Sets up ingress controllers
+- Configures monitoring stack
+
+**Pipeline Success Criteria:**
+- All Terraform resources created successfully
+- EKS cluster status: `ACTIVE`
+- Node groups status: `ACTIVE`
+- Applications deployed and running
+
+### **🔄 Scenario 2: Code Changes (Infrastructure Already Exists)**
+
+**What Happens:**
+1. **Terraform Validation** ✅ (1-2 minutes)
+2. **Unit Tests** ✅ (3-5 minutes)
+3. **Security Scanning** ✅ (2-4 minutes)
+4. **Build and Push Images** ✅ (5-8 minutes) - **New images with latest code**
+5. **Infrastructure Deployment** ✅ (2-5 minutes) - **No changes, quick validation**
+6. **GitOps Deployment** ✅ (3-5 minutes) - **Rolling update of applications**
+
+**Total Time: 16-29 minutes**
+
+#### **Infrastructure Deployment Behavior:**
+
+**Terraform State Check:**
+- Compares current infrastructure with desired state
+- **No changes needed** = Quick validation (2-3 minutes)
+- **Minor changes** = Apply only differences (3-5 minutes)
+- **Major changes** = Full resource updates (varies)
+
+**What Terraform Detects:**
+```bash
+# Example Terraform output for no changes:
+No changes. Your infrastructure matches the configuration.
+
+# Example for minor changes:
+Plan: 0 to add, 2 to change, 0 to destroy.
+```
+
+#### **GitOps Deployment Behavior:**
+
+**Rolling Updates:**
+- ArgoCD detects new Docker images
+- Performs rolling update of pods
+- **Zero-downtime deployment**
+- Health checks ensure successful deployment
+
+**Update Process:**
+1. Pull new Docker images
+2. Create new pods with updated images
+3. Wait for new pods to be ready
+4. Terminate old pods
+5. Update service endpoints
+
+### **📊 Pipeline Execution Timeline**
+
+#### **First Deployment (Fresh Infrastructure):**
+```
+0-5 min:    Terraform Validation + Unit Tests + Security Scanning
+5-13 min:   Build and Push Docker Images
+13-48 min:  Infrastructure Deployment (EKS cluster creation)
+48-58 min:  GitOps Deployment (Application deployment)
+```
+
+#### **Code Updates (Existing Infrastructure):**
+```
+0-5 min:    Validation + Tests + Scanning
+5-13 min:   Build and Push New Images
+13-18 min:  Infrastructure Validation (no changes)
+18-23 min:  Rolling Application Update
+```
+
+#### **Infrastructure Updates:**
+```
+0-5 min:    Validation + Tests + Scanning
+5-13 min:   Build and Push Images
+13-33 min:  Infrastructure Changes (varies by scope)
+33-43 min:  Application Configuration Updates
+```
+
+### **🎯 Key Takeaways**
+
+1. **First-time deployment takes 40-65 minutes** due to EKS cluster creation
+2. **Subsequent code changes take 16-29 minutes** with existing infrastructure
+3. **Pipeline automatically waits** for infrastructure to be ready
+4. **No manual intervention required** for standard deployments
+5. **Rolling updates ensure zero downtime** for application changes
 
 ---
 
