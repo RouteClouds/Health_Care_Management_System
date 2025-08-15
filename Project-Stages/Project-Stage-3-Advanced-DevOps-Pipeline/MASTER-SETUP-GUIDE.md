@@ -1052,6 +1052,288 @@ For detailed troubleshooting, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
 ---
 
+## 🚀 **STEP 7: DEPLOY APPLICATIONS WITH ARGOCD**
+
+### **Overview: GitOps Deployment Workflow**
+
+ArgoCD implements GitOps methodology for continuous deployment:
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Git Repository│───▶│     ArgoCD      │───▶│  Kubernetes     │
+│   (Source of    │    │   (Controller)  │    │   Cluster       │
+│     Truth)      │    │                 │    │                 │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+    ┌────▼────┐             ┌────▼────┐             ┌────▼────┐
+    │GitOps   │             │Monitor  │             │Deploy   │
+    │Manifests│             │& Sync   │             │Apps     │
+    └─────────┘             └─────────┘             └─────────┘
+```
+
+### **7.1 Install ArgoCD**
+
+#### **7.1.1 Create ArgoCD Namespace**
+```bash
+# Create dedicated namespace for ArgoCD
+kubectl create namespace argocd
+```
+
+**Expected Output:**
+```
+namespace/argocd created
+```
+
+#### **7.1.2 Install ArgoCD Components**
+```bash
+# Install ArgoCD using official manifests
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```
+
+**Expected Output:**
+```
+customresourcedefinition.apiextensions.k8s.io/applications.argoproj.io created
+customresourcedefinition.apiextensions.k8s.io/applicationsets.argoproj.io created
+customresourcedefinition.apiextensions.k8s.io/appprojects.argoproj.io created
+serviceaccount/argocd-application-controller created
+serviceaccount/argocd-applicationset-controller created
+serviceaccount/argocd-dex-server created
+serviceaccount/argocd-notifications-controller created
+serviceaccount/argocd-redis created
+serviceaccount/argocd-repo-server created
+serviceaccount/argocd-server created
+[... additional resources created ...]
+deployment.apps/argocd-server created
+statefulset.apps/argocd-application-controller created
+```
+
+#### **7.1.3 Wait for ArgoCD to be Ready**
+```bash
+# Wait for ArgoCD server to be available (timeout: 5 minutes)
+kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+```
+
+**Expected Output:**
+```
+deployment.apps/argocd-server condition met
+```
+
+#### **7.1.4 Verify ArgoCD Installation**
+```bash
+# Check all ArgoCD pods are running
+kubectl get pods -n argocd
+```
+
+**Expected Output:**
+```
+NAME                                               READY   STATUS    RESTARTS   AGE
+argocd-application-controller-0                    1/1     Running   0          2m
+argocd-applicationset-controller-fcc7b5f5b-479rl   1/1     Running   0          2m
+argocd-dex-server-684f4c6697-pwxh6                 1/1     Running   0          2m
+argocd-notifications-controller-64c5cc7667-f8tjd   1/1     Running   0          2m
+argocd-redis-c6d85bcf8-wmbnt                       1/1     Running   0          2m
+argocd-repo-server-6679d4dd6f-h22nz                1/1     Running   0          2m
+argocd-server-5599b7696d-wkxw4                     1/1     Running   0          2m
+```
+
+**✅ Success Criteria:** All pods show `1/1 Running` status
+
+### **7.2 Get ArgoCD Admin Credentials**
+
+#### **7.2.1 Retrieve Initial Admin Password**
+```bash
+# Get the auto-generated admin password
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+```
+
+**Expected Output:**
+```
+pcPHTNE3sS7rEhv1
+```
+
+#### **7.2.2 Save Credentials for Access**
+```bash
+# Store credentials for later use
+echo "ArgoCD Admin Credentials:"
+echo "Username: admin"
+echo "Password: $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)"
+```
+
+**Expected Output:**
+```
+ArgoCD Admin Credentials:
+Username: admin
+Password: pcPHTNE3sS7rEhv1
+```
+
+### **7.3 Deploy Healthcare Applications**
+
+#### **7.3.1 Navigate to Project Directory**
+```bash
+# Ensure you're in the correct project directory
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+pwd
+```
+
+**Expected Output:**
+```
+/home/ubuntu/Projects/Health_Care_Management_System/Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+```
+
+#### **7.3.2 Create Healthcare Application Namespace**
+```bash
+# Create dedicated namespace for healthcare applications
+kubectl create namespace healthcare-stage3-dev
+```
+
+**Expected Output:**
+```
+namespace/healthcare-stage3-dev created
+```
+
+#### **7.3.3 Deploy Applications via ArgoCD (Method 1 - Recommended)**
+```bash
+# Apply ArgoCD application manifests
+kubectl apply -f argocd/applications/
+```
+
+**Expected Output:**
+```
+application.argoproj.io/healthcare-backend-stage3 created
+application.argoproj.io/healthcare-frontend-stage3 created
+```
+
+#### **7.3.4 Verify ArgoCD Applications**
+```bash
+# Check ArgoCD applications status
+kubectl get applications -n argocd
+```
+
+**Expected Output:**
+```
+NAME                         SYNC STATUS   HEALTH STATUS
+healthcare-backend-stage3    Unknown       Healthy
+healthcare-frontend-stage3   Unknown       Healthy
+```
+
+#### **7.3.5 Deploy Applications Directly (Method 2 - Alternative)**
+```bash
+# If ArgoCD sync doesn't work immediately, deploy directly
+kubectl apply -f gitops/environments/dev/
+```
+
+**Expected Output:**
+```
+deployment.apps/healthcare-backend-stage3 created
+service/backend-stage3-svc created
+horizontalpodautoscaler.autoscaling/healthcare-backend-stage3-hpa created
+secret/database-credentials-stage3 created
+deployment.apps/healthcare-frontend-stage3 created
+service/frontend-stage3-svc created
+horizontalpodautoscaler.autoscaling/healthcare-frontend-stage3-hpa created
+```
+
+#### **7.3.6 Monitor Deployment Status**
+```bash
+# Check pod deployment status
+kubectl get pods -n healthcare-stage3-dev
+
+# Check services and external access
+kubectl get services -n healthcare-stage3-dev
+
+# Check horizontal pod autoscalers
+kubectl get hpa -n healthcare-stage3-dev
+```
+
+**Expected Output (Healthy State):**
+```
+# Pods
+NAME                                          READY   STATUS    RESTARTS   AGE
+healthcare-backend-stage3-656fb478f8-k879k    1/1     Running   0          2m
+healthcare-backend-stage3-656fb478f8-ljsv2    1/1     Running   0          2m
+healthcare-frontend-stage3-5db7f6d9b9-56kg4   1/1     Running   0          2m
+healthcare-frontend-stage3-5db7f6d9b9-7sc6j   1/1     Running   0          2m
+
+# Services
+NAME                  TYPE           CLUSTER-IP      EXTERNAL-IP                                                              PORT(S)        AGE
+backend-stage3-svc    ClusterIP      172.20.171.59   <none>                                                                   3001/TCP       2m
+frontend-stage3-svc   LoadBalancer   172.20.253.61   a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com   80:31679/TCP   2m
+
+# HPA
+NAME                            REFERENCE                              TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+healthcare-backend-stage3-hpa   Deployment/healthcare-backend-stage3   0%/70%    2         10        2          2m
+healthcare-frontend-stage3-hpa  Deployment/healthcare-frontend-stage3  0%/70%    2         10        2          2m
+```
+
+### **7.4 Access Applications and ArgoCD UI**
+
+#### **7.4.1 Get Frontend Application URL**
+```bash
+# Get the LoadBalancer external URL
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+echo "Healthcare Application URL: http://$FRONTEND_URL"
+```
+
+**Expected Output:**
+```
+Healthcare Application URL: http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com
+```
+
+#### **7.4.2 Test Application Access**
+```bash
+# Test if the application is accessible
+curl -I http://$FRONTEND_URL
+```
+
+**Expected Output (Healthy):**
+```
+HTTP/1.1 200 OK
+Server: nginx/1.21.6
+Date: Thu, 15 Aug 2025 19:45:00 GMT
+Content-Type: text/html
+Content-Length: 1234
+Connection: keep-alive
+```
+
+#### **7.4.3 Access ArgoCD UI**
+
+**Method 1: Port Forward (Recommended for Testing)**
+```bash
+# Create port forward to ArgoCD server
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# Open in browser: https://localhost:8080
+# Username: admin
+# Password: [from step 7.2.1]
+```
+
+**Method 2: LoadBalancer (Production)**
+```bash
+# Convert ArgoCD service to LoadBalancer
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+
+# Get ArgoCD external URL
+kubectl get svc argocd-server -n argocd
+```
+
+#### **7.4.4 Verify Application Health in ArgoCD**
+```bash
+# Check application sync and health status
+kubectl get applications -n argocd -o wide
+```
+
+**Expected Output (Healthy State):**
+```
+NAME                         SYNC STATUS   HEALTH STATUS   REVISION   AGE
+healthcare-backend-stage3    Synced        Healthy         main       5m
+healthcare-frontend-stage3   Synced        Healthy         main       5m
+```
+
+**⏱️ Estimated Time: 15-20 minutes**
+
+---
+
 ## 🎉 Setup Complete!
 
 **Congratulations!** Your Stage-3 Advanced DevOps Pipeline is now operational.

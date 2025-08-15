@@ -1947,4 +1947,492 @@ kubectl exec -n healthcare-stage3-dev deployment/healthcare-backend-stage3 -- ps
 
 ---
 
-*This troubleshooting guide provides comprehensive solutions for common Stage-3 issues. Keep this guide updated as new issues are discovered and resolved.*
+## 🚀 **ARGOCD DEPLOYMENT AND APPLICATION TROUBLESHOOTING**
+
+### **Index: ArgoCD Issues**
+1. [ArgoCD Installation Issues](#argocd-installation-issues)
+2. [ArgoCD Application Sync Problems](#argocd-application-sync-problems)
+3. [Healthcare Application CrashLoopBackOff](#healthcare-application-crashloopbackoff)
+4. [Nginx Configuration Issues](#nginx-configuration-issues)
+5. [Namespace and RBAC Issues](#namespace-and-rbac-issues)
+6. [LoadBalancer and Service Issues](#loadbalancer-and-service-issues)
+
+---
+
+### **ArgoCD Installation Issues**
+
+#### **Issue: ArgoCD Pods Not Starting**
+
+**Problem**: ArgoCD pods stuck in `Pending` or `CrashLoopBackOff` state.
+
+**Diagnosis Commands**:
+```bash
+# Check pod status
+kubectl get pods -n argocd
+
+# Check pod events
+kubectl describe pods -n argocd
+
+# Check node resources
+kubectl top nodes
+
+# Check persistent volume claims
+kubectl get pvc -n argocd
+```
+
+**Common Causes & Solutions**:
+
+1. **Insufficient Resources**:
+```bash
+# Check node capacity
+kubectl describe nodes
+
+# Solution: Scale up EKS node group
+aws eks update-nodegroup-config \
+  --cluster-name healthcare-eks-stage3-dev \
+  --nodegroup-name healthcare-eks-stage3-dev-node-group \
+  --scaling-config minSize=2,maxSize=6,desiredSize=3
+```
+
+2. **Storage Issues**:
+```bash
+# Check storage classes
+kubectl get storageclass
+
+# If no default storage class, set one
+kubectl patch storageclass gp2 -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+```
+
+#### **Issue: ArgoCD Server Not Accessible**
+
+**Problem**: Cannot access ArgoCD UI via port-forward or LoadBalancer.
+
+**Diagnosis Commands**:
+```bash
+# Check ArgoCD server status
+kubectl get svc argocd-server -n argocd
+kubectl get endpoints argocd-server -n argocd
+
+# Check server logs
+kubectl logs deployment/argocd-server -n argocd
+
+# Test port-forward
+kubectl port-forward svc/argocd-server -n argocd 8080:443 &
+curl -k https://localhost:8080
+```
+
+**Solutions**:
+
+1. **Port-Forward Issues**:
+```bash
+# Kill existing port-forwards
+pkill -f "kubectl port-forward"
+
+# Create new port-forward
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# Test access
+curl -k -I https://localhost:8080
+```
+
+2. **LoadBalancer Configuration**:
+```bash
+# Convert to LoadBalancer
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+
+# Wait for external IP
+kubectl get svc argocd-server -n argocd -w
+
+# Check AWS Load Balancer
+aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(LoadBalancerName, `argocd`)]'
+```
+
+---
+
+### **ArgoCD Application Sync Problems**
+
+#### **Issue: Applications Not Syncing**
+
+**Problem**: ArgoCD applications show `Unknown` or `OutOfSync` status.
+
+**Diagnosis Commands**:
+```bash
+# Check application status
+kubectl get applications -n argocd
+
+# Get detailed application info
+kubectl describe application healthcare-frontend-stage3 -n argocd
+kubectl describe application healthcare-backend-stage3 -n argocd
+
+# Check ArgoCD application controller logs
+kubectl logs statefulset/argocd-application-controller -n argocd
+```
+
+**Expected Healthy Output**:
+```bash
+kubectl get applications -n argocd
+```
+```
+NAME                         SYNC STATUS   HEALTH STATUS
+healthcare-backend-stage3    Synced        Healthy
+healthcare-frontend-stage3   Synced        Healthy
+```
+
+**Solutions**:
+
+1. **Manual Sync**:
+```bash
+# Force sync applications
+kubectl patch application healthcare-frontend-stage3 -n argocd --type merge --patch '{"operation":{"sync":{"revision":"HEAD"}}}'
+kubectl patch application healthcare-backend-stage3 -n argocd --type merge --patch '{"operation":{"sync":{"revision":"HEAD"}}}'
+```
+
+2. **Repository Access Issues**:
+```bash
+# Check if ArgoCD can access the repository
+kubectl exec -it deployment/argocd-repo-server -n argocd -- sh
+# Inside container:
+git ls-remote https://github.com/RouteClouds/Health_Care_Management_System.git
+```
+
+3. **Path Issues**:
+```bash
+# Verify the GitOps path exists
+ls -la Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev/
+
+# Check manifest syntax
+kubectl apply --dry-run=client -f gitops/environments/dev/
+```
+
+---
+
+### **Healthcare Application CrashLoopBackOff**
+
+#### **Issue: Frontend Pods in CrashLoopBackOff**
+
+**Problem**: Frontend pods continuously restart due to configuration issues.
+
+**Real-World Example from Our Deployment**:
+
+**Diagnosis Commands**:
+```bash
+# Check pod status
+kubectl get pods -n healthcare-stage3-dev
+```
+
+**Problematic Output**:
+```
+NAME                                          READY   STATUS             RESTARTS      AGE
+healthcare-backend-stage3-656fb478f8-k879k    1/1     Running            0             6m
+healthcare-backend-stage3-656fb478f8-ljsv2    1/1     Running            0             6m
+healthcare-frontend-stage3-5db7f6d9b9-56kg4   0/1     CrashLoopBackOff   6 (64s ago)   6m
+healthcare-frontend-stage3-5db7f6d9b9-7sc6j   0/1     CrashLoopBackOff   6 (43s ago)   6m
+```
+
+**Get Detailed Error Information**:
+```bash
+# Check pod logs
+kubectl logs healthcare-frontend-stage3-5db7f6d9b9-56kg4 -n healthcare-stage3-dev
+
+# Check pod events
+kubectl describe pod healthcare-frontend-stage3-5db7f6d9b9-56kg4 -n healthcare-stage3-dev
+```
+
+**Actual Error Output**:
+```
+/docker-entrypoint.sh: /docker-entrypoint.d/ is not empty, will attempt to perform configuration
+/docker-entrypoint.sh: Looking for shell scripts in /docker-entrypoint.d/
+/docker-entrypoint.sh: Launching /docker-entrypoint.d/10-listen-on-ipv6-by-default.sh
+10-listen-on-ipv6-by-default.sh: info: Getting the checksum of /etc/nginx/conf.d/default.conf
+10-listen-on-ipv6-by-default.sh: info: Enabled listen on IPv6 in /etc/nginx/conf.d/default.conf
+/docker-entrypoint.sh: Sourcing /docker-entrypoint.d/15-local-resolvers.envsh
+/docker-entrypoint.sh: Launching /docker-entrypoint.d/20-envsubst-on-templates.sh
+/docker-entrypoint.sh: Launching /docker-entrypoint.d/30-tune-worker-processes.sh
+/docker-entrypoint.sh: Configuration complete; ready for start up
+2025/08/15 19:34:11 [emerg] 1#1: host not found in upstream "backend-service" in /etc/nginx/nginx.conf:82
+nginx: [emerg] host not found in upstream "backend-service" in /etc/nginx/nginx.conf:82
+```
+
+**Root Cause Analysis**:
+The error shows nginx cannot resolve `backend-service` hostname. Let's check what services actually exist:
+
+```bash
+# Check actual service names
+kubectl get services -n healthcare-stage3-dev
+```
+
+**Actual Services Output**:
+```
+NAME                  TYPE           CLUSTER-IP      EXTERNAL-IP                                                              PORT(S)        AGE
+backend-stage3-svc    ClusterIP      172.20.171.59   <none>                                                                   3001/TCP       8m
+frontend-stage3-svc   LoadBalancer   172.20.253.61   a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com   80:31679/TCP   8m
+```
+
+**Problem Identified**:
+- Nginx config references: `backend-service:3002`
+- Actual service name: `backend-stage3-svc:3001`
+- Port mismatch: 3002 vs 3001
+
+---
+
+### **Nginx Configuration Issues**
+
+#### **Issue: Service Name and Port Mismatch**
+
+**Step-by-Step Fix Process**:
+
+**Step 1: Identify the Configuration File**
+```bash
+# Find nginx configuration
+find . -name "nginx.conf" -type f
+```
+
+**Output**:
+```
+./Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/nginx/nginx.conf
+```
+
+**Step 2: Check Current Configuration**
+```bash
+# Check current nginx upstream configuration
+grep -A 5 -B 5 "backend-service" Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/nginx/nginx.conf
+```
+
+**Problematic Configuration**:
+```nginx
+# Upstream backend servers (Docker Compose uses 'backend', Kubernetes uses 'backend-service')
+upstream backend {
+    server backend-service:3002 max_fails=3 fail_timeout=30s;
+    keepalive 32;
+}
+```
+
+**Step 3: Fix the Configuration**
+```bash
+# Edit the nginx configuration file
+nano Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/nginx/nginx.conf
+```
+
+**Corrected Configuration**:
+```nginx
+# Upstream backend servers (Stage-3 uses 'backend-stage3-svc')
+upstream backend {
+    server backend-stage3-svc:3001 max_fails=3 fail_timeout=30s;
+    keepalive 32;
+}
+```
+
+**Step 4: Commit and Push Changes**
+```bash
+# Add changes to git
+git add Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/nginx/nginx.conf
+
+# Commit with descriptive message
+git commit -m "fix: update nginx configuration for Stage-3 backend service
+
+## Frontend Configuration Fix
+- Updated nginx upstream configuration to use correct backend service name
+- Changed from 'backend-service:3002' to 'backend-stage3-svc:3001'
+- Matches the actual Kubernetes service name and port in Stage-3 deployment
+- Resolves frontend CrashLoopBackOff due to upstream host not found error"
+
+# Push to trigger pipeline
+git push origin main
+```
+
+**Step 5: Monitor Pipeline and Deployment**
+```bash
+# Monitor GitHub Actions pipeline
+# Go to: https://github.com/RouteClouds/Health_Care_Management_System/actions
+
+# Wait for pipeline to complete (15-20 minutes)
+# Pipeline will rebuild frontend image with fixed nginx config
+
+# Monitor ArgoCD for automatic sync
+kubectl get applications -n argocd -w
+
+# Monitor pod updates
+kubectl get pods -n healthcare-stage3-dev -w
+```
+
+**Step 6: Verify Fix**
+```bash
+# After pipeline completes, check pod status
+kubectl get pods -n healthcare-stage3-dev
+
+# Expected healthy output:
+# NAME                                          READY   STATUS    RESTARTS   AGE
+# healthcare-backend-stage3-xxx-xxx             1/1     Running   0          5m
+# healthcare-frontend-stage3-xxx-xxx            1/1     Running   0          3m
+
+# Check frontend logs for successful startup
+kubectl logs deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev
+
+# Test application access
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -I http://$FRONTEND_URL
+```
+
+**Expected Healthy Log Output**:
+```
+/docker-entrypoint.sh: Configuration complete; ready for start up
+2025/08/15 20:15:00 [notice] 1#1: using the "epoll" event method
+2025/08/15 20:15:00 [notice] 1#1: nginx/1.21.6
+2025/08/15 20:15:00 [notice] 1#1: built by gcc 10.2.1 20210110 (Debian 10.2.1-6)
+2025/08/15 20:15:00 [notice] 1#1: OS: Linux 5.4.0-1043-aws
+2025/08/15 20:15:00 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1048576:1048576
+2025/08/15 20:15:00 [notice] 1#1: start worker processes
+```
+
+---
+
+### **Namespace and RBAC Issues**
+
+#### **Issue: Namespace Not Found Error**
+
+**Problem**: Applications fail to deploy due to missing namespace.
+
+**Error Example**:
+```bash
+kubectl apply -f gitops/environments/dev/
+```
+
+**Error Output**:
+```
+Error from server (NotFound): error when creating "gitops/environments/dev/backend.yaml": namespaces "healthcare-stage3-dev" not found
+Error from server (NotFound): error when creating "gitops/environments/dev/frontend.yaml": namespaces "healthcare-stage3-dev" not found
+```
+
+**Solution**:
+```bash
+# Create the required namespace
+kubectl create namespace healthcare-stage3-dev
+
+# Verify namespace creation
+kubectl get namespaces | grep healthcare
+
+# Re-apply the manifests
+kubectl apply -f gitops/environments/dev/
+
+# Verify successful deployment
+kubectl get pods -n healthcare-stage3-dev
+```
+
+**Prevention**: Update ArgoCD applications to auto-create namespaces:
+```yaml
+# In argocd/applications/*.yaml
+spec:
+  syncPolicy:
+    syncOptions:
+    - CreateNamespace=true
+```
+
+---
+
+### **LoadBalancer and Service Issues**
+
+#### **Issue: LoadBalancer Stuck in Pending**
+
+**Problem**: Frontend service LoadBalancer shows `<pending>` for external IP.
+
+**Diagnosis**:
+```bash
+# Check service status
+kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev
+
+# Check AWS Load Balancer Controller
+kubectl get pods -n kube-system | grep aws-load-balancer
+
+# Check service events
+kubectl describe svc frontend-stage3-svc -n healthcare-stage3-dev
+```
+
+**Solutions**:
+
+1. **Install AWS Load Balancer Controller** (if missing):
+```bash
+# Download IAM policy
+curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.4.4/docs/install/iam_policy.json
+
+# Create IAM policy
+aws iam create-policy \
+    --policy-name AWSLoadBalancerControllerIAMPolicy \
+    --policy-document file://iam_policy.json
+
+# Install via Helm
+helm repo add eks https://aws.github.io/eks-charts
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --set clusterName=healthcare-eks-stage3-dev
+```
+
+2. **Check Security Groups**:
+```bash
+# Get cluster security group
+aws eks describe-cluster --name healthcare-eks-stage3-dev --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId'
+
+# Verify security group rules allow HTTP/HTTPS
+aws ec2 describe-security-groups --group-ids sg-xxxxxxxxx
+```
+
+#### **Issue: Service Not Accessible Externally**
+
+**Problem**: LoadBalancer has external IP but application not accessible.
+
+**Diagnosis and Fix**:
+```bash
+# Test from within cluster
+kubectl run test-pod --image=busybox --rm -it -- sh
+# Inside pod:
+wget -qO- http://frontend-stage3-svc.healthcare-stage3-dev.svc.cluster.local
+
+# Test external access
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -v http://$FRONTEND_URL
+
+# Check target group health
+aws elbv2 describe-target-health --target-group-arn $(aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(LoadBalancerName, `frontend`)].[LoadBalancerArn]' --output text)
+```
+
+---
+
+### **Quick Reference Commands**
+
+#### **Health Check Commands**
+```bash
+# Overall system health
+kubectl get pods --all-namespaces | grep -E "(Error|CrashLoop|Pending)"
+
+# ArgoCD health
+kubectl get applications -n argocd
+kubectl get pods -n argocd
+
+# Healthcare applications health
+kubectl get pods,svc,hpa -n healthcare-stage3-dev
+
+# Check logs for issues
+kubectl logs -l app=healthcare-frontend -n healthcare-stage3-dev --tail=50
+kubectl logs -l app=healthcare-backend -n healthcare-stage3-dev --tail=50
+```
+
+#### **Emergency Recovery Commands**
+```bash
+# Restart ArgoCD components
+kubectl rollout restart deployment/argocd-server -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
+
+# Force application sync
+kubectl patch application healthcare-frontend-stage3 -n argocd --type merge --patch '{"operation":{"sync":{"revision":"HEAD"}}}'
+
+# Restart healthcare applications
+kubectl rollout restart deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev
+kubectl rollout restart deployment/healthcare-backend-stage3 -n healthcare-stage3-dev
+
+# Clean and redeploy
+kubectl delete -f gitops/environments/dev/
+kubectl apply -f gitops/environments/dev/
+```
+
+---
+
+*This comprehensive troubleshooting guide covers all the real issues we encountered during the ArgoCD deployment and provides step-by-step solutions with actual commands and expected outputs.*
