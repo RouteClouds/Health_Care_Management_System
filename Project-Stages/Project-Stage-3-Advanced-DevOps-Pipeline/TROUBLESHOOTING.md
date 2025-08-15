@@ -481,6 +481,94 @@ git push origin main
 - Keep test assertions in sync with actual package.json values
 - Use consistent naming conventions across environments
 
+### **Issue: Build and Push Images Stage Failure**
+
+**Problem**: GitHub Actions pipeline fails at "Build and Push Images" job with exit code 1.
+
+**Error Messages**:
+```
+Error: Process completed with exit code 1.
+```
+
+**Common Root Causes**:
+1. **ECR repositories don't exist** (most common)
+2. **AWS credentials issues**
+3. **ECR authentication failure**
+4. **Docker build failures**
+5. **Missing Dockerfile files**
+
+**Diagnosis Steps**:
+
+1. **Check if ECR repositories exist**:
+```bash
+# Check if repositories exist
+aws ecr describe-repositories --repository-names healthcare-frontend-stage3 --region us-east-1
+aws ecr describe-repositories --repository-names healthcare-backend-stage3 --region us-east-1
+
+# If repositories don't exist, you'll get:
+# RepositoryNotFoundException: The repository with name 'healthcare-frontend-stage3' does not exist
+```
+
+2. **Test Docker builds locally**:
+```bash
+# Test frontend build
+cd src-code
+docker build -f Dockerfile.frontend -t test-frontend .
+
+# Test backend build
+docker build -f Dockerfile.backend -t test-backend .
+```
+
+3. **Check AWS credentials in GitHub Secrets**:
+```bash
+# Verify AWS credentials work locally
+aws sts get-caller-identity
+aws ecr get-login-token --region us-east-1
+```
+
+**Solution Steps**:
+
+1. **Create ECR Repositories** (Most Common Fix):
+```bash
+# Use the automated script
+./scripts/setup/create-ecr-repositories.sh
+
+# Or create manually
+aws ecr create-repository --repository-name healthcare-frontend-stage3 --region us-east-1
+aws ecr create-repository --repository-name healthcare-backend-stage3 --region us-east-1
+```
+
+2. **Verify Repository Creation**:
+```bash
+# Check repositories exist
+aws ecr describe-repositories --region us-east-1 | grep healthcare
+
+# Expected output:
+# "repositoryName": "healthcare-frontend-stage3"
+# "repositoryName": "healthcare-backend-stage3"
+```
+
+3. **Test ECR Authentication**:
+```bash
+# Test ECR login
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+
+# Should show: Login Succeeded
+```
+
+4. **Verify GitHub Secrets Configuration**:
+Required secrets in GitHub repository settings:
+```
+AWS_ACCESS_KEY_ID=<your-access-key>
+AWS_SECRET_ACCESS_KEY=<your-secret-key>
+```
+
+**Prevention**:
+- Create ECR repositories before running pipeline
+- Test Docker builds locally before pushing
+- Verify AWS credentials and permissions
+- Use ECR repository creation script for consistent setup
+
 ### **Quick Reference Commands**
 
 **Git Repository Cleanup**:
