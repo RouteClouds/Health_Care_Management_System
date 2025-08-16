@@ -120,8 +120,8 @@ metadata:
   namespace: healthcare-stage3-dev
 type: Opaque
 stringData:
-  url: "postgresql://healthcare_stage3_user:healthcare_stage3_password_change_me@healthcare-eks-stage3-dev-db.cluster-xyz.us-east-1.rds.amazonaws.com:5432/healthcare_stage3_db"
-  host: "healthcare-eks-stage3-dev-db.cluster-xyz.us-east-1.rds.amazonaws.com"
+  url: "postgresql://healthcare_stage3_user:healthcare_stage3_password_change_me@healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com:5432/healthcare_stage3_db"
+  host: "healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com"
   port: "5432"
   database: "healthcare_stage3_db"
   username: "healthcare_stage3_user"

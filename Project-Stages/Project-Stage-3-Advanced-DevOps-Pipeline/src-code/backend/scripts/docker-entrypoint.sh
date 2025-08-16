@@ -16,11 +16,16 @@ check_database() {
 # Function to seed database
 seed_database() {
     echo "🌱 Seeding database with sample data..."
-    
-    node -e "
-    (async () => {
-      const { PrismaClient } = require('@prisma/client');
-      const prisma = new PrismaClient();
+
+    # Use the dedicated seeding script
+    if [ -f "scripts/seed-database.js" ]; then
+        node scripts/seed-database.js
+    else
+        # Fallback to inline seeding
+        node -e "
+        (async () => {
+          const { PrismaClient } = require('@prisma/client');
+          const prisma = new PrismaClient();
       
       try {
         console.log('🏢 Creating departments...');
@@ -155,7 +160,8 @@ seed_database() {
         await prisma.\$disconnect();
       }
     })();
-    " || echo "⚠️ Seeding completed with warnings"
+        " || echo "⚠️ Seeding completed with warnings"
+    fi
 }
 
 # Wait for database to be ready

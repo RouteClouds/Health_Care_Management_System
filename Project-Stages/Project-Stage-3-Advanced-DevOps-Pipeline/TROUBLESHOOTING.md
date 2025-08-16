@@ -4825,3 +4825,582 @@ RUN npm config set registry https://registry.npmjs.org/ || \
 ---
 
 *This comprehensive network resilience solution ensures reliable Docker builds in CI/CD pipelines by implementing retry mechanisms, enhanced timeouts, registry mirrors, and comprehensive error handling.*
+
+---
+
+## 🗄️ **DATABASE CONNECTIVITY AND SEEDING ISSUES**
+
+### **Issue: Database Connection Failures and Missing Data**
+
+**Problem**: Backend application fails to connect to RDS database or database lacks required schema and sample data, preventing API endpoints from functioning correctly.
+
+**Symptoms**:
+- ✅ Frontend loads successfully via LoadBalancer
+- ✅ Backend pods running and healthy
+- ✅ Frontend-backend connectivity working
+- ❌ API endpoints return database connection errors
+- ❌ `PrismaClientInitializationError` in backend logs
+- ❌ `P2021` errors indicating missing tables
+- ❌ Empty API responses due to missing sample data
+
+#### **Root Cause Analysis**
+
+**Common Database Issues**:
+
+1. **Incorrect RDS Endpoint**: Backend configured with placeholder endpoint instead of actual RDS endpoint
+2. **Missing Database Schema**: Prisma migrations not applied to RDS instance
+3. **Empty Database**: No sample data seeded for testing and demonstration
+4. **Connection String Issues**: Malformed DATABASE_URL or incorrect credentials
+5. **Network Connectivity**: Security groups blocking database access from EKS
+
+**Error Patterns**:
+```json
+// Connection Error
+{
+  "success": false,
+  "message": "Failed to fetch doctors",
+  "error": {
+    "name": "PrismaClientInitializationError",
+    "clientVersion": "5.22.0"
+  }
+}
+
+// Missing Table Error
+{
+  "success": false,
+  "message": "Failed to fetch doctors",
+  "error": {
+    "name": "PrismaClientKnownRequestError",
+    "code": "P2021",
+    "clientVersion": "5.22.0",
+    "meta": {
+      "modelName": "Doctor",
+      "table": "public.doctors"
+    }
+  }
+}
+```
+
+---
+
+### **Complete Database Issue Resolution**
+
+#### **Step 1: Verify RDS Endpoint Configuration**
+
+**Check Current Configuration**:
+```bash
+# Check current database configuration in backend deployment
+kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o yaml
+
+# Decode the DATABASE_URL
+kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o jsonpath='{.data.url}' | base64 -d
+```
+
+**Expected Output**:
+```
+postgresql://healthcare_stage3_user:healthcare_stage3_password_change_me@healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com:5432/healthcare_stage3_db
+```
+
+**If endpoint is incorrect (contains cluster-xyz or placeholder)**:
+```bash
+# Get actual RDS endpoint from Terraform
+cd terraform/
+terraform output db_instance_endpoint
+
+# Example output: healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com:5432
+```
+
+#### **Step 2: Update Database Configuration with Correct Endpoint**
+
+**Fix Backend Deployment**:
+```bash
+# Edit backend deployment
+vim gitops/environments/dev/backend.yaml
+
+# Update the database-credentials-stage3 secret section:
+# Replace: healthcare-eks-stage3-dev-db.cluster-xyz.us-east-1.rds.amazonaws.com
+# With: healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com (your actual endpoint)
+```
+
+**Apply Updated Configuration**:
+```bash
+# Apply the updated configuration
+kubectl apply -f gitops/environments/dev/backend.yaml
+
+# Expected output:
+# deployment.apps/healthcare-backend-stage3 unchanged
+# service/backend-stage3-svc unchanged
+# horizontalpodautoscaler.autoscaling/healthcare-backend-stage3-hpa unchanged
+# secret/database-credentials-stage3 configured
+
+# Restart backend pods to pick up new configuration
+kubectl rollout restart deployment/healthcare-backend-stage3 -n healthcare-stage3-dev
+
+# Expected output:
+# deployment.apps/healthcare-backend-stage3 restarted
+```
+
+#### **Step 3: Verify Database Connection**
+
+**Monitor Pod Restart**:
+```bash
+# Check pod status
+kubectl get pods -n healthcare-stage3-dev
+
+# Expected output:
+# NAME                                          READY   STATUS    RESTARTS   AGE
+# healthcare-backend-stage3-7fb9687fbf-dqt7v    1/1     Running   0          30s
+# healthcare-backend-stage3-7fb9687fbf-mf5dd    1/1     Running   0          20s
+# healthcare-frontend-stage3-76db84f68b-l4xl6   1/1     Running   0          3h
+# healthcare-frontend-stage3-76db84f68b-rd4ft   1/1     Running   0          3h
+```
+
+**Test Database Connection**:
+```bash
+# Test health endpoint
+curl -s http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/health | jq .
+
+# Expected output with database connected:
+# {
+#   "status": "healthy",
+#   "service": "healthcare-backend",
+#   "timestamp": "2025-08-16T14:00:00.000Z",
+#   "uptime": 60.123,
+#   "environment": "development",
+#   "version": "1.0.0",
+#   "database": "connected",
+#   "memory": { ... }
+# }
+```
+
+#### **Step 4: Apply Database Migrations**
+
+**Run Prisma Migrations**:
+```bash
+# Get backend pod name
+BACKEND_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[0].metadata.name}')
+
+# Apply database migrations
+kubectl exec -it $BACKEND_POD -n healthcare-stage3-dev -- npx prisma migrate deploy
+
+# Expected output:
+# Prisma schema loaded from prisma/schema.prisma
+# Datasource "db": PostgreSQL database "healthcare_stage3_db", schema "public" at "healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com:5432"
+#
+# 2 migrations found in prisma/migrations
+#
+# Applying migration `20250726075443_init`
+# Applying migration `20250726083621_add_user_authentication`
+#
+# The following migration(s) have been applied:
+#
+# migrations/
+#   └─ 20250726075443_init/
+#     └─ migration.sql
+#   └─ 20250726083621_add_user_authentication/
+#     └─ migration.sql
+#
+# All migrations have been successfully applied.
+```
+
+#### **Step 5: Seed Database with Sample Data**
+
+**Run Database Seeding**:
+```bash
+# Use the automated seeding script
+kubectl exec -it $BACKEND_POD -n healthcare-stage3-dev -- node scripts/seed-database.js
+
+# Expected output:
+# 🌱 Starting database seeding for Healthcare Management System Stage-3...
+# ================================================================================
+# ✅ Database connection successful
+# 🏥 Seeding departments...
+# ✅ Created 5 departments
+# 👥 Seeding users...
+# ✅ Created 2 users
+# 👨‍⚕️ Seeding doctors...
+# ✅ Created 5 doctors
+#
+# 🎉 Database seeding completed successfully!
+# ================================================================================
+# 📊 Summary:
+#    - Departments: 5
+#    - Users: 2
+#    - Doctors: 5
+#
+# 🔗 You can now test the API endpoints:
+#    - GET /api/health (health check)
+#    - GET /api/doctors (list doctors)
+#    - GET /api/departments (list departments)
+```
+
+#### **Step 6: Verify Complete Functionality**
+
+**Test API Endpoints**:
+```bash
+# Test doctors endpoint
+curl -s http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/doctors | jq .
+
+# Expected output:
+# {
+#   "success": true,
+#   "data": {
+#     "doctors": [
+#       {
+#         "id": "cmeebrfa4000512r18ukihg9k",
+#         "firstName": "Michael",
+#         "lastName": "Brown",
+#         "email": "michael.brown@healthcare.com",
+#         "specialization": "Orthopedic Surgery",
+#         "departmentId": "cmeebrf9m000212r1z54ayyjr",
+#         "qualifications": ["MD", "FAAOS"],
+#         "experienceYears": 18,
+#         "consultationFee": 250,
+#         "createdAt": "2025-08-16T14:00:44.572Z",
+#         "updatedAt": "2025-08-16T14:00:44.572Z",
+#         "department": {
+#           "id": "cmeebrf9m000212r1z54ayyjr",
+#           "name": "Orthopedics",
+#           "code": "ORTH",
+#           "description": "Musculoskeletal system disorders",
+#           "createdAt": "2025-08-16T14:00:44.554Z"
+#         }
+#       },
+#       // ... more doctors
+#     ],
+#     "pagination": {
+#       "page": 1,
+#       "limit": 10,
+#       "total": 5,
+#       "totalPages": 1
+#     }
+#   },
+#   "message": "Found 5 doctors"
+# }
+```
+
+---
+
+### **Automated Database Setup for New Deployments**
+
+#### **Permanent Solution Implementation**
+
+**Enhanced Package.json Scripts**:
+```json
+{
+  "scripts": {
+    "migrate:deploy": "prisma migrate deploy",
+    "db:setup": "npm run migrate:deploy && npm run db:seed",
+    "db:seed": "node scripts/seed-database.js",
+    "db:reset": "prisma migrate reset --force"
+  },
+  "prisma": {
+    "seed": "node scripts/seed-database.js"
+  }
+}
+```
+
+**Automated Seeding Script** (`scripts/seed-database.js`):
+- ✅ Creates departments (Cardiology, Pediatrics, Orthopedics, Emergency, Internal Medicine)
+- ✅ Creates sample users (patient and admin accounts)
+- ✅ Creates doctors with proper department relationships
+- ✅ Handles duplicate entries gracefully
+- ✅ Provides comprehensive logging and error handling
+
+**Enhanced Docker Entrypoint**:
+- ✅ Waits for database connection
+- ✅ Applies migrations automatically
+- ✅ Seeds database if empty
+- ✅ Starts application only after database is ready
+
+#### **Prevention Strategies**
+
+**1. Infrastructure as Code**:
+```bash
+# Always use Terraform output for RDS endpoint
+RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint)
+sed -i "s/YOUR_RDS_ENDPOINT/$RDS_ENDPOINT/g" gitops/environments/dev/backend.yaml
+```
+
+**2. Automated Validation**:
+```bash
+# Add to CI/CD pipeline
+- name: Validate Database Configuration
+  run: |
+    if grep -q "cluster-xyz" gitops/environments/dev/backend.yaml; then
+      echo "❌ Database endpoint not updated"
+      exit 1
+    fi
+```
+
+**3. Health Check Integration**:
+```bash
+# Enhanced health check
+curl -f http://localhost:3001/api/health | jq '.database' | grep -q "connected" || exit 1
+```
+
+---
+
+### **Troubleshooting Common Database Issues**
+
+#### **Issue 1: Connection Timeout**
+```bash
+# Symptoms: PrismaClientInitializationError
+# Solution: Check security groups and network connectivity
+
+# Verify security group allows EKS access
+aws ec2 describe-security-groups --group-ids sg-xxx --query 'SecurityGroups[0].IpPermissions'
+
+# Test connectivity from EKS node
+kubectl exec -it $BACKEND_POD -n healthcare-stage3-dev -- nc -zv healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com 5432
+```
+
+#### **Issue 2: Authentication Failed**
+```bash
+# Symptoms: Authentication failed for user
+# Solution: Verify credentials and user permissions
+
+# Check RDS user exists
+aws rds describe-db-instances --db-instance-identifier healthcare-eks-stage3-dev-db
+```
+
+#### **Issue 3: Database Not Found**
+```bash
+# Symptoms: database "healthcare_stage3_db" does not exist
+# Solution: Create database manually
+
+# Connect to RDS and create database
+kubectl exec -it $BACKEND_POD -n healthcare-stage3-dev -- psql $DATABASE_URL -c "CREATE DATABASE healthcare_stage3_db;"
+```
+
+#### **Issue 4: Migration Failures**
+```bash
+# Symptoms: Migration failed to apply
+# Solution: Reset and reapply migrations
+
+# Reset migrations (CAUTION: This will delete all data)
+kubectl exec -it $BACKEND_POD -n healthcare-stage3-dev -- npx prisma migrate reset --force
+
+# Reapply migrations
+kubectl exec -it $BACKEND_POD -n healthcare-stage3-dev -- npx prisma migrate deploy
+```
+
+---
+
+*This comprehensive database troubleshooting guide ensures reliable database connectivity and data seeding for Stage-3 deployments, preventing common database-related issues that can block application functionality.*
+
+---
+
+## 🔍 **COMPREHENSIVE ISSUE ANALYSIS: CURSOR-FINDING INVESTIGATION**
+
+### **Complete Troubleshooting Case Study**
+
+**Reference Document**: `Cursor-Finding.md` - Detailed analysis of frontend-backend connectivity and database issues
+
+This section documents a comprehensive real-world troubleshooting case that occurred during Stage-3 deployment, providing valuable insights for future issue resolution.
+
+#### **Issue Timeline and Resolution**
+
+**Initial Problem Report**:
+- User reported frontend-backend connectivity issues
+- Symptoms suggested API calls were failing
+- Database connectivity problems suspected
+
+**Investigation Process**:
+
+**Phase 1: Infrastructure Verification** ✅
+```bash
+# All infrastructure components verified as healthy
+kubectl get pods -n healthcare-stage3-dev
+# Result: All pods running (2/2 frontend, 2/2 backend)
+
+kubectl get services -n healthcare-stage3-dev
+# Result: LoadBalancer service operational
+
+curl -I http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com
+# Result: HTTP/1.1 200 OK - Frontend accessible
+```
+
+**Phase 2: API Connectivity Testing** ✅
+```bash
+# Backend API direct access test
+curl http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/health
+# Result: {"status":"healthy","database":"connected"} - API working
+
+# CORS configuration verification
+curl -H "Origin: http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com" \
+     -I http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/health
+# Result: Access-Control-Allow-Origin header correctly set
+```
+
+**Phase 3: Frontend JavaScript Analysis** ✅
+```bash
+# Check for hardcoded localhost URLs in built frontend
+kubectl exec -it healthcare-frontend-stage3-76db84f68b-l4xl6 -n healthcare-stage3-dev -- \
+  grep -o "localhost:3002" /usr/share/nginx/html/assets/index-CZh41kS7.js
+# Result: No localhost:3002 found in built JavaScript
+
+# Verify API base URL configuration
+kubectl exec -it healthcare-frontend-stage3-76db84f68b-l4xl6 -n healthcare-stage3-dev -- \
+  grep -o '"/api"\|"localhost:3002"' /usr/share/nginx/html/assets/index-CZh41kS7.js
+# Result: "/api" - Correct relative path being used
+```
+
+**Phase 4: Database Issue Discovery** ❌
+```bash
+# Test doctors API endpoint
+curl http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/doctors
+# Result: PrismaClientKnownRequestError - Table 'public.doctors' doesn't exist
+```
+
+**Critical Discovery**: The frontend-backend connectivity was actually working correctly. The real issue was database-related:
+1. ✅ **Infrastructure**: All components healthy
+2. ✅ **Connectivity**: Frontend-backend communication working
+3. ✅ **CORS**: Properly configured
+4. ✅ **API Base URL**: Using correct relative paths
+5. ❌ **Database**: Missing schema and sample data
+
+#### **Root Cause Analysis**
+
+**Issue Progression**:
+1. **Initial Setup**: RDS endpoint configured with placeholder value
+2. **Schema Missing**: Prisma migrations not applied to RDS instance
+3. **Data Missing**: No sample data seeded for API testing
+4. **Perception Gap**: Infrastructure working but application layer failing
+
+**Key Insights**:
+- **Infrastructure vs Application**: Perfect infrastructure doesn't guarantee application functionality
+- **Layer-by-Layer Testing**: Each layer must be verified independently
+- **Database Dependencies**: Modern applications require both schema and sample data
+- **Error Message Analysis**: Specific error codes provide precise diagnosis
+
+#### **Resolution Steps Applied**
+
+**Step 1: Database Endpoint Correction**
+```bash
+# Updated backend deployment with correct RDS endpoint
+sed -i 's/healthcare-eks-stage3-dev-db.cluster-xyz.us-east-1.rds.amazonaws.com/healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com/g' \
+  gitops/environments/dev/backend.yaml
+
+kubectl apply -f gitops/environments/dev/backend.yaml
+kubectl rollout restart deployment/healthcare-backend-stage3 -n healthcare-stage3-dev
+```
+
+**Step 2: Database Schema Creation**
+```bash
+# Applied Prisma migrations
+kubectl exec -it healthcare-backend-stage3-7fb9687fbf-dqt7v -n healthcare-stage3-dev -- \
+  npx prisma migrate deploy
+
+# Result: 2 migrations applied successfully
+```
+
+**Step 3: Database Seeding**
+```bash
+# Seeded database with sample data
+kubectl exec -it healthcare-backend-stage3-7fb9687fbf-dqt7v -n healthcare-stage3-dev -- \
+  node scripts/seed-database.js
+
+# Result: 5 departments, 2 users, 5 doctors created
+```
+
+**Step 4: Verification**
+```bash
+# Final API test
+curl http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/doctors | jq .
+
+# Result: Full JSON response with doctors, departments, and pagination
+```
+
+#### **Lessons Learned**
+
+**Technical Insights**:
+1. **Layered Troubleshooting**: Test each layer independently (infrastructure → connectivity → application → data)
+2. **Error Code Analysis**: Specific error codes (P2021) provide precise diagnosis
+3. **Configuration Management**: Placeholder values in configuration files are common sources of issues
+4. **Database Dependencies**: Modern applications require both schema and sample data for full functionality
+
+**Process Improvements**:
+1. **Automated Validation**: Add checks for placeholder values in CI/CD pipeline
+2. **Health Check Enhancement**: Include database schema and data validation in health checks
+3. **Documentation**: Maintain detailed troubleshooting case studies for pattern recognition
+4. **Prevention**: Implement automated database setup in deployment process
+
+#### **Pattern Recognition**
+
+**Historical Context**: This exact issue pattern occurred across multiple stages:
+- **Stage-1**: Similar frontend-backend connectivity issues
+- **Stage-2**: Documented hardcoded localhost URL problems
+- **Stage-3**: Database configuration and seeding issues
+
+**Common Patterns**:
+- Infrastructure appears healthy while application layer fails
+- Configuration files contain placeholder values
+- Database setup requires manual intervention
+- Error messages provide specific guidance for resolution
+
+#### **Prevention Strategies Implemented**
+
+**1. Automated Database Setup**:
+```json
+// Enhanced package.json
+{
+  "scripts": {
+    "db:setup": "npm run migrate:deploy && npm run db:seed",
+    "db:seed": "node scripts/seed-database.js"
+  },
+  "prisma": {
+    "seed": "node scripts/seed-database.js"
+  }
+}
+```
+
+**2. Configuration Validation**:
+```bash
+# CI/CD pipeline check
+if grep -q "cluster-xyz" gitops/environments/dev/backend.yaml; then
+  echo "❌ Database endpoint not updated"
+  exit 1
+fi
+```
+
+**3. Enhanced Health Checks**:
+```bash
+# Comprehensive health validation
+curl -f /api/health | jq '.database' | grep -q "connected"
+curl -f /api/doctors | jq '.data.doctors | length' | grep -q "[1-9]"
+```
+
+**4. Documentation Enhancement**:
+- Complete troubleshooting guide with step-by-step commands
+- Real-world case study documentation
+- Pattern recognition for similar issues
+- Automated prevention strategies
+
+#### **Future Reference**
+
+**When Similar Issues Occur**:
+1. **Start with Infrastructure**: Verify pods, services, and networking
+2. **Test Connectivity**: Check frontend-backend communication
+3. **Analyze Application Layer**: Look for configuration issues
+4. **Validate Database**: Check schema, data, and connectivity
+5. **Apply Systematic Resolution**: Follow documented procedures
+
+**Key Commands for Quick Diagnosis**:
+```bash
+# Infrastructure check
+kubectl get pods,svc -n healthcare-stage3-dev
+
+# Connectivity test
+curl -I http://LOADBALANCER_URL/api/health
+
+# Database validation
+curl http://LOADBALANCER_URL/api/doctors | jq '.success'
+
+# Configuration verification
+kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o yaml
+```
+
+---
+
+*This comprehensive case study demonstrates the importance of systematic troubleshooting, layer-by-layer analysis, and the value of documenting real-world issue resolution for future reference and pattern recognition.*

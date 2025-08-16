@@ -833,6 +833,40 @@ ecr_repository_frontend_url = "867344452513.dkr.ecr.us-east-1.amazonaws.com/heal
 ecr_repository_backend_url = "867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-backend-stage3"
 ```
 
+### **Phase 5: Database Configuration**
+
+**CRITICAL**: Before deploying the application, you must update the database configuration with your actual RDS endpoint.
+
+#### **Step 1: Get Your RDS Endpoint**
+```bash
+# Get the actual RDS endpoint from Terraform output
+terraform output db_instance_endpoint
+
+# Example output: healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com:5432
+```
+
+#### **Step 2: Update Database Configuration**
+```bash
+# Edit the backend deployment file
+vim gitops/environments/dev/backend.yaml
+
+# Find the database-credentials-stage3 secret section and update:
+# Replace: healthcare-eks-stage3-dev-db.cluster-xyz.us-east-1.rds.amazonaws.com
+# With: YOUR_ACTUAL_RDS_ENDPOINT (from step 1)
+```
+
+**Example Configuration:**
+```yaml
+stringData:
+  # Replace with your actual RDS endpoint
+  url: "postgresql://healthcare_stage3_user:healthcare_stage3_password_change_me@healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com:5432/healthcare_stage3_db"
+  host: "healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com"
+  port: "5432"
+  database: "healthcare_stage3_db"
+  username: "healthcare_stage3_user"
+  password: "healthcare_stage3_password_change_me"
+```
+
 ### **Phase 4: Kubernetes Configuration**
 ```bash
 # Update kubeconfig to connect to new EKS cluster

@@ -8,7 +8,11 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
     "seed": "ts-node prisma/seed.ts",
+    "db:setup": "npm run migrate:deploy && npm run db:seed",
+    "db:seed": "node scripts/seed-database.js",
+    "db:reset": "prisma migrate reset --force",
     "studio": "prisma studio",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -19,6 +23,9 @@
     "format": "prettier --write \"src/**/*.{ts,js,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,js,json}\"",
     "type-check": "tsc --noEmit"
+  },
+  "prisma": {
+    "seed": "node scripts/seed-database.js"
   },
   "keywords": [
     "healthcare",
