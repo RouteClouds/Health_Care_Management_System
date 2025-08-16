@@ -147,20 +147,47 @@ jobs:
           ECR_REPOSITORY_FRONTEND: healthcare-frontend-stage3
           ECR_REPOSITORY_BACKEND: healthcare-backend-stage3
           IMAGE_TAG: ${{ github.sha }}
+          BUILD_DATE: ${{ github.run_number }}
         run: |
-          # Build frontend
-          docker build -f Dockerfile.frontend -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG .
-          docker build -f Dockerfile.frontend -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest .
+          echo "🔨 Building fresh images with no cache..."
+          echo "Commit SHA: $IMAGE_TAG"
+          echo "Build Number: $BUILD_DATE"
 
-          # Build backend
-          docker build -f Dockerfile.backend -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG .
-          docker build -f Dockerfile.backend -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:latest .
+          # Clean any existing images to ensure fresh build
+          docker system prune -f
+
+          # Build frontend with no cache to ensure fresh build
+          echo "🏗️ Building frontend image..."
+          docker build --no-cache --pull \
+            --build-arg BUILD_DATE=$BUILD_DATE \
+            --build-arg COMMIT_SHA=$IMAGE_TAG \
+            -f Dockerfile.frontend \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest .
+
+          # Build backend with no cache to ensure fresh build
+          echo "🏗️ Building backend image..."
+          docker build --no-cache --pull \
+            --build-arg BUILD_DATE=$BUILD_DATE \
+            --build-arg COMMIT_SHA=$IMAGE_TAG \
+            -f Dockerfile.backend \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:latest .
+
+          # Verify images were built
+          echo "📋 Built images:"
+          docker images | grep healthcare
 
           # Push images
+          echo "📤 Pushing frontend images..."
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest
+
+          echo "📤 Pushing backend images..."
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:latest
+
+          echo "✅ All images pushed successfully"
 
   deploy-infrastructure:
     name: Deploy Infrastructure
