@@ -3569,3 +3569,265 @@ kubectl rollout status deployment/healthcare-frontend-stage3 -n healthcare-stage
 ---
 
 *This comprehensive guide provides both immediate manual fixes and long-term automation strategies to eliminate the need for manual GitOps interventions in production environments.*
+
+---
+
+## 🏗️ **ECR REPOSITORY MANAGEMENT AND PIPELINE FAILURES**
+
+### **Issue: ECR Repository Not Found Error**
+
+**Problem**: Pipeline fails with "The repository with name 'healthcare-frontend-stage3' does not exist in the registry"
+
+**Common Scenarios**:
+1. ECR repositories were manually deleted
+2. Fresh AWS account setup without repositories
+3. Repository names changed but pipeline not updated
+4. Cross-region deployment issues
+
+#### **Error Example**:
+```
+The repository with name 'healthcare-frontend-stage3' does not exist in the registry with id '867344452513'
+Error: Process completed with exit code 1.
+```
+
+---
+
+### **Immediate Fix: Manual Repository Creation**
+
+#### **Step 1: Create ECR Repositories**
+
+```bash
+# Create frontend repository
+aws ecr create-repository \
+  --repository-name healthcare-frontend-stage3 \
+  --region us-east-1 \
+  --image-scanning-configuration scanOnPush=true \
+  --encryption-configuration encryptionType=AES256
+
+# Create backend repository
+aws ecr create-repository \
+  --repository-name healthcare-backend-stage3 \
+  --region us-east-1 \
+  --image-scanning-configuration scanOnPush=true \
+  --encryption-configuration encryptionType=AES256
+```
+
+**Expected Output**:
+```json
+{
+    "repository": {
+        "repositoryArn": "arn:aws:ecr:us-east-1:867344452513:repository/healthcare-frontend-stage3",
+        "registryId": "867344452513",
+        "repositoryName": "healthcare-frontend-stage3",
+        "repositoryUri": "867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3",
+        "createdAt": "2025-08-16T05:59:24.590000+00:00",
+        "imageTagMutability": "MUTABLE",
+        "imageScanningConfiguration": {
+            "scanOnPush": true
+        },
+        "encryptionConfiguration": {
+            "encryptionType": "AES256"
+        }
+    }
+}
+```
+
+#### **Step 2: Verify Repository Creation**
+
+```bash
+# List all ECR repositories
+aws ecr describe-repositories --region us-east-1 --query 'repositories[*].repositoryName' --output table
+
+# Expected output:
+# --------------------------------
+# |     DescribeRepositories     |
+# +------------------------------+
+# |  healthcare-backend-stage3   |
+# |  healthcare-frontend-stage3  |
+# +------------------------------+
+```
+
+#### **Step 3: Trigger Pipeline Rebuild**
+
+```bash
+# Commit a small change to trigger pipeline
+git commit --allow-empty -m "trigger: rebuild after ECR repository creation"
+git push origin main
+```
+
+---
+
+### **Automated Solution: Pipeline ECR Management**
+
+#### **Enhanced Pipeline Configuration**
+
+The pipeline now includes automatic ECR repository creation:
+
+```yaml
+- name: Create ECR repositories if they don't exist
+  run: |
+    echo "🏗️ Ensuring ECR repositories exist..."
+
+    # Create frontend repository
+    aws ecr describe-repositories --repository-names healthcare-frontend-stage3 --region us-east-1 || \
+    aws ecr create-repository --repository-name healthcare-frontend-stage3 --region us-east-1 \
+      --image-scanning-configuration scanOnPush=true \
+      --encryption-configuration encryptionType=AES256
+
+    # Create backend repository
+    aws ecr describe-repositories --repository-names healthcare-backend-stage3 --region us-east-1 || \
+    aws ecr create-repository --repository-name healthcare-backend-stage3 --region us-east-1 \
+      --image-scanning-configuration scanOnPush=true \
+      --encryption-configuration encryptionType=AES256
+
+    echo "✅ ECR repositories ready"
+```
+
+#### **Benefits of Automated ECR Management**:
+- **Resilient Pipelines**: Handles missing repositories gracefully
+- **Security Best Practices**: Enables scanning and encryption by default
+- **Zero Manual Intervention**: Repositories created automatically
+- **Consistent Configuration**: Same settings across all environments
+
+---
+
+### **ECR Repository Management Best Practices**
+
+#### **Repository Naming Convention**
+```
+Format: <application>-<component>-<stage>
+Examples:
+- healthcare-frontend-stage3
+- healthcare-backend-stage3
+- healthcare-database-stage3
+```
+
+#### **Security Configuration**
+```bash
+# Always enable image scanning
+--image-scanning-configuration scanOnPush=true
+
+# Always enable encryption
+--encryption-configuration encryptionType=AES256
+
+# Set lifecycle policies to manage storage costs
+aws ecr put-lifecycle-policy \
+  --repository-name healthcare-frontend-stage3 \
+  --lifecycle-policy-text file://lifecycle-policy.json
+```
+
+#### **Lifecycle Policy Example**
+```json
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "Keep last 10 images",
+      "selection": {
+        "tagStatus": "tagged",
+        "countType": "imageCountMoreThan",
+        "countNumber": 10
+      },
+      "action": {
+        "type": "expire"
+      }
+    },
+    {
+      "rulePriority": 2,
+      "description": "Delete untagged images older than 1 day",
+      "selection": {
+        "tagStatus": "untagged",
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 1
+      },
+      "action": {
+        "type": "expire"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### **Troubleshooting ECR Issues**
+
+#### **Issue: Permission Denied**
+```bash
+# Check IAM permissions
+aws sts get-caller-identity
+
+# Required permissions:
+# - ecr:CreateRepository
+# - ecr:DescribeRepositories
+# - ecr:GetAuthorizationToken
+# - ecr:BatchCheckLayerAvailability
+# - ecr:GetDownloadUrlForLayer
+# - ecr:BatchGetImage
+# - ecr:InitiateLayerUpload
+# - ecr:UploadLayerPart
+# - ecr:CompleteLayerUpload
+# - ecr:PutImage
+```
+
+#### **Issue: Cross-Region Problems**
+```bash
+# Ensure consistent region usage
+export AWS_DEFAULT_REGION=us-east-1
+
+# Check current region
+aws configure get region
+
+# List repositories in specific region
+aws ecr describe-repositories --region us-east-1
+```
+
+#### **Issue: Repository Already Exists**
+```bash
+# Check if repository exists before creating
+aws ecr describe-repositories --repository-names healthcare-frontend-stage3 --region us-east-1
+
+# If exists, just proceed with build
+# If not exists, create it
+```
+
+---
+
+### **Emergency Recovery Procedures**
+
+#### **Complete ECR Reset**
+```bash
+# Delete all images (if needed)
+aws ecr batch-delete-image \
+  --repository-name healthcare-frontend-stage3 \
+  --image-ids imageTag=latest
+
+# Delete repository (if needed)
+aws ecr delete-repository \
+  --repository-name healthcare-frontend-stage3 \
+  --force
+
+# Recreate repository
+aws ecr create-repository \
+  --repository-name healthcare-frontend-stage3 \
+  --region us-east-1 \
+  --image-scanning-configuration scanOnPush=true \
+  --encryption-configuration encryptionType=AES256
+```
+
+#### **Bulk Repository Management**
+```bash
+# Create all Stage-3 repositories
+for repo in healthcare-frontend-stage3 healthcare-backend-stage3; do
+  aws ecr create-repository \
+    --repository-name $repo \
+    --region us-east-1 \
+    --image-scanning-configuration scanOnPush=true \
+    --encryption-configuration encryptionType=AES256
+done
+```
+
+---
+
+*This ECR management guide ensures robust repository handling and prevents pipeline failures due to missing ECR repositories.*
