@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:a338fb562af2f0832d2e9dd0be7010a893d46baa
+        image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:7cd2143641b18c6d9ea30ec77466d1c3d6238541
         imagePullPolicy: Always
         ports:
         - containerPort: 80
