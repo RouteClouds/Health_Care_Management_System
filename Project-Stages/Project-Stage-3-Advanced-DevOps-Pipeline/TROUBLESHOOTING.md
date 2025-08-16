@@ -3178,3 +3178,394 @@ chmod +x monitor-health.sh
 ---
 
 *This comprehensive connectivity solution addresses all frontend-backend communication issues identified in Stage-1 and Stage-2, providing robust service discovery, proper port configurations, and automated testing procedures for Stage-3.*
+
+---
+
+## 🔄 **GITOPS IMAGE UPDATE AUTOMATION AND MANUAL RECOVERY**
+
+### **Critical Issue: Manual GitOps Updates Required**
+
+**Problem**: Pipeline builds new images but GitOps manifests don't get updated automatically, requiring manual intervention every time there's a configuration fix.
+
+**Impact**:
+- Production deployments stuck with old images
+- Manual intervention required for every fix
+- Increased deployment time and human error risk
+- Not sustainable for production environments
+
+---
+
+### **Immediate Manual Fix Process**
+
+#### **Step 1: Identify Image Mismatch**
+
+```bash
+# Check current deployment image
+kubectl describe deployment healthcare-frontend-stage3 -n healthcare-stage3-dev | grep Image
+
+# Check latest commit SHA
+LATEST_SHA=$(git rev-parse HEAD)
+echo "Latest commit SHA: $LATEST_SHA"
+
+# Check current GitOps manifest
+grep "image:" gitops/environments/dev/frontend.yaml
+
+# Compare and identify mismatch
+echo "Deployment using: [old-sha]"
+echo "Latest commit: $LATEST_SHA"
+echo "GitOps manifest: [check output above]"
+```
+
+**Example Output Showing Mismatch**:
+```
+Deployment using: 6e17bacd4c284cebe1a6ec130929238ac134d9f7
+Latest commit: d6cf0a1f8b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e
+GitOps manifest: image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:6e17bacd4c284cebe1a6ec130929238ac134d9f7
+```
+
+#### **Step 2: Manual GitOps Update**
+
+```bash
+# Update GitOps manifest with latest commit SHA
+LATEST_SHA=$(git rev-parse HEAD)
+sed -i "s|image: .*healthcare-frontend-stage3:.*|image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:$LATEST_SHA|g" gitops/environments/dev/frontend.yaml
+
+# Verify the update
+grep "image:" gitops/environments/dev/frontend.yaml
+
+# Apply the updated manifest
+kubectl apply -f gitops/environments/dev/frontend.yaml
+
+# Monitor pod restart
+kubectl get pods -n healthcare-stage3-dev -w
+```
+
+#### **Step 3: Verify Fix Success**
+
+```bash
+# Wait for new pods to start
+kubectl wait --for=condition=ready pod -l app=healthcare-frontend -n healthcare-stage3-dev --timeout=300s
+
+# Check pod logs for successful startup
+kubectl logs deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev --tail=10
+
+# Expected healthy output:
+# 2025/08/16 05:15:00 [notice] 1#1: start worker processes
+# (No nginx errors about backend-service)
+
+# Test connectivity
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -I http://$FRONTEND_URL
+```
+
+---
+
+### **Automated Solutions for Production**
+
+#### **Solution 1: Enhanced GitOps Pipeline Job**
+
+**Problem**: Current GitOps job in pipeline may not be working correctly.
+
+**Fix**: Update `.github/workflows/stage3-ci.yml` with robust GitOps automation:
+
+```yaml
+  update-gitops:
+    name: Update GitOps Repository
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+          fetch-depth: 0
+
+      - name: Update GitOps manifests
+        working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+        run: |
+          echo "Updating GitOps manifests with image tag: $IMAGE_TAG"
+
+          # Update frontend image tag
+          sed -i "s|image: .*healthcare-frontend-stage3:.*|image: $ECR_REGISTRY/healthcare-frontend-stage3:$IMAGE_TAG|g" environments/dev/frontend.yaml
+
+          # Update backend image tag
+          sed -i "s|image: .*healthcare-backend-stage3:.*|image: $ECR_REGISTRY/healthcare-backend-stage3:$IMAGE_TAG|g" environments/dev/backend.yaml
+
+          # Verify changes
+          echo "=== GitOps Manifest Updates ==="
+          echo "Frontend image updated:"
+          grep "image:" environments/dev/frontend.yaml
+          echo "Backend image updated:"
+          grep "image:" environments/dev/backend.yaml
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update Stage-3 image tags to ${{ github.sha }}"
+          file_pattern: "Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
+          commit_author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+
+      - name: Trigger ArgoCD Sync
+        run: |
+          echo "GitOps manifests updated. ArgoCD will sync automatically."
+          echo "Manual sync command if needed:"
+          echo "kubectl patch application healthcare-frontend-stage3 -n argocd --type merge --patch '{\"operation\":{\"sync\":{\"revision\":\"HEAD\"}}}'"
+```
+
+#### **Solution 2: ArgoCD Image Updater**
+
+**Install ArgoCD Image Updater for automatic image updates**:
+
+```bash
+# Install ArgoCD Image Updater
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+
+# Configure image updater for healthcare applications
+cat > argocd-image-updater-config.yaml << 'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-config
+  namespace: argocd
+data:
+  registries.conf: |
+    registries:
+    - name: ECR
+      api_url: https://867344452513.dkr.ecr.us-east-1.amazonaws.com
+      prefix: 867344452513.dkr.ecr.us-east-1.amazonaws.com
+      ping: yes
+      credentials: ext:/scripts/auth1.sh
+      credsexpire: 10h
+EOF
+
+kubectl apply -f argocd-image-updater-config.yaml
+```
+
+**Update ArgoCD applications with image updater annotations**:
+
+```yaml
+# Add to argocd/applications/healthcare-frontend-app.yaml
+metadata:
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: frontend=867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3
+    argocd-image-updater.argoproj.io/frontend.update-strategy: latest
+    argocd-image-updater.argoproj.io/write-back-method: git
+```
+
+#### **Solution 3: Automated Recovery Script**
+
+**Create automated recovery script for immediate use**:
+
+```bash
+cat > fix-gitops-sync.sh << 'EOF'
+#!/bin/bash
+
+echo "🔄 GitOps Sync Fix Script"
+echo "========================"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# Configuration
+ECR_REGISTRY="867344452513.dkr.ecr.us-east-1.amazonaws.com"
+NAMESPACE="healthcare-stage3-dev"
+GITOPS_DIR="gitops/environments/dev"
+
+# Step 1: Check current state
+log_info "Checking current deployment state..."
+kubectl get pods -n $NAMESPACE
+
+# Step 2: Get latest commit SHA
+LATEST_SHA=$(git rev-parse HEAD)
+log_info "Latest commit SHA: $LATEST_SHA"
+
+# Step 3: Check current GitOps manifest
+log_info "Current GitOps manifest:"
+grep "image:" $GITOPS_DIR/frontend.yaml
+
+# Step 4: Update GitOps manifests
+log_info "Updating GitOps manifests..."
+sed -i "s|image: .*healthcare-frontend-stage3:.*|image: $ECR_REGISTRY/healthcare-frontend-stage3:$LATEST_SHA|g" $GITOPS_DIR/frontend.yaml
+sed -i "s|image: .*healthcare-backend-stage3:.*|image: $ECR_REGISTRY/healthcare-backend-stage3:$LATEST_SHA|g" $GITOPS_DIR/backend.yaml
+
+# Step 5: Verify updates
+log_info "Updated manifests:"
+echo "Frontend:" && grep "image:" $GITOPS_DIR/frontend.yaml
+echo "Backend:" && grep "image:" $GITOPS_DIR/backend.yaml
+
+# Step 6: Apply updates
+log_info "Applying updated manifests..."
+kubectl apply -f $GITOPS_DIR/
+
+# Step 7: Monitor deployment
+log_info "Monitoring deployment..."
+kubectl rollout status deployment/healthcare-frontend-stage3 -n $NAMESPACE --timeout=300s
+kubectl rollout status deployment/healthcare-backend-stage3 -n $NAMESPACE --timeout=300s
+
+# Step 8: Verify health
+log_info "Verifying application health..."
+kubectl get pods -n $NAMESPACE
+
+# Step 9: Test connectivity
+log_info "Testing connectivity..."
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n $NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+if curl -s -I http://$FRONTEND_URL | grep -q "200 OK"; then
+    log_success "✅ Frontend accessible: http://$FRONTEND_URL"
+else
+    log_warning "⚠️ Frontend may still be starting up"
+fi
+
+if curl -s -I http://$FRONTEND_URL/api/health | grep -q "200 OK"; then
+    log_success "✅ Backend API accessible via frontend proxy"
+else
+    log_warning "⚠️ Backend API may still be starting up"
+fi
+
+log_success "🎉 GitOps sync fix completed!"
+echo ""
+echo "Next steps:"
+echo "1. Monitor pods: kubectl get pods -n $NAMESPACE -w"
+echo "2. Check logs: kubectl logs deployment/healthcare-frontend-stage3 -n $NAMESPACE"
+echo "3. Test app: curl -I http://$FRONTEND_URL"
+EOF
+
+chmod +x fix-gitops-sync.sh
+```
+
+#### **Solution 4: Continuous Monitoring and Auto-Fix**
+
+**Create monitoring script that auto-fixes GitOps sync issues**:
+
+```bash
+cat > monitor-and-fix.sh << 'EOF'
+#!/bin/bash
+
+echo "🔍 Continuous GitOps Monitor and Auto-Fix"
+echo "========================================"
+
+NAMESPACE="healthcare-stage3-dev"
+CHECK_INTERVAL=60  # Check every 60 seconds
+
+while true; do
+    echo "$(date): Checking GitOps sync status..."
+
+    # Check for CrashLoopBackOff pods
+    CRASH_PODS=$(kubectl get pods -n $NAMESPACE | grep CrashLoopBackOff | wc -l)
+
+    if [ $CRASH_PODS -gt 0 ]; then
+        echo "⚠️ Found $CRASH_PODS pods in CrashLoopBackOff state"
+        echo "🔄 Triggering automatic fix..."
+
+        # Run the fix script
+        ./fix-gitops-sync.sh
+
+        # Wait for fix to take effect
+        sleep 300
+    else
+        echo "✅ All pods healthy"
+    fi
+
+    # Check ArgoCD sync status
+    ARGOCD_STATUS=$(kubectl get applications -n argocd -o jsonpath='{.items[*].status.sync.status}')
+    if echo "$ARGOCD_STATUS" | grep -q "OutOfSync"; then
+        echo "⚠️ ArgoCD applications out of sync"
+        echo "🔄 Triggering ArgoCD sync..."
+
+        kubectl patch application healthcare-frontend-stage3 -n argocd --type merge --patch '{"operation":{"sync":{"revision":"HEAD"}}}'
+        kubectl patch application healthcare-backend-stage3 -n argocd --type merge --patch '{"operation":{"sync":{"revision":"HEAD"}}}'
+    fi
+
+    sleep $CHECK_INTERVAL
+done
+EOF
+
+chmod +x monitor-and-fix.sh
+```
+
+---
+
+### **Production-Ready Automation Strategy**
+
+#### **Recommended Approach for Future**
+
+1. **Enhanced CI/CD Pipeline**:
+   - Fix GitOps job in GitHub Actions
+   - Add verification steps
+   - Implement rollback mechanisms
+
+2. **ArgoCD Image Updater**:
+   - Automatic image updates
+   - Policy-based updates
+   - Integration with ECR
+
+3. **Monitoring and Alerting**:
+   - Automated health checks
+   - Slack/email notifications
+   - Auto-recovery procedures
+
+4. **GitOps Best Practices**:
+   - Separate GitOps repository
+   - Branch-based environments
+   - Automated testing of manifests
+
+#### **Implementation Priority**
+
+1. **Immediate (Today)**: Use manual fix script when needed
+2. **Short-term (This Week)**: Fix GitOps pipeline job
+3. **Medium-term (Next Sprint)**: Implement ArgoCD Image Updater
+4. **Long-term (Next Month)**: Full automation with monitoring
+
+---
+
+### **Emergency Recovery Procedures**
+
+#### **When Manual Intervention is Required**
+
+**Scenario 1: Pipeline Builds but Pods Still Crash**
+```bash
+# Quick fix
+./fix-gitops-sync.sh
+
+# Verify
+kubectl get pods -n healthcare-stage3-dev
+```
+
+**Scenario 2: ArgoCD Not Syncing**
+```bash
+# Force sync
+kubectl patch application healthcare-frontend-stage3 -n argocd --type merge --patch '{"operation":{"sync":{"revision":"HEAD"}}}'
+
+# Check status
+kubectl get applications -n argocd
+```
+
+**Scenario 3: Complete GitOps Failure**
+```bash
+# Direct deployment bypass
+kubectl set image deployment/healthcare-frontend-stage3 healthcare-frontend=867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:$(git rev-parse HEAD) -n healthcare-stage3-dev
+
+# Monitor rollout
+kubectl rollout status deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev
+```
+
+---
+
+*This comprehensive guide provides both immediate manual fixes and long-term automation strategies to eliminate the need for manual GitOps interventions in production environments.*
