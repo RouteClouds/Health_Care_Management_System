@@ -456,3 +456,98 @@ jobs:
           fi
 
           echo "🎉 Automated database setup validation completed successfully!"
+
+  recovery-gitops:
+    name: Automated GitOps Recovery
+    runs-on: ubuntu-latest
+    if: failure() && github.ref == 'refs/heads/main'
+    needs: [update-gitops, deploy-infrastructure, deploy-application]
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name healthcare-eks-stage3-dev
+
+      - name: Run Automated GitOps Recovery
+        working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+        run: |
+          echo "🔧 Running automated GitOps recovery..."
+
+          # Run the GitOps sync fix script
+          if [ -f "scripts/fix-gitops-sync.sh" ]; then
+            chmod +x scripts/fix-gitops-sync.sh
+            ./scripts/fix-gitops-sync.sh
+          else
+            echo "⚠️ GitOps fix script not found, running manual recovery..."
+
+            # Manual recovery logic
+            LATEST_SHA=$(git rev-parse HEAD)
+            AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+            ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+            # Update GitOps manifests
+            sed -i "s|image: .*healthcare-frontend-stage3:.*|image: ${ECR_REGISTRY}/healthcare-frontend-stage3:${LATEST_SHA}|g" gitops/environments/dev/frontend.yaml
+            sed -i "s|image: .*healthcare-backend-stage3:.*|image: ${ECR_REGISTRY}/healthcare-backend-stage3:${LATEST_SHA}|g" gitops/environments/dev/backend.yaml
+
+            # Apply updated manifests
+            kubectl apply -f gitops/environments/dev/backend.yaml
+            kubectl apply -f gitops/environments/dev/frontend.yaml
+
+            # Wait for rollout
+            kubectl rollout status deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --timeout=600s
+            kubectl rollout status deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev --timeout=600s
+          fi
+
+          echo "✅ GitOps recovery completed"
+
+      - name: Validate Recovery Success
+        run: |
+          echo "🔍 Validating recovery success..."
+
+          # Get LoadBalancer URL
+          LB_URL=$(kubectl get service frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+          # Test application health
+          for i in {1..5}; do
+            if curl -f "http://${LB_URL}/api/health" | jq -e '.database == "connected"'; then
+              echo "✅ Recovery validation successful"
+              exit 0
+            else
+              echo "⏳ Attempt $i/5: Waiting for recovery to complete..."
+              sleep 30
+            fi
+          done
+
+          echo "❌ Recovery validation failed"
+          exit 1
+
+      - name: Notify Recovery Status
+        if: always()
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "🎉 Automated GitOps recovery completed successfully!"
+            echo "The pipeline failure has been automatically resolved."
+          else
+            echo "❌ Automated recovery failed. Manual intervention required."
+            echo "Please check the logs and run manual recovery procedures."
+          fi
