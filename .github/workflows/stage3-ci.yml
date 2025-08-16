@@ -136,6 +136,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Create ECR repositories if they don't exist
+        run: |
+          echo "🏗️ Ensuring ECR repositories exist..."
+
+          # Create frontend repository
+          aws ecr describe-repositories --repository-names healthcare-frontend-stage3 --region us-east-1 || \
+          aws ecr create-repository --repository-name healthcare-frontend-stage3 --region us-east-1 \
+            --image-scanning-configuration scanOnPush=true \
+            --encryption-configuration encryptionType=AES256
+
+          # Create backend repository
+          aws ecr describe-repositories --repository-names healthcare-backend-stage3 --region us-east-1 || \
+          aws ecr create-repository --repository-name healthcare-backend-stage3 --region us-east-1 \
+            --image-scanning-configuration scanOnPush=true \
+            --encryption-configuration encryptionType=AES256
+
+          echo "✅ ECR repositories ready"
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
