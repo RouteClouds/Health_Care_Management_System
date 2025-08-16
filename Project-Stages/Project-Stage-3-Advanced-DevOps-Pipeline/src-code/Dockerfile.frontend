@@ -8,6 +8,16 @@ ARG COMMIT_SHA
 ENV BUILD_DATE=${BUILD_DATE}
 ENV COMMIT_SHA=${COMMIT_SHA}
 
+# Build arguments for Vite environment variables
+ARG VITE_API_BASE_URL=/api
+ARG VITE_APP_NAME="RouteClouds Health Platform"
+ARG VITE_APP_VERSION="1.0.0"
+
+# Set Vite environment variables for build
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_APP_NAME=${VITE_APP_NAME}
+ENV VITE_APP_VERSION=${VITE_APP_VERSION}
+
 # Set working directory
 WORKDIR /app
 
