@@ -1,6 +1,14 @@
 # Node.js backend Dockerfile
 FROM node:18-alpine AS base
 
+# Build arguments for tracking
+ARG BUILD_DATE
+ARG COMMIT_SHA
+LABEL build_date=${BUILD_DATE}
+LABEL commit_sha=${COMMIT_SHA}
+LABEL stage="stage-3"
+LABEL component="backend"
+
 # Install system dependencies including OpenSSL for Prisma
 RUN apk add --no-cache \
     curl \
