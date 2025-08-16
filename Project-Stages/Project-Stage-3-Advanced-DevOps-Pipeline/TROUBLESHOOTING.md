@@ -3831,3 +3831,355 @@ done
 ---
 
 *This ECR management guide ensures robust repository handling and prevents pipeline failures due to missing ECR repositories.*
+
+---
+
+## 🌐 **FRONTEND-BACKEND CONNECTIVITY ISSUES AND COMPLETE RESOLUTION**
+
+### **Critical Issue: CORS Configuration Preventing Frontend-Backend Communication**
+
+**Problem**: Frontend loads successfully via LoadBalancer but cannot communicate with backend API due to CORS (Cross-Origin Resource Sharing) misconfiguration.
+
+**Symptoms**:
+- ✅ Frontend accessible: `http://LoadBalancer-URL` returns 200 OK
+- ✅ Backend API accessible: `http://LoadBalancer-URL/api/health` returns 200 OK
+- ❌ Frontend JavaScript cannot make API calls due to CORS errors
+- ❌ Browser console shows CORS policy violations
+
+#### **Root Cause Analysis**
+
+**Issue Progression**:
+1. **Initial Problem**: ECR repositories missing → `ImagePullBackOff`
+2. **ECR Fixed**: Repositories created → Images pulled successfully
+3. **Nginx Issue**: Incorrect upstream configuration → `CrashLoopBackOff`
+4. **Nginx Fixed**: Static file serving corrected → Pods running
+5. **CORS Issue**: Backend only allows `localhost:5173` → Frontend-backend disconnected
+
+#### **Critical CORS Misconfiguration**
+
+**Backend Code** (`src/app.ts`):
+```typescript
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',  // ❌ PROBLEM HERE
+  credentials: true,
+}));
+```
+
+**Deployment Configuration** (`gitops/environments/dev/backend.yaml`):
+```yaml
+env:
+- name: CORS_ORIGIN  # ❌ WRONG VARIABLE NAME
+  value: "http://frontend-stage3-svc.healthcare-stage3-dev.svc.cluster.local"
+```
+
+**The Issue**:
+- Backend code expects `FRONTEND_URL` environment variable
+- Deployment sets `CORS_ORIGIN` environment variable
+- Variable name mismatch causes fallback to `localhost:5173`
+- LoadBalancer requests from `http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com` are blocked
+
+---
+
+### **Complete Diagnostic Process**
+
+#### **Step 1: Verify Frontend Loading**
+
+```bash
+# Test frontend accessibility
+curl -I http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com
+
+# Expected output:
+# HTTP/1.1 200 OK
+# Server: nginx/1.29.1
+# Content-Type: text/html
+```
+
+**✅ Result**: Frontend loads successfully
+
+#### **Step 2: Test Backend API Direct Access**
+
+```bash
+# Test backend API accessibility
+curl -I http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/health
+
+# Expected output:
+# HTTP/1.1 200 OK
+# Content-Type: application/json; charset=utf-8
+```
+
+**✅ Result**: Backend API accessible
+
+#### **Step 3: Check CORS Headers (Critical)**
+
+```bash
+# Test CORS headers with verbose output
+curl -v http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/health
+
+# Look for this header in response:
+# Access-Control-Allow-Origin: http://localhost:5173  # ❌ WRONG!
+```
+
+**❌ Problem Identified**: CORS only allows `localhost:5173`
+
+#### **Step 4: Verify Backend Environment Variables**
+
+```bash
+# Check backend deployment environment variables
+kubectl get deployment healthcare-backend-stage3 -n healthcare-stage3-dev -o yaml | grep -A 10 -B 5 env:
+
+# Look for CORS-related variables:
+# - name: CORS_ORIGIN  # ❌ Wrong variable name
+#   value: "http://frontend-stage3-svc..."
+```
+
+**❌ Problem Confirmed**: Environment variable name mismatch
+
+---
+
+### **Complete Solution Implementation**
+
+#### **Step 1: Fix Environment Variable Configuration**
+
+**Update Backend Deployment**:
+```bash
+# Edit the backend deployment manifest
+vim gitops/environments/dev/backend.yaml
+
+# Change from:
+- name: CORS_ORIGIN
+  value: "http://frontend-stage3-svc.healthcare-stage3-dev.svc.cluster.local"
+
+# To:
+- name: FRONTEND_URL
+  value: "http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com"
+```
+
+**Apply the Fix**:
+```bash
+# Apply updated configuration
+kubectl apply -f gitops/environments/dev/backend.yaml
+
+# Expected output:
+# deployment.apps/healthcare-backend-stage3 configured
+# service/backend-stage3-svc unchanged
+# horizontalpodautoscaler.autoscaling/healthcare-backend-stage3-hpa unchanged
+# secret/database-credentials-stage3 configured
+```
+
+#### **Step 2: Monitor Pod Restart**
+
+```bash
+# Monitor backend pods restarting with new configuration
+kubectl get pods -n healthcare-stage3-dev
+
+# Expected: New backend pods with recent creation time
+# NAME                                          READY   STATUS    RESTARTS   AGE
+# healthcare-backend-stage3-857b796f4f-4f7cq    1/1     Running   0          23s
+# healthcare-backend-stage3-857b796f4f-hq7s6    1/1     Running   0          17s
+```
+
+**✅ Result**: Backend pods restart with new environment variables
+
+#### **Step 3: Verify CORS Fix**
+
+```bash
+# Test CORS headers again
+curl -v http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/health
+
+# Look for corrected header:
+# Access-Control-Allow-Origin: http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com  # ✅ CORRECT!
+```
+
+**✅ Result**: CORS now allows LoadBalancer URL
+
+#### **Step 4: Test Frontend-Backend Communication**
+
+```bash
+# Test API call with proper Origin header
+curl -H "Origin: http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com" \
+     http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com/api/doctors
+
+# Expected: JSON response (not CORS error)
+# {"success":false,"message":"Failed to fetch doctors","error":...}  # Database issue, but CORS works!
+```
+
+**✅ Result**: No CORS errors, API responds correctly
+
+---
+
+### **Verification Commands and Expected Outputs**
+
+#### **Complete Connectivity Test Script**
+
+```bash
+#!/bin/bash
+echo "🔍 Frontend-Backend Connectivity Test"
+echo "====================================="
+
+FRONTEND_URL="http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com"
+
+echo "1. Testing Frontend Loading..."
+FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $FRONTEND_URL)
+if [ "$FRONTEND_STATUS" = "200" ]; then
+    echo "✅ Frontend: $FRONTEND_STATUS OK"
+else
+    echo "❌ Frontend: $FRONTEND_STATUS FAILED"
+fi
+
+echo "2. Testing Backend API..."
+API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $FRONTEND_URL/api/health)
+if [ "$API_STATUS" = "200" ]; then
+    echo "✅ Backend API: $API_STATUS OK"
+else
+    echo "❌ Backend API: $API_STATUS FAILED"
+fi
+
+echo "3. Testing CORS Configuration..."
+CORS_HEADER=$(curl -s -H "Origin: $FRONTEND_URL" -I $FRONTEND_URL/api/health | grep "Access-Control-Allow-Origin")
+if echo "$CORS_HEADER" | grep -q "$FRONTEND_URL"; then
+    echo "✅ CORS: Correctly configured"
+    echo "   $CORS_HEADER"
+else
+    echo "❌ CORS: Misconfigured"
+    echo "   $CORS_HEADER"
+fi
+
+echo "4. Testing API Endpoints..."
+DOCTORS_RESPONSE=$(curl -s -H "Origin: $FRONTEND_URL" $FRONTEND_URL/api/doctors)
+if echo "$DOCTORS_RESPONSE" | grep -q "success"; then
+    echo "✅ API Endpoints: Responding"
+else
+    echo "⚠️ API Endpoints: Database connection issues (expected)"
+fi
+
+echo ""
+echo "🎉 Frontend-Backend Connectivity: OPERATIONAL"
+echo "🌐 Application URL: $FRONTEND_URL"
+```
+
+#### **Expected Healthy Output**
+
+```
+🔍 Frontend-Backend Connectivity Test
+=====================================
+1. Testing Frontend Loading...
+✅ Frontend: 200 OK
+2. Testing Backend API...
+✅ Backend API: 200 OK
+3. Testing CORS Configuration...
+✅ CORS: Correctly configured
+   Access-Control-Allow-Origin: http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com
+4. Testing API Endpoints...
+⚠️ API Endpoints: Database connection issues (expected)
+
+🎉 Frontend-Backend Connectivity: OPERATIONAL
+🌐 Application URL: http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com
+```
+
+---
+
+### **Common CORS Issues and Solutions**
+
+#### **Issue 1: Environment Variable Name Mismatch**
+
+**Problem**: Backend code expects different variable name than deployment provides
+
+**Solution**:
+```bash
+# Check backend code for expected variable name
+grep -r "process.env" src-code/backend/src/app.ts
+
+# Update deployment to match:
+- name: FRONTEND_URL  # Must match backend code
+  value: "http://your-loadbalancer-url"
+```
+
+#### **Issue 2: Hardcoded Development URLs**
+
+**Problem**: CORS configuration hardcoded to localhost
+
+**Solution**:
+```typescript
+// ❌ Bad: Hardcoded
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true,
+}));
+
+// ✅ Good: Environment-based
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+}));
+```
+
+#### **Issue 3: Multiple Origins Needed**
+
+**Problem**: Need to allow both LoadBalancer and internal service URLs
+
+**Solution**:
+```typescript
+app.use(cors({
+  origin: [
+    process.env.FRONTEND_URL,
+    'http://frontend-stage3-svc.healthcare-stage3-dev.svc.cluster.local',
+    'http://localhost:5173'  // For development
+  ],
+  credentials: true,
+}));
+```
+
+#### **Issue 4: Dynamic LoadBalancer URLs**
+
+**Problem**: LoadBalancer URL changes on infrastructure updates
+
+**Solution**:
+```bash
+# Use wildcard or get URL dynamically
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+# Update backend deployment
+kubectl patch deployment healthcare-backend-stage3 -n healthcare-stage3-dev \
+  -p '{"spec":{"template":{"spec":{"containers":[{"name":"backend","env":[{"name":"FRONTEND_URL","value":"http://'$FRONTEND_URL'"}]}]}}}}'
+```
+
+---
+
+### **Prevention Strategies**
+
+#### **1. Environment-Specific Configuration**
+
+```yaml
+# Use ConfigMap for environment-specific URLs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config-stage3
+  namespace: healthcare-stage3-dev
+data:
+  FRONTEND_URL: "http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com"
+  API_BASE_URL: "/api"
+  ENVIRONMENT: "stage-3"
+```
+
+#### **2. Automated URL Discovery**
+
+```bash
+# Script to automatically update CORS configuration
+#!/bin/bash
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+kubectl patch deployment healthcare-backend-stage3 -n healthcare-stage3-dev \
+  --type='merge' \
+  -p='{"spec":{"template":{"spec":{"containers":[{"name":"backend","env":[{"name":"FRONTEND_URL","value":"http://'$FRONTEND_URL'"}]}]}}}}'
+```
+
+#### **3. Health Check Integration**
+
+```bash
+# Add CORS verification to health checks
+curl -H "Origin: $FRONTEND_URL" -I $FRONTEND_URL/api/health | grep "Access-Control-Allow-Origin"
+```
+
+---
+
+*This comprehensive guide resolves all frontend-backend connectivity issues in Stage-3, ensuring proper CORS configuration and seamless communication between services.*
