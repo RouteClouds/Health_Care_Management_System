@@ -24,9 +24,22 @@ WORKDIR /app
 # Copy package files
 COPY frontend/package*.json ./
 
-# Install dependencies (including dev dependencies needed for build)
+# Configure npm for better network resilience
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set fetch-timeout 300000 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-retries 5
+
+# Install dependencies with retry mechanism
 # Note: Using npm install instead of npm ci for Stage-2 workspace compatibility
-RUN npm install
+RUN for attempt in 1 2 3; do \
+      echo "npm install attempt $attempt/3..." && \
+      npm install && break || \
+      (echo "npm install failed on attempt $attempt" && \
+       if [ $attempt -eq 3 ]; then exit 1; fi && \
+       sleep 30); \
+    done
 
 # Copy source code
 COPY frontend/ .

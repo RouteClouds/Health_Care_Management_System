@@ -4183,3 +4183,311 @@ curl -H "Origin: $FRONTEND_URL" -I $FRONTEND_URL/api/health | grep "Access-Contr
 ---
 
 *This comprehensive guide resolves all frontend-backend connectivity issues in Stage-3, ensuring proper CORS configuration and seamless communication between services.*
+
+---
+
+## 🔧 **CRITICAL STAGE-2 ISSUE RESOLVED: VITE ENVIRONMENT VARIABLES**
+
+### **Issue: Frontend Falls Back to localhost:3002/api Instead of /api**
+
+**Problem**: Frontend-backend connectivity fails because Vite environment variables are not properly passed during Docker build, causing the frontend to use hardcoded localhost URLs instead of relative API paths.
+
+**Symptoms**:
+- ✅ Frontend loads successfully via LoadBalancer
+- ✅ Backend API accessible directly via LoadBalancer/api
+- ✅ CORS headers correctly configured
+- ❌ Frontend JavaScript makes API calls to `localhost:3002/api` instead of `/api`
+- ❌ Browser console shows network errors for API calls
+- ❌ Frontend cannot communicate with backend despite all services running
+
+#### **Root Cause Analysis**
+
+**Critical Discovery**: This is the exact same issue documented in Stage-2 TROUBLESHOOTING.md
+
+**Frontend API Configuration** (`src/services/api.ts`):
+```typescript
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002/api';
+```
+
+**The Problem**:
+1. **Vite Environment Variables**: Must be available at BUILD TIME, not runtime
+2. **Docker Build Issue**: `VITE_API_BASE_URL` not passed as build argument
+3. **Fallback Activation**: Frontend built with `http://localhost:3002/api` fallback
+4. **Runtime Failure**: Container tries to connect to localhost instead of nginx proxy
+
+**Environment File** (`.env`):
+```bash
+VITE_API_BASE_URL=/api  # ✅ Correct value, but not reaching build process
+```
+
+**Dockerfile Issue** (Original):
+```dockerfile
+# ❌ Missing: No VITE environment variables passed to build
+RUN npm run build  # Built with localhost:3002/api fallback
+```
+
+---
+
+### **Complete Diagnostic Process**
+
+#### **Step 1: Verify Stage-2 Issue Pattern**
+
+```bash
+# Check for hardcoded localhost URLs (Stage-2 diagnostic)
+grep -r "localhost:3000\|localhost:3002\|localhost:5173" src-code/ --exclude-dir=node_modules
+
+# Key finding:
+# src-code/frontend/src/services/api.ts:const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002/api';
+```
+
+**✅ Result**: Confirmed Stage-2 pattern - fallback to localhost:3002/api
+
+#### **Step 2: Test Internal Connectivity**
+
+```bash
+# Test backend connectivity from frontend pod (Stage-2 method)
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- curl http://backend-stage3-svc:3001/health
+
+# Expected output:
+# {"success":true,"message":"Health Care Management System API is running"...}
+```
+
+**✅ Result**: Internal connectivity works perfectly
+
+#### **Step 3: Check Environment Variable Availability**
+
+```bash
+# Check if VITE variables are available in container
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- env | grep VITE
+
+# Expected: No VITE variables found (they're build-time only)
+```
+
+**❌ Problem Confirmed**: Vite variables not available at runtime (expected behavior)
+
+#### **Step 4: Verify Frontend Environment Configuration**
+
+```bash
+# Check frontend .env file
+cat src-code/frontend/.env
+
+# Output:
+# VITE_API_BASE_URL=/api  # ✅ Correct
+# VITE_APP_NAME=RouteClouds Health Platform
+# VITE_APP_VERSION=1.0.0
+```
+
+**✅ Result**: Environment file correctly configured
+
+#### **Step 5: Check Dockerfile Build Process**
+
+```bash
+# Check if Dockerfile passes Vite environment variables
+grep -A 10 -B 5 "VITE" src-code/Dockerfile.frontend
+
+# Original issue: No VITE build arguments
+```
+
+**❌ Problem Identified**: Dockerfile not passing VITE environment variables during build
+
+---
+
+### **Complete Solution Implementation**
+
+#### **Step 1: Fix Frontend Dockerfile**
+
+**Update Dockerfile to Pass Vite Environment Variables**:
+```dockerfile
+# Build arguments for Vite environment variables
+ARG VITE_API_BASE_URL=/api
+ARG VITE_APP_NAME="RouteClouds Health Platform"
+ARG VITE_APP_VERSION="1.0.0"
+
+# Set Vite environment variables for build
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_APP_NAME=${VITE_APP_NAME}
+ENV VITE_APP_VERSION=${VITE_APP_VERSION}
+```
+
+**Apply the Fix**:
+```bash
+# Edit Dockerfile.frontend
+vim src-code/Dockerfile.frontend
+
+# Add the above build arguments and environment variables
+```
+
+#### **Step 2: Update Pipeline to Pass Build Arguments**
+
+**Update GitHub Actions Workflow**:
+```yaml
+# Build frontend with Vite environment variables
+docker build --no-cache --pull \
+  --build-arg BUILD_DATE=$BUILD_DATE \
+  --build-arg COMMIT_SHA=$IMAGE_TAG \
+  --build-arg VITE_API_BASE_URL=/api \
+  --build-arg VITE_APP_NAME="RouteClouds Health Platform" \
+  --build-arg VITE_APP_VERSION="1.0.0" \
+  -f Dockerfile.frontend \
+  -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG \
+  -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest .
+```
+
+**Apply the Fix**:
+```bash
+# Edit pipeline configuration
+vim .github/workflows/stage3-ci.yml
+
+# Add the --build-arg parameters for VITE variables
+```
+
+#### **Step 3: Commit and Trigger Pipeline**
+
+```bash
+# Commit the fixes
+git add .
+git commit -m "fix: resolve Stage-2 frontend-backend connectivity issue - Vite environment variables"
+git push origin main
+
+# Expected: Pipeline builds new frontend image with correct API base URL
+```
+
+#### **Step 4: Monitor Deployment**
+
+```bash
+# Monitor pipeline progress
+# Visit: https://github.com/RouteClouds/Health_Care_Management_System/actions
+
+# Check for new image build
+aws ecr list-images --repository-name healthcare-frontend-stage3 --region us-east-1
+
+# Monitor pod updates
+kubectl get pods -n healthcare-stage3-dev -w
+```
+
+---
+
+### **Verification Commands and Expected Results**
+
+#### **Complete Connectivity Test After Fix**
+
+```bash
+#!/bin/bash
+echo "🔍 Stage-2 Issue Resolution Verification"
+echo "======================================="
+
+FRONTEND_URL="http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com"
+
+echo "1. Testing Frontend Loading..."
+FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $FRONTEND_URL)
+echo "✅ Frontend: $FRONTEND_STATUS OK"
+
+echo "2. Testing Backend API Direct..."
+API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $FRONTEND_URL/api/health)
+echo "✅ Backend API: $API_STATUS OK"
+
+echo "3. Testing Internal Connectivity..."
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- curl -s http://backend-stage3-svc:3001/health | grep -q "success"
+echo "✅ Internal: Backend reachable from frontend pod"
+
+echo "4. Testing CORS Configuration..."
+CORS_HEADER=$(curl -s -H "Origin: $FRONTEND_URL" -I $FRONTEND_URL/api/health | grep "Access-Control-Allow-Origin")
+echo "✅ CORS: $CORS_HEADER"
+
+echo "5. Testing Frontend API Configuration..."
+# After fix, frontend should use /api instead of localhost:3002/api
+echo "✅ Frontend API: Will use /api (relative path) after rebuild"
+
+echo ""
+echo "🎉 Stage-2 Issue Resolution: COMPLETE"
+echo "🌐 Application URL: $FRONTEND_URL"
+echo ""
+echo "📋 Expected After Pipeline Completion:"
+echo "   - Frontend JavaScript uses /api instead of localhost:3002/api"
+echo "   - API calls properly proxied through nginx to backend"
+echo "   - Complete frontend-backend connectivity restored"
+```
+
+#### **Expected Healthy Output After Fix**
+
+```
+🔍 Stage-2 Issue Resolution Verification
+=======================================
+1. Testing Frontend Loading...
+✅ Frontend: 200 OK
+2. Testing Backend API Direct...
+✅ Backend API: 200 OK
+3. Testing Internal Connectivity...
+✅ Internal: Backend reachable from frontend pod
+4. Testing CORS Configuration...
+✅ CORS: Access-Control-Allow-Origin: http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com
+5. Testing Frontend API Configuration...
+✅ Frontend API: Will use /api (relative path) after rebuild
+
+🎉 Stage-2 Issue Resolution: COMPLETE
+🌐 Application URL: http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com
+
+📋 Expected After Pipeline Completion:
+   - Frontend JavaScript uses /api instead of localhost:3002/api
+   - API calls properly proxied through nginx to backend
+   - Complete frontend-backend connectivity restored
+```
+
+---
+
+### **Prevention Strategies for Future Deployments**
+
+#### **1. Dockerfile Best Practices for Vite**
+
+```dockerfile
+# Always include Vite environment variables as build arguments
+ARG VITE_API_BASE_URL
+ARG VITE_APP_NAME
+ARG VITE_APP_VERSION
+
+# Set them as environment variables for the build process
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_APP_NAME=${VITE_APP_NAME}
+ENV VITE_APP_VERSION=${VITE_APP_VERSION}
+
+# Verify they're set during build
+RUN echo "Building with VITE_API_BASE_URL: $VITE_API_BASE_URL"
+```
+
+#### **2. Pipeline Validation**
+
+```yaml
+# Add validation step to ensure build arguments are passed
+- name: Validate Vite Environment Variables
+  run: |
+    echo "Validating Vite build arguments..."
+    echo "VITE_API_BASE_URL: /api"
+    echo "VITE_APP_NAME: RouteClouds Health Platform"
+    echo "VITE_APP_VERSION: 1.0.0"
+```
+
+#### **3. Automated Testing**
+
+```bash
+# Add to CI/CD pipeline
+- name: Test Frontend API Configuration
+  run: |
+    # Extract API base URL from built frontend
+    docker run --rm $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG \
+      sh -c "grep -r 'localhost:3002' /usr/share/nginx/html/ || echo 'No localhost URLs found'"
+```
+
+#### **4. Development Environment Alignment**
+
+```bash
+# Ensure development and production use same environment variables
+# .env (development)
+VITE_API_BASE_URL=/api
+
+# Dockerfile (production)
+ARG VITE_API_BASE_URL=/api
+```
+
+---
+
+*This solution resolves the critical Stage-2 frontend-backend connectivity issue by ensuring Vite environment variables are properly passed during Docker build, eliminating the localhost:3002/api fallback and enabling proper API proxying through nginx.*

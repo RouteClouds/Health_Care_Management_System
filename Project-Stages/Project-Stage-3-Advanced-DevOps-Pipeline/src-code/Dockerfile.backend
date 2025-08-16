@@ -27,9 +27,22 @@ RUN addgroup -g 1001 -S nodejs && \
 # Copy package files
 COPY backend/package*.json ./
 
-# Install all dependencies (including dev dependencies for build)
+# Configure npm for better network resilience
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set fetch-timeout 300000 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-retries 5
+
+# Install all dependencies with retry mechanism
 # Note: Using npm install instead of npm ci for Stage-2 workspace compatibility
-RUN npm install && npm cache clean --force
+RUN for attempt in 1 2 3; do \
+      echo "npm install attempt $attempt/3..." && \
+      npm install && npm cache clean --force && break || \
+      (echo "npm install failed on attempt $attempt" && \
+       if [ $attempt -eq 3 ]; then exit 1; fi && \
+       sleep 30); \
+    done
 
 # Copy Prisma schema first for better caching
 COPY backend/prisma ./prisma/
