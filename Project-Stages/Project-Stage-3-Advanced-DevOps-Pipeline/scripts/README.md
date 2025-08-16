@@ -556,6 +556,348 @@ git push origin main  # Triggers automated pipeline with database setup
 
 ---
 
+---
+
+## 🔧 **ADDITIONAL UTILITY SCRIPTS**
+
+### **1. development-mode.sh** (Root Level)
+
+**Purpose**: Enables development mode with hot reloading and debugging features.
+
+**What it does:**
+- ✅ **Starts services in development mode** with hot reloading
+- ✅ **Enables debug logging** for troubleshooting
+- ✅ **Configures local development environment** variables
+- ✅ **Sets up port forwarding** for local access
+
+**Usage:**
+```bash
+./development-mode.sh
+
+# Enables development mode for local testing
+# Includes hot reloading and debug features
+```
+
+### **2. quick-update.sh** (Root Level)
+
+**Purpose**: Quick deployment updates without full rebuild for rapid iteration.
+
+**What it does:**
+- ✅ **Updates only changed components** for faster deployment
+- ✅ **Skips unnecessary rebuild steps** to save time
+- ✅ **Maintains database state** during updates
+- ✅ **Validates changes** before applying
+
+**Usage:**
+```bash
+./quick-update.sh
+
+# Fast update for development iterations
+# Preserves database and configuration state
+```
+
+### **3. force-deployment-update.sh** (Root Level)
+
+**Purpose**: Forces deployment update when normal updates fail.
+
+**When to use:**
+- ❌ **Normal deployment updates stuck**
+- ❌ **Pods not updating to new images**
+- ❌ **GitOps sync issues**
+
+**What it does:**
+- ✅ **Forces pod recreation** with new images
+- ✅ **Clears deployment cache** and state
+- ✅ **Validates new deployment** health
+- ✅ **Handles stuck deployments** gracefully
+
+**Usage:**
+```bash
+./force-deployment-update.sh
+
+# Forces complete deployment refresh
+# Use when normal updates fail
+```
+
+### **4. force-pod-restart.sh** (Root Level)
+
+**Purpose**: Forces restart of specific pods for troubleshooting.
+
+**Usage:**
+```bash
+./force-pod-restart.sh [pod-name]
+
+# Restarts specific pods
+# Useful for clearing stuck states
+```
+
+### **5. verify-deployment.sh** (Root Level)
+
+**Purpose**: Comprehensive deployment verification and health checking.
+
+**What it verifies:**
+- ✅ **Pod health and readiness** status
+- ✅ **Service connectivity** and endpoints
+- ✅ **Database connectivity** and data integrity
+- ✅ **API functionality** with real requests
+- ✅ **Load balancer** configuration and routing
+
+**Usage:**
+```bash
+./verify-deployment.sh
+
+# Expected output:
+# 🔍 Verifying Stage-3 Deployment...
+# ✅ Pods: All running and ready
+# ✅ Services: All endpoints available
+# ✅ Database: Connected with sample data
+# ✅ APIs: All endpoints responding
+# ✅ LoadBalancer: Routing correctly
+# 🎉 Deployment verification: PASSED
+```
+
+### **6. validate-stage2-setup.sh** (Root Level)
+
+**Purpose**: Validates Stage-2 prerequisites before Stage-3 migration.
+
+**What it validates:**
+- ✅ **Stage-2 deployment** status and health
+- ✅ **Required tools** installation and versions
+- ✅ **AWS credentials** and permissions
+- ✅ **Kubernetes cluster** access and configuration
+- ✅ **Database connectivity** and schema
+
+**Usage:**
+```bash
+./validate-stage2-setup.sh
+
+# Validates prerequisites for Stage-3 setup
+# Must pass before proceeding with migration
+```
+
+---
+
+## 🔍 **GIT AND SECURITY SCRIPTS**
+
+### **1. setup-branch-protection.sh** (`git-scripts/setup-branch-protection.sh`)
+
+**Purpose**: Configures GitHub branch protection rules for secure development.
+
+**What it configures:**
+- ✅ **Require pull request reviews** before merging
+- ✅ **Require status checks** to pass
+- ✅ **Restrict push access** to main branch
+- ✅ **Require up-to-date branches** before merging
+- ✅ **Dismiss stale reviews** when new commits are pushed
+
+**Usage:**
+```bash
+./git-scripts/setup-branch-protection.sh
+
+# Configures secure branch protection
+# Prevents direct pushes to main branch
+```
+
+### **2. test-branch-protection.sh** (Root Level)
+
+**Purpose**: Tests branch protection rules and security configurations.
+
+**What it tests:**
+- ✅ **Branch protection** enforcement
+- ✅ **Required status checks** functionality
+- ✅ **Pull request** workflow validation
+- ✅ **Security policies** compliance
+
+### **3. git-status-check.sh** (`git-scripts/git-status-check.sh`)
+
+**Purpose**: Comprehensive git repository status and health check.
+
+**What it checks:**
+- ✅ **Repository status** and uncommitted changes
+- ✅ **Branch synchronization** with remote
+- ✅ **Merge conflicts** detection
+- ✅ **Tag consistency** and versioning
+
+---
+
+## 📊 **MONITORING AND DIAGNOSTICS**
+
+### **1. diagnose-aws-resources.sh** (`deployment/diagnose-aws-resources.sh`)
+
+**Purpose**: Comprehensive AWS resource diagnostics and health checking.
+
+**What it diagnoses:**
+- ✅ **EKS cluster** health and node status
+- ✅ **RDS database** connectivity and performance
+- ✅ **Load balancers** configuration and health
+- ✅ **ECR repositories** and image availability
+- ✅ **IAM roles and permissions** validation
+
+**Usage:**
+```bash
+./deployment/diagnose-aws-resources.sh
+
+# Comprehensive AWS resource health check
+# Identifies configuration and connectivity issues
+```
+
+### **2. validate-infrastructure.sh** (`deployment/validate-infrastructure.sh`)
+
+**Purpose**: Infrastructure validation before application deployment.
+
+**What it validates:**
+- ✅ **Terraform state** consistency
+- ✅ **AWS resources** availability and configuration
+- ✅ **Network connectivity** between components
+- ✅ **Security groups** and firewall rules
+- ✅ **DNS resolution** and routing
+
+---
+
+## 🧪 **ADVANCED TESTING SCRIPTS**
+
+### **1. test-pipeline-isolation.sh** (`validation/test-pipeline-isolation.sh`)
+
+**Purpose**: Tests pipeline isolation and prevents cross-stage interference.
+
+**What it tests:**
+- ✅ **Stage isolation** - Stage-3 doesn't affect Stage-2
+- ✅ **Resource separation** - No shared resources between stages
+- ✅ **Namespace isolation** in Kubernetes
+- ✅ **Database separation** - Separate schemas and data
+
+### **2. test-simple.sh** (`validation/test-simple.sh`)
+
+**Purpose**: Simple smoke tests for basic functionality validation.
+
+**What it tests:**
+- ✅ **Basic connectivity** tests
+- ✅ **Simple API calls** validation
+- ✅ **Health endpoint** responses
+- ✅ **Database connection** verification
+
+---
+
+---
+
+## 🤖 **AUTOMATED DATABASE TESTING IN CI/CD**
+
+### **Pipeline Validation Process**
+
+**The CI/CD pipeline automatically validates the database setup through these steps:**
+
+1. **🏗️ Build Phase**:
+   ```yaml
+   # GitHub Actions automatically:
+   - name: Build Images with Database Setup
+     run: |
+       # Builds images with seed-database.js included
+       # Validates Dockerfile.backend includes database scripts
+       # Ensures package.json has correct database scripts
+   ```
+
+2. **🚀 Deploy Phase**:
+   ```yaml
+   # Automatic deployment with database setup:
+   - name: Deploy with Database Automation
+     run: |
+       # Applies Kubernetes manifests
+       # Triggers docker-entrypoint.sh in backend pods
+       # Automatically runs: npx prisma migrate deploy
+       # Automatically runs: node scripts/seed-database.js
+   ```
+
+3. **✅ Validation Phase**:
+   ```yaml
+   # Automatic validation of database setup:
+   - name: Validate Database Setup
+     run: |
+       # Tests database connectivity: curl /api/health
+       # Validates sample data: curl /api/doctors
+       # Checks data integrity: jq '.data.doctors | length'
+       # Confirms API functionality with real data
+   ```
+
+### **Automated Testing Commands**
+
+**The pipeline automatically executes these validation commands:**
+
+```bash
+# 1. Health Check with Database Status
+curl -f http://LOADBALANCER_URL/api/health | jq '.database'
+# Expected: "connected"
+
+# 2. Sample Data Validation
+curl -f http://LOADBALANCER_URL/api/doctors | jq '.data.doctors | length'
+# Expected: 5 (number of seeded doctors)
+
+# 3. Department Data Validation
+curl -f http://LOADBALANCER_URL/api/departments | jq '.data.departments | length'
+# Expected: 5 (number of seeded departments)
+
+# 4. API Functionality Test
+curl -f http://LOADBALANCER_URL/api/doctors | jq '.success'
+# Expected: true
+
+# 5. Database Schema Validation
+kubectl exec -it BACKEND_POD -- npx prisma db pull --print
+# Expected: Current schema matches migrations
+```
+
+### **Pipeline Success Criteria**
+
+**For the pipeline to pass, ALL of these must succeed:**
+
+- ✅ **Docker images build successfully** with database scripts included
+- ✅ **Kubernetes deployment completes** without errors
+- ✅ **Database migrations apply automatically** during pod startup
+- ✅ **Database seeding completes successfully** with sample data
+- ✅ **Health endpoint returns "connected"** database status
+- ✅ **API endpoints return real data** from seeded database
+- ✅ **Frontend-backend connectivity works** end-to-end
+- ✅ **No manual intervention required** throughout the process
+
+### **Failure Detection and Recovery**
+
+**The pipeline automatically detects and handles failures:**
+
+```bash
+# Automatic failure detection:
+if ! curl -f /api/health | jq -e '.database == "connected"'; then
+  echo "❌ Database connection failed"
+  # Automatic retry with exponential backoff
+  # Detailed logging for troubleshooting
+  # Rollback to previous working version if needed
+fi
+
+# Automatic data validation:
+if ! curl -f /api/doctors | jq -e '.data.doctors | length > 0'; then
+  echo "❌ Database seeding failed"
+  # Automatic re-seeding attempt
+  # Detailed error logging
+  # Manual intervention alert if needed
+fi
+```
+
+### **New User Experience**
+
+**When a new user deploys Stage-3 from scratch:**
+
+1. **🔄 Automatic Setup**: Pipeline triggers on git push
+2. **🏗️ Build Process**: Images built with all database automation
+3. **🚀 Deployment**: Kubernetes deployment with automated database setup
+4. **🗄️ Database Ready**: Migrations applied and sample data seeded automatically
+5. **✅ Validation**: All endpoints tested and confirmed working
+6. **🎉 Success**: Fully functional system with no manual database intervention
+
+**Expected Timeline:**
+- **Total Pipeline Duration**: ~8-12 minutes
+- **Database Setup**: ~2-3 minutes (within total time)
+- **Validation**: ~1-2 minutes (within total time)
+- **Manual Intervention**: **ZERO** - Fully automated
+
+---
+
 *This comprehensive script suite ensures Stage-3 deployments are fully automated, reliable, and production-ready with zero manual database intervention required.*
 ./validate-stage2-setup.sh
 
