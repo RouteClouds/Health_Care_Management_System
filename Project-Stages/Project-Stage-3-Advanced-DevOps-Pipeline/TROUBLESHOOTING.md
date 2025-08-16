@@ -2435,4 +2435,746 @@ kubectl apply -f gitops/environments/dev/
 
 ---
 
-*This comprehensive troubleshooting guide covers all the real issues we encountered during the ArgoCD deployment and provides step-by-step solutions with actual commands and expected outputs.*
+## 🚨 **LOADBALANCER TARGET HEALTH AND FRONTEND CRASHLOOPBACKOFF ISSUES**
+
+### **Index: Critical Production Issues**
+1. [LoadBalancer Target Nodes Unhealthy](#loadbalancer-target-nodes-unhealthy)
+2. [Frontend Pods CrashLoopBackOff Persistent Issue](#frontend-pods-crashloopbackoff-persistent-issue)
+3. [Image Update and Deployment Sync Issues](#image-update-and-deployment-sync-issues)
+4. [AWS Load Balancer Target Group Health](#aws-load-balancer-target-group-health)
+5. [Complete Fix Process with Verification](#complete-fix-process-with-verification)
+
+---
+
+### **LoadBalancer Target Nodes Unhealthy**
+
+#### **Issue: AWS Load Balancer Target Group Shows Unhealthy Targets**
+
+**Problem**: LoadBalancer has external IP but targets are unhealthy, causing 503/504 errors.
+
+**Diagnosis Commands**:
+```bash
+# Check service and endpoints
+kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev
+kubectl get endpoints frontend-stage3-svc -n healthcare-stage3-dev
+
+# Check pod status
+kubectl get pods -n healthcare-stage3-dev -o wide
+
+# Check AWS target group health
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+echo "Frontend URL: http://$FRONTEND_URL"
+
+# Test external access
+curl -I http://$FRONTEND_URL
+```
+
+**Current Problematic Output**:
+```bash
+kubectl get pods -n healthcare-stage3-dev
+```
+```
+NAME                                          READY   STATUS             RESTARTS          AGE
+healthcare-backend-stage3-656fb478f8-k879k    1/1     Running            0                 8h
+healthcare-backend-stage3-656fb478f8-ljsv2    1/1     Running            0                 8h
+healthcare-frontend-stage3-5db7f6d9b9-56kg4   0/1     CrashLoopBackOff   109 (2m43s ago)   8h
+healthcare-frontend-stage3-5db7f6d9b9-7sc6j   0/1     CrashLoopBackOff   109 (3m21s ago)   8h
+```
+
+**Check Endpoints**:
+```bash
+kubectl get endpoints frontend-stage3-svc -n healthcare-stage3-dev
+```
+
+**Problematic Output (No Ready Endpoints)**:
+```
+NAME                  ENDPOINTS   AGE
+frontend-stage3-svc   <none>      8h
+```
+
+**Root Cause**: Frontend pods are not running (CrashLoopBackOff), so no healthy endpoints exist for the LoadBalancer to route traffic to.
+
+#### **AWS Load Balancer Target Group Analysis**
+
+**Check Target Group Health via AWS CLI**:
+```bash
+# Get load balancer ARN
+LB_ARN=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(DNSName, `a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com`)].LoadBalancerArn' --output text)
+
+# Get target groups
+aws elbv2 describe-target-groups --load-balancer-arn $LB_ARN
+
+# Check target health
+TG_ARN=$(aws elbv2 describe-target-groups --load-balancer-arn $LB_ARN --query 'TargetGroups[0].TargetGroupArn' --output text)
+aws elbv2 describe-target-health --target-group-arn $TG_ARN
+```
+
+**Expected Unhealthy Output**:
+```json
+{
+    "TargetHealthDescriptions": [
+        {
+            "Target": {
+                "Id": "i-0123456789abcdef0",
+                "Port": 31679
+            },
+            "TargetHealth": {
+                "State": "unhealthy",
+                "Reason": "Target.FailedHealthChecks",
+                "Description": "Health checks failed"
+            }
+        }
+    ]
+}
+```
+
+---
+
+### **Frontend Pods CrashLoopBackOff Persistent Issue**
+
+#### **Issue: Frontend Pods Still Using Old Image with Wrong Configuration**
+
+**Problem**: Despite nginx configuration fix, pods are still using old image with incorrect backend service name.
+
+**Detailed Diagnosis Process**:
+
+**Step 1: Check Current Pod Logs**
+```bash
+# Get current pod logs
+kubectl logs healthcare-frontend-stage3-5db7f6d9b9-56kg4 -n healthcare-stage3-dev --tail=20
+```
+
+**Current Error Output**:
+```
+/docker-entrypoint.sh: Configuration complete; ready for start up
+2025/08/16 04:27:23 [emerg] 1#1: host not found in upstream "backend-service" in /etc/nginx/nginx.conf:82
+nginx: [emerg] host not found in upstream "backend-service" in /etc/nginx/nginx.conf:82
+```
+
+**Step 2: Check Current Image Being Used**
+```bash
+# Check deployment image
+kubectl describe deployment healthcare-frontend-stage3 -n healthcare-stage3-dev | grep Image
+```
+
+**Current Output**:
+```
+Image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:7b7660cd3cf1d09635c7d268aa91030f05e9b8a6
+```
+
+**Step 3: Check Latest Commit SHA**
+```bash
+# Get latest commit SHA
+git log --oneline -1
+```
+
+**Expected Output**:
+```
+6e17bacd docs: comprehensive ArgoCD deployment and troubleshooting documentation
+```
+
+**Problem Identified**:
+- Current image uses commit SHA: `7b7660cd` (old)
+- Latest commit SHA: `6e17bacd` (new with nginx fix)
+- **Issue**: Deployment is not using the latest image with the nginx fix
+
+**Step 4: Check GitOps Manifest Current State**
+```bash
+# Check current GitOps manifest
+grep "image:" gitops/environments/dev/frontend.yaml
+```
+
+**Current Output**:
+```
+image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:7b7660cd3cf1d09635c7d268aa91030f05e9b8a6
+```
+
+**Step 5: Check if Pipeline Updated the Manifest**
+```bash
+# Check git log for GitOps updates
+git log --oneline --grep="Update Stage-3 image tags" -5
+```
+
+---
+
+### **Image Update and Deployment Sync Issues**
+
+#### **Issue: GitOps Manifest Not Updated with Latest Image**
+
+**Problem**: Pipeline may not have updated GitOps manifests with the new image containing the nginx fix.
+
+**Diagnosis and Fix Process**:
+
+**Step 1: Check Pipeline Status**
+```bash
+# Check if pipeline ran successfully
+# Go to: https://github.com/RouteClouds/Health_Care_Management_System/actions
+
+# Or check locally if GitOps job updated manifests
+git log --oneline -10 | grep "Update Stage-3 image tags"
+```
+
+**Step 2: Manual GitOps Update (If Pipeline Failed)**
+```bash
+# Get latest commit SHA
+LATEST_SHA=$(git rev-parse HEAD)
+echo "Latest commit SHA: $LATEST_SHA"
+
+# Update frontend manifest manually
+sed -i "s|image: .*healthcare-frontend-stage3:.*|image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:$LATEST_SHA|g" gitops/environments/dev/frontend.yaml
+
+# Verify the change
+grep "image:" gitops/environments/dev/frontend.yaml
+```
+
+**Expected Output After Update**:
+```
+image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:6e17bacd
+```
+
+**Step 3: Commit GitOps Update**
+```bash
+# Add and commit the GitOps update
+git add gitops/environments/dev/frontend.yaml
+git commit -m "fix: update frontend image to latest commit with nginx configuration fix
+
+- Updated frontend image tag from 7b7660cd to 6e17bacd
+- New image contains nginx upstream fix: backend-stage3-svc:3001
+- Resolves frontend CrashLoopBackOff and LoadBalancer target health issues"
+
+# Push the update
+git push origin main
+```
+
+**Step 4: Force ArgoCD Sync**
+```bash
+# Force ArgoCD to sync the new manifest
+kubectl patch application healthcare-frontend-stage3 -n argocd --type merge --patch '{"operation":{"sync":{"revision":"HEAD"}}}'
+
+# Alternative: Delete and recreate pods to pull new image
+kubectl rollout restart deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev
+
+# Monitor the rollout
+kubectl rollout status deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev
+```
+
+**Step 5: Verify Image Update**
+```bash
+# Check if deployment is using new image
+kubectl describe deployment healthcare-frontend-stage3 -n healthcare-stage3-dev | grep Image
+
+# Expected output with new SHA:
+# Image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:6e17bacd
+```
+
+---
+
+### **Complete Fix Process with Verification**
+
+#### **Full Resolution Workflow**
+
+**Phase 1: Immediate Fix - Update Image Manually**
+
+```bash
+# 1. Get current status
+kubectl get pods -n healthcare-stage3-dev
+kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev
+
+# 2. Update GitOps manifest with latest image
+LATEST_SHA=$(git rev-parse HEAD)
+sed -i "s|image: .*healthcare-frontend-stage3:.*|image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:$LATEST_SHA|g" gitops/environments/dev/frontend.yaml
+
+# 3. Verify the update
+grep "image:" gitops/environments/dev/frontend.yaml
+
+# 4. Apply the updated manifest
+kubectl apply -f gitops/environments/dev/frontend.yaml
+
+# 5. Monitor pod restart
+kubectl get pods -n healthcare-stage3-dev -w
+```
+
+**Phase 2: Verify Fix Success**
+
+```bash
+# 1. Wait for pods to be running (may take 2-3 minutes)
+kubectl wait --for=condition=ready pod -l app=healthcare-frontend -n healthcare-stage3-dev --timeout=300s
+
+# 2. Check pod status
+kubectl get pods -n healthcare-stage3-dev
+```
+
+**Expected Healthy Output**:
+```
+NAME                                          READY   STATUS    RESTARTS   AGE
+healthcare-backend-stage3-656fb478f8-k879k    1/1     Running   0          8h
+healthcare-backend-stage3-656fb478f8-ljsv2    1/1     Running   0          8h
+healthcare-frontend-stage3-7c8d9f6b5a-abc12   1/1     Running   0          2m
+healthcare-frontend-stage3-7c8d9f6b5a-def34   1/1     Running   0          2m
+```
+
+**Phase 3: Verify LoadBalancer Health**
+
+```bash
+# 1. Check endpoints are now available
+kubectl get endpoints frontend-stage3-svc -n healthcare-stage3-dev
+```
+
+**Expected Healthy Output**:
+```
+NAME                  ENDPOINTS                     AGE
+frontend-stage3-svc   10.0.1.100:80,10.0.2.200:80   8h
+```
+
+```bash
+# 2. Test application access
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -I http://$FRONTEND_URL
+```
+
+**Expected Healthy Response**:
+```
+HTTP/1.1 200 OK
+Server: nginx/1.21.6
+Date: Fri, 16 Aug 2025 04:45:00 GMT
+Content-Type: text/html
+Content-Length: 1234
+Connection: keep-alive
+```
+
+**Phase 4: Verify AWS Target Group Health**
+
+```bash
+# Check AWS target group health
+LB_ARN=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(DNSName, `a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com`)].LoadBalancerArn' --output text)
+TG_ARN=$(aws elbv2 describe-target-groups --load-balancer-arn $LB_ARN --query 'TargetGroups[0].TargetGroupArn' --output text)
+aws elbv2 describe-target-health --target-group-arn $TG_ARN
+```
+
+**Expected Healthy Output**:
+```json
+{
+    "TargetHealthDescriptions": [
+        {
+            "Target": {
+                "Id": "i-0123456789abcdef0",
+                "Port": 31679
+            },
+            "TargetHealth": {
+                "State": "healthy",
+                "Description": "Target is healthy"
+            }
+        }
+    ]
+}
+```
+
+---
+
+### **Prevention and Monitoring**
+
+#### **Automated Health Checks**
+
+```bash
+# Create health check script
+cat > health-check.sh << 'EOF'
+#!/bin/bash
+echo "🏥 Healthcare System Health Check"
+echo "================================"
+
+# Check pod health
+echo "📦 Pod Status:"
+kubectl get pods -n healthcare-stage3-dev
+
+# Check service endpoints
+echo -e "\n🌐 Service Endpoints:"
+kubectl get endpoints -n healthcare-stage3-dev
+
+# Check external access
+echo -e "\n🔗 External Access Test:"
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -s -I http://$FRONTEND_URL | head -1
+
+# Check ArgoCD sync status
+echo -e "\n🔄 ArgoCD Sync Status:"
+kubectl get applications -n argocd
+
+echo -e "\n✅ Health check completed"
+EOF
+
+chmod +x health-check.sh
+```
+
+#### **Monitoring Commands**
+
+```bash
+# Continuous monitoring
+watch -n 30 'kubectl get pods -n healthcare-stage3-dev'
+
+# Log monitoring
+kubectl logs -f deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev
+
+# Event monitoring
+kubectl get events -n healthcare-stage3-dev --sort-by='.lastTimestamp'
+```
+
+---
+
+## 🔗 **STAGE-3 FRONTEND-BACKEND CONNECTIVITY COMPREHENSIVE SOLUTION**
+
+### **Learning from Stage-1 & Stage-2 Issues**
+
+Based on the connectivity problems encountered in previous stages, Stage-3 implements comprehensive solutions to prevent frontend-backend communication failures.
+
+#### **Previous Stage Issues Identified**:
+1. **Service Name Mismatches**: `backend-service:3002` vs actual service names
+2. **Port Configuration Problems**: Frontend expecting wrong backend ports
+3. **Nginx Proxy Misconfigurations**: Incorrect upstream server definitions
+4. **Hardcoded URLs**: localhost references failing in Kubernetes
+5. **Environment Variable Issues**: Missing or incorrect API base URLs
+
+---
+
+### **Stage-3 Connectivity Architecture**
+
+#### **Service Naming Convention**
+```
+Stage-3 Service Names:
+├── Frontend Service: frontend-stage3-svc (Port 80)
+├── Backend Service: backend-stage3-svc (Port 3001)
+├── Database Service: RDS PostgreSQL (Port 5432)
+└── LoadBalancer: AWS ELB (Port 80 → frontend-stage3-svc:80)
+```
+
+#### **Network Flow Diagram**
+```
+Internet → AWS LoadBalancer → frontend-stage3-svc:80 → Frontend Pods
+                                        ↓
+                              nginx proxy_pass → backend-stage3-svc:3001 → Backend Pods
+                                                                    ↓
+                                                          RDS PostgreSQL:5432
+```
+
+---
+
+### **Complete Connectivity Validation Process**
+
+#### **Step 1: Verify Service Configurations**
+
+```bash
+# Check all services in healthcare namespace
+kubectl get services -n healthcare-stage3-dev
+
+# Expected output:
+# NAME                  TYPE           CLUSTER-IP      EXTERNAL-IP                     PORT(S)        AGE
+# backend-stage3-svc    ClusterIP      172.20.171.59   <none>                         3001/TCP       8h
+# frontend-stage3-svc   LoadBalancer   172.20.253.61   a46a32...elb.amazonaws.com     80:31679/TCP   8h
+
+# Verify service endpoints
+kubectl get endpoints -n healthcare-stage3-dev
+
+# Expected output:
+# NAME                  ENDPOINTS                     AGE
+# backend-stage3-svc    10.0.1.100:3001,10.0.2.200:3001   8h
+# frontend-stage3-svc   10.0.1.101:80,10.0.2.201:80       8h
+```
+
+#### **Step 2: Validate Nginx Configuration**
+
+```bash
+# Check nginx configuration in frontend image
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- cat /etc/nginx/nginx.conf | grep -A 5 "upstream backend"
+
+# Expected correct configuration:
+# upstream backend {
+#     server backend-stage3-svc:3001 max_fails=3 fail_timeout=30s;
+#     keepalive 32;
+# }
+
+# Check proxy_pass configuration
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- cat /etc/nginx/nginx.conf | grep proxy_pass
+
+# Expected output:
+# proxy_pass http://backend;
+```
+
+#### **Step 3: Test Internal Service Connectivity**
+
+```bash
+# Test backend service from frontend pod
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- curl -I http://backend-stage3-svc:3001/health
+
+# Expected healthy response:
+# HTTP/1.1 200 OK
+# Content-Type: application/json
+
+# Test backend service DNS resolution
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- nslookup backend-stage3-svc
+
+# Expected output:
+# Name:    backend-stage3-svc.healthcare-stage3-dev.svc.cluster.local
+# Address: 172.20.171.59
+```
+
+#### **Step 4: Validate External Access**
+
+```bash
+# Get LoadBalancer URL
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+echo "Frontend URL: http://$FRONTEND_URL"
+
+# Test frontend access
+curl -I http://$FRONTEND_URL
+
+# Test API proxy through frontend
+curl -I http://$FRONTEND_URL/api/health
+
+# Expected responses:
+# Frontend: HTTP/1.1 200 OK (nginx serving React app)
+# API: HTTP/1.1 200 OK (nginx proxying to backend)
+```
+
+---
+
+### **Common Connectivity Issues and Solutions**
+
+#### **Issue 1: Service Name Resolution Failures**
+
+**Problem**: Frontend cannot resolve backend service name
+**Symptoms**:
+```
+nginx: [emerg] host not found in upstream "backend-service" in /etc/nginx/nginx.conf:82
+```
+
+**Root Cause Analysis**:
+```bash
+# Check what services actually exist
+kubectl get services -n healthcare-stage3-dev
+
+# Check nginx configuration
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- cat /etc/nginx/nginx.conf | grep "server.*backend"
+```
+
+**Solution**:
+```bash
+# 1. Update nginx configuration to use correct service name
+# Edit src-code/nginx/nginx.conf
+sed -i 's/backend-service:3002/backend-stage3-svc:3001/g' src-code/nginx/nginx.conf
+
+# 2. Rebuild and deploy frontend image
+git add src-code/nginx/nginx.conf
+git commit -m "fix: update nginx upstream to use correct Stage-3 service name"
+git push origin main
+
+# 3. Wait for pipeline to rebuild image and update GitOps manifests
+# 4. Verify fix
+kubectl logs deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev --tail=10
+```
+
+#### **Issue 2: Port Mismatch Problems**
+
+**Problem**: Frontend trying to connect to wrong backend port
+**Symptoms**: Connection refused or 404 errors on API calls
+
+**Diagnosis**:
+```bash
+# Check backend service port
+kubectl get svc backend-stage3-svc -n healthcare-stage3-dev -o yaml | grep port
+
+# Check nginx upstream configuration
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- cat /etc/nginx/nginx.conf | grep "server.*backend"
+
+# Test connectivity with correct port
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- curl http://backend-stage3-svc:3001/health
+```
+
+**Solution**:
+```bash
+# Update nginx configuration with correct port
+sed -i 's/:3002/:3001/g' src-code/nginx/nginx.conf
+
+# Verify backend deployment port
+kubectl get deployment healthcare-backend-stage3 -n healthcare-stage3-dev -o yaml | grep containerPort
+# Should show: containerPort: 3001
+```
+
+#### **Issue 3: Environment Variable Misconfigurations**
+
+**Problem**: Frontend using hardcoded URLs instead of relative paths
+**Symptoms**: API calls work locally but fail in Kubernetes
+
+**Diagnosis**:
+```bash
+# Check for hardcoded URLs in frontend code
+grep -r "localhost:3000\|localhost:3002\|http://.*:300" src-code/frontend/ --exclude-dir=node_modules
+
+# Check environment variables in frontend pod
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- env | grep API
+```
+
+**Solution**:
+```bash
+# 1. Update frontend to use relative API URLs
+# In frontend code, use: /api/endpoint instead of http://localhost:3002/endpoint
+
+# 2. Ensure nginx proxy configuration handles /api routes
+grep -A 10 "location /api" src-code/nginx/nginx.conf
+
+# Expected configuration:
+# location /api/ {
+#     proxy_pass http://backend/;
+#     proxy_set_header Host $host;
+#     proxy_set_header X-Real-IP $remote_addr;
+# }
+```
+
+---
+
+### **Stage-3 Connectivity Best Practices**
+
+#### **1. Service Discovery Pattern**
+```yaml
+# Use Kubernetes DNS for service discovery
+# Format: <service-name>.<namespace>.svc.cluster.local
+# Short form: <service-name> (within same namespace)
+
+# Example nginx upstream:
+upstream backend {
+    server backend-stage3-svc:3001;  # Short DNS name
+    # OR
+    server backend-stage3-svc.healthcare-stage3-dev.svc.cluster.local:3001;  # Full DNS name
+}
+```
+
+#### **2. Port Standardization**
+```
+Frontend Service: 80 (HTTP)
+Backend Service: 3001 (API)
+Database: 5432 (PostgreSQL)
+LoadBalancer: 80 → 80 (frontend)
+```
+
+#### **3. Environment-Specific Configurations**
+```bash
+# Development
+VITE_API_BASE_URL=/api
+
+# Production
+VITE_API_BASE_URL=/api
+
+# Local Development
+VITE_API_BASE_URL=http://localhost:3001
+```
+
+#### **4. Health Check Endpoints**
+```bash
+# Frontend health check
+curl http://frontend-stage3-svc/health
+
+# Backend health check
+curl http://backend-stage3-svc:3001/health
+
+# End-to-end connectivity check
+curl http://frontend-stage3-svc/api/health
+```
+
+---
+
+### **Automated Connectivity Testing Script**
+
+```bash
+# Create comprehensive connectivity test
+cat > test-connectivity.sh << 'EOF'
+#!/bin/bash
+
+echo "🔗 Stage-3 Connectivity Test"
+echo "============================"
+
+# Test 1: Service Discovery
+echo "1. Testing Service Discovery..."
+kubectl get services -n healthcare-stage3-dev
+
+# Test 2: DNS Resolution
+echo -e "\n2. Testing DNS Resolution..."
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- nslookup backend-stage3-svc
+
+# Test 3: Internal Connectivity
+echo -e "\n3. Testing Internal Connectivity..."
+kubectl exec -it deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev -- curl -s -I http://backend-stage3-svc:3001/health
+
+# Test 4: External Access
+echo -e "\n4. Testing External Access..."
+FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -s -I http://$FRONTEND_URL
+
+# Test 5: API Proxy
+echo -e "\n5. Testing API Proxy..."
+curl -s -I http://$FRONTEND_URL/api/health
+
+echo -e "\n✅ Connectivity test completed"
+EOF
+
+chmod +x test-connectivity.sh
+```
+
+---
+
+### **Prevention Strategies**
+
+#### **1. Configuration Validation**
+```bash
+# Pre-deployment validation script
+cat > validate-stage3-config.sh << 'EOF'
+#!/bin/bash
+
+echo "🔍 Stage-3 Configuration Validation"
+echo "==================================="
+
+# Check nginx configuration
+echo "1. Validating nginx configuration..."
+grep "backend-stage3-svc:3001" src-code/nginx/nginx.conf || echo "❌ Nginx upstream incorrect"
+
+# Check service manifests
+echo "2. Validating service manifests..."
+grep "port: 3001" gitops/environments/dev/backend.yaml || echo "❌ Backend port incorrect"
+grep "port: 80" gitops/environments/dev/frontend.yaml || echo "❌ Frontend port incorrect"
+
+# Check for hardcoded URLs
+echo "3. Checking for hardcoded URLs..."
+grep -r "localhost:300" src-code/ --exclude-dir=node_modules && echo "❌ Hardcoded URLs found"
+
+echo "✅ Configuration validation completed"
+EOF
+
+chmod +x validate-stage3-config.sh
+```
+
+#### **2. Continuous Monitoring**
+```bash
+# Health monitoring script
+cat > monitor-health.sh << 'EOF'
+#!/bin/bash
+
+while true; do
+    echo "$(date): Checking connectivity..."
+
+    # Check pod health
+    kubectl get pods -n healthcare-stage3-dev | grep -E "(Error|CrashLoop|Pending)"
+
+    # Check service endpoints
+    kubectl get endpoints -n healthcare-stage3-dev | grep "<none>" && echo "❌ No endpoints available"
+
+    # Test external access
+    FRONTEND_URL=$(kubectl get svc frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+    curl -s -f http://$FRONTEND_URL > /dev/null || echo "❌ Frontend not accessible"
+
+    sleep 60
+done
+EOF
+
+chmod +x monitor-health.sh
+```
+
+---
+
+*This comprehensive connectivity solution addresses all frontend-backend communication issues identified in Stage-1 and Stage-2, providing robust service discovery, proper port configurations, and automated testing procedures for Stage-3.*
