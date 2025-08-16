@@ -4491,3 +4491,337 @@ ARG VITE_API_BASE_URL=/api
 ---
 
 *This solution resolves the critical Stage-2 frontend-backend connectivity issue by ensuring Vite environment variables are properly passed during Docker build, eliminating the localhost:3002/api fallback and enabling proper API proxying through nginx.*
+
+---
+
+## 🌐 **NETWORK CONNECTIVITY ISSUES IN CI/CD PIPELINE**
+
+### **Issue: Docker Build Failures Due to Network Timeouts**
+
+**Problem**: GitHub Actions pipeline fails during Docker build process with network connectivity errors, preventing successful image creation and deployment.
+
+**Symptoms**:
+- Pipeline fails with `dial tcp 54.211.105.2:443: i/o timeout` errors
+- Docker build process hangs during npm install operations
+- Intermittent failures when pulling base images or downloading dependencies
+- Build process fails at different stages randomly
+
+#### **Root Cause Analysis**
+
+**Network Connectivity Issues**:
+```
+d67a3681594f: Retrying in 5 seconds
+d67a3681594f: Retrying in 4 seconds
+d67a3681594f: Retrying in 3 seconds
+d67a3681594f: Retrying in 2 seconds
+d67a3681594f: Retrying in 1 second
+dial tcp 54.211.105.2:443: i/o timeout
+Error: Process completed with exit code 1.
+```
+
+**Common Causes**:
+1. **GitHub Actions Runner Network**: Limited bandwidth or connectivity issues
+2. **npm Registry Timeouts**: Default npm timeouts too aggressive for CI environment
+3. **Docker Registry Issues**: Problems pulling base images or layers
+4. **Concurrent Downloads**: Too many simultaneous network operations
+5. **No Retry Logic**: Single failure causes entire build to fail
+
+---
+
+### **Comprehensive Network Resilience Solution**
+
+#### **Step 1: Enhanced Pipeline Configuration**
+
+**Updated GitHub Actions Workflow**:
+```yaml
+# Configure Docker for better network resilience
+echo "🔧 Configuring Docker for network resilience..."
+
+# Set Docker daemon configuration for better timeouts
+sudo mkdir -p /etc/docker
+echo '{
+  "max-concurrent-downloads": 3,
+  "max-concurrent-uploads": 3,
+  "registry-mirrors": ["https://mirror.gcr.io"],
+  "insecure-registries": [],
+  "debug": false,
+  "experimental": false
+}' | sudo tee /etc/docker/daemon.json
+
+# Restart Docker daemon
+sudo systemctl restart docker
+sleep 10
+```
+
+**Retry Mechanism Implementation**:
+```yaml
+# Retry mechanism for frontend build
+for attempt in 1 2 3; do
+  echo "Frontend build attempt $attempt/3..."
+  if docker build \
+    --build-arg BUILD_DATE=$BUILD_DATE \
+    --build-arg COMMIT_SHA=$IMAGE_TAG \
+    --build-arg VITE_API_BASE_URL=/api \
+    --network=host \
+    -f Dockerfile.frontend \
+    -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG \
+    -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest .; then
+    echo "✅ Frontend build successful on attempt $attempt"
+    break
+  else
+    echo "❌ Frontend build failed on attempt $attempt"
+    if [ $attempt -eq 3 ]; then
+      echo "💥 Frontend build failed after 3 attempts"
+      exit 1
+    fi
+    echo "⏳ Waiting 30 seconds before retry..."
+    sleep 30
+  fi
+done
+```
+
+#### **Step 2: Enhanced Dockerfile Configuration**
+
+**Frontend Dockerfile Network Resilience**:
+```dockerfile
+# Configure npm for better network resilience
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set fetch-timeout 300000 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-retries 5
+
+# Install dependencies with retry mechanism
+RUN for attempt in 1 2 3; do \
+      echo "npm install attempt $attempt/3..." && \
+      npm install && break || \
+      (echo "npm install failed on attempt $attempt" && \
+       if [ $attempt -eq 3 ]; then exit 1; fi && \
+       sleep 30); \
+    done
+```
+
+**Backend Dockerfile Network Resilience**:
+```dockerfile
+# Configure npm for better network resilience
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set fetch-timeout 300000 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-retries 5
+
+# Install all dependencies with retry mechanism
+RUN for attempt in 1 2 3; do \
+      echo "npm install attempt $attempt/3..." && \
+      npm install && npm cache clean --force && break || \
+      (echo "npm install failed on attempt $attempt" && \
+       if [ $attempt -eq 3 ]; then exit 1; fi && \
+       sleep 30); \
+    done
+```
+
+#### **Step 3: Alternative Build Script**
+
+**Network-Resilient Build Script** (`scripts/build-with-network-resilience.sh`):
+```bash
+#!/bin/bash
+
+# Function to test network connectivity
+test_network() {
+    if curl -s --connect-timeout 10 https://registry.npmjs.org/ > /dev/null; then
+        echo "✅ npm registry accessible"
+        return 0
+    else
+        echo "⚠️ npm registry not accessible"
+        return 1
+    fi
+}
+
+# Function to build with retries
+build_with_retry() {
+    local dockerfile=$1
+    local image_name=$2
+    local build_args=$3
+    local max_attempts=3
+
+    for attempt in $(seq 1 $max_attempts); do
+        echo "Build attempt $attempt/$max_attempts for $image_name..."
+
+        if docker build \
+            --network=host \
+            --build-arg BUILD_DATE="$BUILD_DATE" \
+            --build-arg COMMIT_SHA="$IMAGE_TAG" \
+            $build_args \
+            -f "$dockerfile" \
+            -t "$image_name:$IMAGE_TAG" \
+            -t "$image_name:latest" \
+            .; then
+            echo "✅ $image_name build successful on attempt $attempt"
+            return 0
+        else
+            echo "❌ $image_name build failed on attempt $attempt"
+            if [ $attempt -eq $max_attempts ]; then
+                echo "💥 Build failed after $max_attempts attempts"
+                return 1
+            fi
+            echo "⏳ Waiting 60 seconds before retry..."
+            sleep 60
+            docker system prune -f --volumes
+        fi
+    done
+}
+```
+
+---
+
+### **Implementation and Usage**
+
+#### **Automatic Pipeline Implementation**
+
+**The enhanced pipeline is now active and includes**:
+- ✅ Docker daemon configuration for network resilience
+- ✅ Registry mirrors for improved reliability
+- ✅ Retry mechanisms for both frontend and backend builds
+- ✅ Enhanced npm configuration with extended timeouts
+- ✅ Comprehensive error handling and logging
+
+#### **Manual Build Alternative**
+
+**If pipeline continues to fail, use the manual build script**:
+```bash
+# Navigate to project directory
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+
+# Set environment variables
+export ECR_REGISTRY="867344452513.dkr.ecr.us-east-1.amazonaws.com"
+export IMAGE_TAG=$(git rev-parse HEAD)
+export BUILD_DATE=$(date +%s)
+
+# Run network-resilient build
+./scripts/build-with-network-resilience.sh
+
+# Expected output:
+# 🔧 Network-Resilient Docker Build Script
+# ========================================
+# [INFO] Testing network connectivity...
+# ✅ npm registry accessible
+# [INFO] Building frontend image...
+# [INFO] Build attempt 1/3 for healthcare-frontend-stage3...
+# ✅ healthcare-frontend-stage3 build successful on attempt 1
+# [INFO] Building backend image...
+# [INFO] Build attempt 1/3 for healthcare-backend-stage3...
+# ✅ healthcare-backend-stage3 build successful on attempt 1
+# ✅ All images built successfully!
+```
+
+#### **Manual Deployment After Build**
+
+**If manual build is used, deploy manually**:
+```bash
+# Update GitOps manifests with new image tags
+LATEST_SHA=$(git rev-parse HEAD)
+sed -i "s|image: .*healthcare-frontend-stage3:.*|image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-frontend-stage3:$LATEST_SHA|g" gitops/environments/dev/frontend.yaml
+sed -i "s|image: .*healthcare-backend-stage3:.*|image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-backend-stage3:$LATEST_SHA|g" gitops/environments/dev/backend.yaml
+
+# Apply updated manifests
+kubectl apply -f gitops/environments/dev/
+
+# Monitor deployment
+kubectl get pods -n healthcare-stage3-dev -w
+```
+
+---
+
+### **Monitoring and Verification**
+
+#### **Pipeline Monitoring Commands**
+
+```bash
+# Monitor GitHub Actions pipeline
+# Visit: https://github.com/RouteClouds/Health_Care_Management_System/actions
+
+# Check pipeline logs for retry attempts
+# Look for: "Frontend build attempt 1/3..." messages
+
+# Verify Docker daemon configuration
+sudo cat /etc/docker/daemon.json
+
+# Check npm configuration in build logs
+# Look for: "npm config set fetch-timeout 300000" messages
+```
+
+#### **Success Indicators**
+
+**Successful Pipeline Output**:
+```
+🔧 Configuring Docker for network resilience...
+✅ Docker configured for network resilience
+🏗️ Building frontend image with network resilience...
+Frontend build attempt 1/3...
+✅ Frontend build successful on attempt 1
+🏗️ Building backend image with network resilience...
+Backend build attempt 1/3...
+✅ Backend build successful on attempt 1
+📋 Built images:
+healthcare-frontend-stage3    7cd21436    2 minutes ago
+healthcare-backend-stage3     7cd21436    1 minute ago
+📤 Pushing frontend images...
+📤 Pushing backend images...
+✅ All images pushed successfully
+```
+
+---
+
+### **Prevention Strategies**
+
+#### **1. Proactive Network Testing**
+
+```bash
+# Add network connectivity test to pipeline
+- name: Test Network Connectivity
+  run: |
+    echo "Testing network connectivity..."
+    curl -s --connect-timeout 10 https://registry.npmjs.org/ || echo "npm registry issues detected"
+    curl -s --connect-timeout 10 https://index.docker.io/ || echo "Docker Hub issues detected"
+```
+
+#### **2. Enhanced Error Handling**
+
+```yaml
+# Add comprehensive error handling
+- name: Build with Enhanced Error Handling
+  run: |
+    set -e
+    trap 'echo "Build failed at line $LINENO"' ERR
+    # Build commands here
+```
+
+#### **3. Alternative Registry Configuration**
+
+```dockerfile
+# Use multiple registry mirrors
+RUN npm config set registry https://registry.npmjs.org/ || \
+    npm config set registry https://registry.npm.taobao.org/
+```
+
+#### **4. Build Caching Strategy**
+
+```yaml
+# Add Docker layer caching
+- name: Set up Docker Buildx
+  uses: docker/setup-buildx-action@v2
+  with:
+    driver-opts: network=host
+
+- name: Cache Docker layers
+  uses: actions/cache@v3
+  with:
+    path: /tmp/.buildx-cache
+    key: ${{ runner.os }}-buildx-${{ github.sha }}
+    restore-keys: |
+      ${{ runner.os }}-buildx-
+```
+
+---
+
+*This comprehensive network resilience solution ensures reliable Docker builds in CI/CD pipelines by implementing retry mechanisms, enhanced timeouts, registry mirrors, and comprehensive error handling.*

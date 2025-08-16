@@ -36,7 +36,8 @@ services:
       PORT: 3002
       DATABASE_URL: postgresql://healthcare_user:healthcare_password@database:5432/healthcare_db
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
-      CORS_ORIGIN: http://localhost:5173
+      # For Docker Compose: frontend service name
+      CORS_ORIGIN: http://frontend:80
     ports:
       - "3002:3002"
     depends_on:
@@ -62,7 +63,8 @@ services:
     container_name: healthcare-frontend
     restart: unless-stopped
     environment:
-      VITE_API_BASE_URL: http://localhost:3002/api
+      # Use relative path for API calls (nginx will proxy to backend)
+      VITE_API_BASE_URL: /api
       VITE_APP_NAME: RouteClouds Health Platform
     ports:
       - "5173:80"
