@@ -1,38 +1,562 @@
-# 📜 **Scripts Guide - Automation Tools**
+# 📜 **Stage-3 Scripts Documentation - Complete Automation Suite**
 
-## 📖 **Scripts Index**
+## � **Overview**
 
-### 🛠️ **Setup Scripts**
-- [setup-environment.sh](#setup-environment) - Complete environment setup
-- [validate-setup.sh](#validate-setup) - Environment validation
-- [validate-port-config.sh](#validate-port-config) - Port configuration check
-- [setup-tools.sh](#setup-tools) - Install all required tools
-- [validate-stage2-setup.sh](#validate-stage2-setup) - Comprehensive validation
+This directory contains all automation scripts for the Healthcare Management System Stage-3 Advanced DevOps Pipeline. Each script is designed for specific tasks in the deployment and management lifecycle with full automation support.
 
-### 🧪 **Testing Scripts**
-- [fix-testing-setup.sh](#fix-testing-setup) - Testing infrastructure
-- [validate-tests.js](#validate-tests) - Test validation
-
-### 🔒 **Security Scripts**
-- [setup-branch-protection.sh](#setup-branch-protection) - GitHub security
-- [validate-configs.js](#validate-configs) - Configuration validation
-
-### 🚀 **Deployment Scripts**
-- [deploy-healthcare.sh](#deploy-healthcare) - Application deployment
-- [create-eks-cluster.sh](#create-eks-cluster) - Infrastructure creation
-
-### 📋 **Usage Patterns**
-- [Script Execution Order](#execution-order) - Recommended sequence
-- [Common Workflows](#common-workflows) - Typical usage scenarios
-- [Troubleshooting Scripts](#troubleshooting-scripts) - Problem resolution
+**Key Features:**
+- ✅ **Fully Automated Database Setup** - No manual intervention required
+- ✅ **Comprehensive Error Handling** - Robust failure recovery
+- ✅ **Network Resilience** - Handles network issues in CI/CD
+- ✅ **GitOps Integration** - Automated image tag updates
+- ✅ **Complete Validation** - End-to-end testing capabilities
 
 ---
 
-## 🎯 **Quick Start**
+## 📁 **Directory Structure**
 
-### **For New Users (Complete Setup)**
+```
+scripts/
+├── 🛠️ setup/                          # Initial setup and configuration
+│   ├── create-aws-backend.sh          # S3 bucket and DynamoDB for Terraform
+│   ├── create-ecr-repositories.sh     # ECR repositories creation
+│   └── install-tools.sh               # Required tools installation
+├── 🔄 migration/                       # Migration and transformation
+│   ├── migrate-to-stage3.sh           # Automated naming convention migration
+│   └── update-aws-account-id.sh       # AWS Account ID updates
+├── 🚀 deployment/                      # Infrastructure and application deployment
+│   ├── build-and-push-images.sh       # Docker image building and pushing
+│   ├── create-eks-cluster.sh          # EKS cluster creation
+│   ├── deploy-production.sh           # Production deployment
+│   ├── deploy-staging.sh              # Staging deployment
+│   └── validate-infrastructure.sh     # Infrastructure validation
+├── 🔧 operations/                      # Day-to-day operational tasks
+│   └── trigger-pipeline.sh            # Manual pipeline triggering
+├── 🧪 validation/                      # Testing and verification
+│   ├── test-phase-deployment.sh       # Phase-by-phase testing
+│   ├── test-pipeline-isolation.sh     # Pipeline isolation testing
+│   └── test-simple.sh                 # Simple validation tests
+├── 🗄️ gitops/                         # GitOps automation
+│   └── update-image-tags.sh           # Automated image tag updates
+├── 🔍 git-scripts/                     # Git automation
+│   ├── git-status-check.sh            # Git status validation
+│   └── setup-branch-protection.sh     # GitHub branch protection
+├── 🧹 cleanup/                         # Environment cleanup
+│   └── cleanup-existing-resources.sh  # Resource cleanup automation
+└── 📊 Root Level Scripts               # Main automation scripts
+    ├── build-with-network-resilience.sh    # Network-resilient Docker builds
+    ├── deploy-healthcare.sh                # Complete application deployment
+    ├── fix-gitops-sync.sh                  # GitOps synchronization fixes
+    ├── test-frontend-backend-connectivity.sh # Connectivity testing
+    └── validate-configs.js                 # Configuration validation
+```
+
+---
+
+## 🎯 **Quick Start Guide**
+
+### **For New Users (Complete Automated Setup)**
 ```bash
-# 1. Validate prerequisites
+# 1. Install required tools
+./setup/install-tools.sh
+
+# 2. Create AWS backend infrastructure
+./setup/create-aws-backend.sh
+
+# 3. Create ECR repositories
+./setup/create-ecr-repositories.sh
+
+# 4. Deploy complete infrastructure
+./deployment/create-eks-cluster.sh
+
+# 5. Deploy application with automated database setup
+./deploy-healthcare.sh
+
+# 6. Validate deployment
+./test-frontend-backend-connectivity.sh
+```
+
+### **For CI/CD Pipeline (Automated)**
+```bash
+# Trigger automated pipeline (includes database setup)
+./operations/trigger-pipeline.sh
+
+# The pipeline automatically:
+# - Builds images with network resilience
+# - Updates GitOps manifests
+# - Applies database migrations
+# - Seeds database with sample data
+# - Validates connectivity
+```
+
+---
+
+## 🗄️ **DATABASE AUTOMATION SCRIPTS**
+
+### **� Database Seeding Script** (`src-code/backend/scripts/seed-database.js`)
+
+**Purpose**: Automated database seeding with comprehensive sample data for Stage-3 deployment.
+
+**Automation Level**: **FULLY AUTOMATED** - Runs automatically in CI/CD pipeline and Docker containers.
+
+**When it runs:**
+- ✅ **Automatically during Docker container startup** (via docker-entrypoint.sh)
+- ✅ **During CI/CD pipeline deployment** (via GitHub Actions)
+- ✅ **Manual execution** for testing and development
+
+**What it creates:**
+```
+📊 Sample Data Created:
+├── 🏥 5 Departments
+│   ├── Cardiology (CARD)
+│   ├── Pediatrics (PEDI)
+│   ├── Orthopedics (ORTH)
+│   ├── Emergency Medicine (EMER)
+│   └── Internal Medicine (INTE)
+├── 👥 2 Sample Users
+│   ├── john.patient (PATIENT role)
+│   └── admin.user (ADMIN role)
+└── 👨‍⚕️ 5 Doctors
+    ├── Dr. John Smith (Cardiology)
+    ├── Dr. Sarah Johnson (Pediatrics)
+    ├── Dr. Michael Brown (Orthopedics)
+    ├── Dr. Emily Davis (Emergency)
+    └── Dr. Robert Wilson (Internal Medicine)
+```
+
+**Usage:**
+```bash
+# Automatic (recommended)
+# - Runs automatically during deployment
+# - No manual intervention required
+
+# Manual execution (for testing)
+cd src-code/backend
+node scripts/seed-database.js
+
+# Via npm scripts
+npm run db:seed
+npm run db:setup  # Includes migrations + seeding
+
+# Via Prisma
+npx prisma db seed
+```
+
+**Expected Output:**
+```
+🌱 Starting database seeding for Healthcare Management System Stage-3...
+================================================================================
+✅ Database connection successful
+🏥 Seeding departments...
+✅ Created 5 departments
+👥 Seeding users...
+✅ Created 2 users
+👨‍⚕️ Seeding doctors...
+✅ Created 5 doctors
+
+🎉 Database seeding completed successfully!
+================================================================================
+📊 Summary:
+   - Departments: 5
+   - Users: 2
+   - Doctors: 5
+
+🔗 You can now test the API endpoints:
+   - GET /api/health (health check)
+   - GET /api/doctors (list doctors)
+   - GET /api/departments (list departments)
+```
+
+**Error Handling:**
+- ✅ **Graceful duplicate handling** with `skipDuplicates: true`
+- ✅ **Database connection validation** before seeding
+- ✅ **Comprehensive error logging** with specific error messages
+- ✅ **Automatic retry logic** in Docker entrypoint
+- ✅ **Non-blocking failures** - application starts even if seeding has warnings
+
+---
+
+## 🛠️ **SETUP SCRIPTS**
+
+### **1. install-tools.sh** (`setup/install-tools.sh`)
+
+**Purpose**: Automated installation of all required tools for Stage-3 deployment.
+
+**Priority**: **CRITICAL** - Must be run first before any other setup steps.
+
+**What it installs:**
+- ✅ AWS CLI v2 (latest version)
+- ✅ Terraform v1.6.0
+- ✅ kubectl (latest stable)
+- ✅ Docker (if not present)
+- ✅ jq (JSON processor)
+- ✅ curl and wget
+- ✅ Git (if not present)
+
+**Usage:**
+```bash
+./setup/install-tools.sh
+
+# Expected output:
+# 🛠️ Installing required tools for Stage-3...
+# ✅ AWS CLI v2 installed successfully
+# ✅ Terraform v1.6.0 installed successfully
+# ✅ kubectl installed successfully
+# ✅ All tools installed successfully!
+```
+
+### **2. create-aws-backend.sh** (`setup/create-aws-backend.sh`)
+
+**Purpose**: Creates S3 bucket and DynamoDB table for Terraform state management.
+
+**What it creates:**
+- ✅ S3 bucket for Terraform state storage
+- ✅ DynamoDB table for state locking
+- ✅ Proper IAM permissions
+- ✅ Versioning and encryption enabled
+
+**Usage:**
+```bash
+./setup/create-aws-backend.sh
+
+# Creates:
+# - S3 bucket: healthcare-terraform-state-{account-id}
+# - DynamoDB table: healthcare-terraform-locks
+```
+
+### **3. create-ecr-repositories.sh** (`setup/create-ecr-repositories.sh`)
+
+**Purpose**: Creates ECR repositories for Docker images.
+
+**What it creates:**
+- ✅ healthcare-frontend-stage3 repository
+- ✅ healthcare-backend-stage3 repository
+- ✅ Proper lifecycle policies
+- ✅ Image scanning enabled
+
+---
+
+## 🚀 **DEPLOYMENT SCRIPTS**
+
+### **1. deploy-healthcare.sh** (Root Level)
+
+**Purpose**: Complete application deployment with automated database setup.
+
+**Automation Level**: **FULLY AUTOMATED** - Includes database migrations and seeding.
+
+**What it does:**
+- ✅ Builds and pushes Docker images
+- ✅ Updates GitOps manifests with new image tags
+- ✅ Applies Kubernetes deployments
+- ✅ **Automatically applies database migrations**
+- ✅ **Automatically seeds database with sample data**
+- ✅ Validates deployment health
+- ✅ Tests frontend-backend connectivity
+
+**Usage:**
+```bash
+./deploy-healthcare.sh
+
+# Expected flow:
+# 🏗️ Building Docker images...
+# 📤 Pushing to ECR...
+# 🔄 Updating GitOps manifests...
+# 🚀 Deploying to Kubernetes...
+# 🗄️ Setting up database...
+# ✅ Deployment completed successfully!
+```
+
+### **2. build-with-network-resilience.sh** (Root Level)
+
+**Purpose**: Network-resilient Docker image building for CI/CD pipelines.
+
+**Features:**
+- ✅ **Automatic retry logic** for network failures
+- ✅ **Registry mirror fallbacks** for reliability
+- ✅ **Enhanced timeout handling** for slow networks
+- ✅ **Comprehensive error logging** for debugging
+- ✅ **Build cache optimization** for faster builds
+
+**Usage:**
+```bash
+./build-with-network-resilience.sh
+
+# Automatically handles:
+# - Network timeouts
+# - Registry connectivity issues
+# - Build failures with retries
+# - Cache optimization
+```
+
+---
+
+## 🧪 **TESTING AND VALIDATION SCRIPTS**
+
+### **1. test-frontend-backend-connectivity.sh** (Root Level)
+
+**Purpose**: Comprehensive connectivity testing between frontend and backend with database validation.
+
+**What it tests:**
+- ✅ **Frontend accessibility** via LoadBalancer
+- ✅ **Backend API health** and responsiveness
+- ✅ **CORS configuration** for cross-origin requests
+- ✅ **Database connectivity** and data availability
+- ✅ **API endpoint functionality** with real data
+- ✅ **Pod health status** in Kubernetes
+
+**Usage:**
+```bash
+./test-frontend-backend-connectivity.sh
+
+# Expected output:
+# 🔍 Frontend-Backend Connectivity Test
+# =====================================
+# 1. Testing Frontend Loading...
+# ✅ Frontend: 200 OK
+# 2. Testing Backend API...
+# ✅ Backend API: 200 OK
+# 3. Testing CORS Configuration...
+# ✅ CORS: Correctly configured
+# 4. Testing API Endpoints...
+# ✅ API Endpoints: Responding with data
+# 5. Testing Pod Status...
+# ✅ All Pods: Running successfully
+#
+# 🎉 Frontend-Backend Connectivity: OPERATIONAL
+```
+
+### **2. validate-configs.js** (Root Level)
+
+**Purpose**: Configuration validation for all Stage-3 components.
+
+**What it validates:**
+- ✅ **Kubernetes manifests** syntax and structure
+- ✅ **Environment variables** completeness
+- ✅ **Docker configurations** validity
+- ✅ **Terraform configurations** syntax
+- ✅ **Database connection strings** format
+
+**Usage:**
+```bash
+node validate-configs.js
+
+# Validates all configuration files
+# Reports any issues or inconsistencies
+```
+
+### **3. test-phase-deployment.sh** (`validation/test-phase-deployment.sh`)
+
+**Purpose**: Phase-by-phase deployment testing framework.
+
+**Testing Phases:**
+- ✅ **Phase 1**: Infrastructure validation
+- ✅ **Phase 2**: Application deployment
+- ✅ **Phase 3**: Database setup and seeding
+- ✅ **Phase 4**: Connectivity and functionality
+- ✅ **Phase 5**: Performance and load testing
+
+---
+
+## 🔧 **OPERATIONS SCRIPTS**
+
+### **1. trigger-pipeline.sh** (`operations/trigger-pipeline.sh`)
+
+**Purpose**: Manual pipeline triggering for testing and emergency deployments.
+
+**What it does:**
+- ✅ **Triggers GitHub Actions workflow** manually
+- ✅ **Monitors pipeline progress** with real-time updates
+- ✅ **Provides pipeline status** and logs
+- ✅ **Handles pipeline failures** with retry options
+
+**Usage:**
+```bash
+./operations/trigger-pipeline.sh
+
+# Triggers the complete CI/CD pipeline
+# Includes automated database setup
+```
+
+### **2. fix-gitops-sync.sh** (Root Level)
+
+**Purpose**: GitOps synchronization fixes for image tag mismatches.
+
+**When to use:**
+- ❌ **GitOps manifests using old image tags**
+- ❌ **Manual intervention needed for deployment**
+- ❌ **Pipeline built new images but GitOps not updated**
+
+**What it fixes:**
+- ✅ **Updates GitOps manifests** with latest commit SHA
+- ✅ **Applies updated configurations** to Kubernetes
+- ✅ **Monitors deployment rollout** status
+- ✅ **Validates new pods** are using correct images
+
+**Usage:**
+```bash
+./fix-gitops-sync.sh
+
+# Expected output:
+# 🔄 GitOps Sync Fix Script
+# ========================
+# Latest commit SHA: a4ad4a894c88cdc5670144ebe1694d0bda6aec1f
+# 🔄 Updating GitOps manifests...
+# ✅ Frontend image updated
+# ✅ Backend image updated
+# 🚀 Applying updates to Kubernetes...
+# ✅ GitOps sync fix completed!
+```
+
+---
+
+## 🔄 **MIGRATION SCRIPTS**
+
+### **1. migrate-to-stage3.sh** (`migration/migrate-to-stage3.sh`)
+
+**Purpose**: Automated migration from Stage-2 to Stage-3 with naming convention updates.
+
+**What it migrates:**
+- ✅ **Service names** (adds -stage3 suffix)
+- ✅ **Database references** (healthcare_db → healthcare_stage3_db)
+- ✅ **Package names** in package.json files
+- ✅ **Docker image tags** and repository names
+- ✅ **Kubernetes manifests** with new naming
+
+### **2. update-aws-account-id.sh** (`migration/update-aws-account-id.sh`)
+
+**Purpose**: Updates AWS Account ID across all configuration files.
+
+**Usage:**
+```bash
+./migration/update-aws-account-id.sh NEW_ACCOUNT_ID
+
+# Updates all references to AWS Account ID
+# Includes ECR URLs, IAM roles, and resource ARNs
+```
+
+---
+
+## 🧹 **CLEANUP SCRIPTS**
+
+### **1. cleanup-existing-resources.sh** (`cleanup/cleanup-existing-resources.sh`)
+
+**Purpose**: Complete environment cleanup and resource removal.
+
+**What it cleans:**
+- ✅ **Kubernetes resources** (pods, services, deployments)
+- ✅ **AWS resources** (EKS cluster, RDS, LoadBalancers)
+- ✅ **ECR images** and repositories
+- ✅ **S3 buckets** and DynamoDB tables
+- ✅ **CloudFormation stacks** if applicable
+
+---
+
+## 🤖 **AUTOMATION FEATURES**
+
+### **🔄 Fully Automated Database Setup**
+
+**The Stage-3 pipeline now includes ZERO-INTERVENTION database setup:**
+
+1. **Automatic Migration Application**:
+   ```bash
+   # Runs automatically in Docker containers
+   npx prisma migrate deploy
+   ```
+
+2. **Automatic Database Seeding**:
+   ```bash
+   # Runs automatically after migrations
+   node scripts/seed-database.js
+   ```
+
+3. **Health Validation**:
+   ```bash
+   # Automatic validation of database connectivity and data
+   curl /api/health | jq '.database'  # Should return "connected"
+   curl /api/doctors | jq '.data.doctors | length'  # Should return > 0
+   ```
+
+### **🚀 CI/CD Pipeline Integration**
+
+**The automated pipeline flow:**
+
+```yaml
+# GitHub Actions Workflow (Automated)
+1. Code Push → Trigger Pipeline
+2. Build Images → Network-Resilient Build Process
+3. Push to ECR → Automated Registry Push
+4. Update GitOps → Automatic Manifest Updates
+5. Deploy to K8s → Kubernetes Deployment
+6. Database Setup → Automatic Migrations + Seeding
+7. Validation → Connectivity and Health Checks
+8. Notification → Success/Failure Alerts
+```
+
+### **🛡️ Error Handling and Recovery**
+
+**Comprehensive error handling across all scripts:**
+
+- ✅ **Network Resilience**: Automatic retries for network failures
+- ✅ **Database Recovery**: Graceful handling of connection issues
+- ✅ **GitOps Sync**: Automatic detection and fixing of image tag mismatches
+- ✅ **Rollback Capability**: Automatic rollback on deployment failures
+- ✅ **Monitoring Integration**: Real-time status monitoring and alerting
+
+---
+
+## 📋 **SCRIPT EXECUTION ORDER**
+
+### **For Complete New Setup:**
+```bash
+1. ./setup/install-tools.sh                    # Install required tools
+2. ./setup/create-aws-backend.sh               # Create Terraform backend
+3. ./setup/create-ecr-repositories.sh          # Create ECR repos
+4. ./deployment/create-eks-cluster.sh          # Create infrastructure
+5. ./deploy-healthcare.sh                      # Deploy application (includes DB setup)
+6. ./test-frontend-backend-connectivity.sh     # Validate deployment
+```
+
+### **For Regular Deployments:**
+```bash
+# Automated via CI/CD pipeline
+git push origin main  # Triggers automated pipeline with database setup
+
+# Manual deployment
+./deploy-healthcare.sh  # Includes automated database setup
+```
+
+### **For Troubleshooting:**
+```bash
+1. ./test-frontend-backend-connectivity.sh     # Check connectivity
+2. ./fix-gitops-sync.sh                        # Fix GitOps issues
+3. ./validate-configs.js                       # Validate configurations
+```
+
+---
+
+## 🎯 **KEY BENEFITS**
+
+### **For New Users:**
+- ✅ **Zero Manual Database Setup** - Fully automated migrations and seeding
+- ✅ **One-Command Deployment** - Complete setup with single script execution
+- ✅ **Comprehensive Validation** - Automatic testing and health checks
+- ✅ **Error Recovery** - Automatic detection and fixing of common issues
+
+### **For DevOps Teams:**
+- ✅ **CI/CD Integration** - Seamless pipeline automation
+- ✅ **GitOps Workflow** - Automatic manifest updates and synchronization
+- ✅ **Monitoring Ready** - Built-in health checks and status validation
+- ✅ **Production Ready** - Enterprise-level error handling and recovery
+
+### **For Development Teams:**
+- ✅ **Consistent Environments** - Identical setup across all deployments
+- ✅ **Sample Data Ready** - Pre-populated database for immediate testing
+- ✅ **API Testing Ready** - Functional endpoints with real data
+- ✅ **Documentation Complete** - Comprehensive guides and troubleshooting
+
+---
+
+*This comprehensive script suite ensures Stage-3 deployments are fully automated, reliable, and production-ready with zero manual database intervention required.*
 ./validate-stage2-setup.sh
 
 # 2. Install tools
