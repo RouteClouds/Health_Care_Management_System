@@ -4,28 +4,15 @@ on:
   push:
     branches: [ main, develop ]
     paths:
+      # ONLY trigger on changes within src-code directory (including any files/docs within it)
       - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/k8s/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/helm-charts/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/monitoring/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/logging/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/*.md'
+      # Include the workflow file itself for pipeline updates
       - '.github/workflows/stage3-ci.yml'
   pull_request:
     branches: [ main ]
     paths:
+      # ONLY trigger on changes within src-code directory (including any files/docs within it)
       - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/k8s/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/helm-charts/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/monitoring/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/logging/**'
-      - 'Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/*.md'
   workflow_dispatch:
     inputs:
       environment:
