@@ -349,6 +349,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
       - name: Setup Terraform Backend
         id: backend-setup
         working-directory: ${{ env.TERRAFORM_PATH }}/backend-setup
