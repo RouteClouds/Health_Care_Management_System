@@ -1,0 +1,338 @@
+# Optimized Prometheus Stack Configuration for Healthcare System
+# This configuration deploys a comprehensive monitoring stack with reduced resource requirements
+
+# Global configuration
+fullnameOverride: "healthcare-monitoring"
+namespaceOverride: "monitoring"
+
+# Prometheus Server Configuration
+prometheus:
+  prometheusSpec:
+    # Resource allocation for healthcare workload (optimized for small clusters)
+    resources:
+      requests:
+        memory: "512Mi"    # Reduced from 1Gi
+        cpu: "250m"        # Reduced from 500m
+      limits:
+        memory: "1Gi"      # Reduced from 2Gi
+        cpu: "500m"        # Reduced from 1000m
+
+    # Storage configuration (reduced size for initial deployment)
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "gp2"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi  # Reduced from 20Gi
+    
+    # Retention policy (reduced for smaller storage)
+    retention: "15d"        # Reduced from 30d
+    retentionSize: "20GB"   # Reduced from 45GB
+    
+    # Service discovery configuration
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    
+    # Additional scrape configs for healthcare applications
+    additionalScrapeConfigs:
+      - job_name: 'healthcare-frontend'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - healthcare-stage3-dev
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: frontend-stage3
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+      
+      - job_name: 'healthcare-backend'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - healthcare-stage3-dev
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: backend-stage3
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+# Grafana Configuration
+grafana:
+  enabled: true
+  
+  # Admin credentials
+  adminPassword: "healthcare-admin-2024"
+  
+  # Resource allocation (optimized for small clusters)
+  resources:
+    requests:
+      memory: "256Mi"      # Reduced from 512Mi
+      cpu: "100m"          # Reduced from 250m
+    limits:
+      memory: "512Mi"      # Reduced from 1Gi
+      cpu: "250m"          # Reduced from 500m
+  
+  # Persistence configuration
+  persistence:
+    enabled: true
+    storageClassName: "gp2"
+    size: 5Gi              # Reduced from 10Gi
+    accessMode: ReadWriteOnce
+  
+  # Service configuration
+  service:
+    type: LoadBalancer
+    port: 80
+    targetPort: 3000
+  
+  # Ingress configuration (if needed)
+  ingress:
+    enabled: false
+  
+  # Dashboard configuration
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'healthcare'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/healthcare
+  
+  # Dashboard configuration
+  dashboards:
+    healthcare:
+      healthcare-overview:
+        json: |
+          {
+            "dashboard": {
+              "title": "Healthcare System Overview",
+              "panels": [
+                {
+                  "title": "System Health",
+                  "type": "stat",
+                  "targets": [
+                    {
+                      "expr": "up{job=\"healthcare-backend\"}"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+
+# AlertManager Configuration
+alertmanager:
+  enabled: true
+  
+  # Resource allocation (optimized for small clusters)
+  alertmanagerSpec:
+    resources:
+      requests:
+        memory: "128Mi"    # Reduced from 256Mi
+        cpu: "50m"         # Reduced from 100m
+      limits:
+        memory: "256Mi"    # Reduced from 512Mi
+        cpu: "100m"        # Reduced from 250m
+    
+    # Storage configuration
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "gp2"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi  # Reduced from 10Gi
+    
+    # Alert configuration
+    config:
+      global:
+        resolve_timeout: 5m
+      route:
+        group_by: ['alertname']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 1h
+        receiver: 'web.hook'
+      receivers:
+        - name: 'web.hook'
+          webhook_configs:
+            - url: 'http://127.0.0.1:5001/'
+
+# Kube-State-Metrics Configuration
+kube-state-metrics:
+  enabled: true
+  
+  # Resource allocation (minimal)
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "25m"
+    limits:
+      memory: "128Mi"
+      cpu: "50m"
+
+# Node Exporter Configuration
+prometheus-node-exporter:
+  enabled: true
+  
+  # Resource allocation (minimal)
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "10m"
+    limits:
+      memory: "64Mi"
+      cpu: "20m"
+
+# Prometheus Operator Configuration
+prometheusOperator:
+  enabled: true
+  
+  # Resource allocation (optimized)
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "100m"
+  
+  # Admission webhook configuration
+  admissionWebhooks:
+    enabled: true
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "50m"
+
+# Service Monitor Configuration
+serviceMonitor:
+  enabled: true
+  
+  # Healthcare application service monitors
+  additionalServiceMonitors:
+    - name: healthcare-frontend-monitor
+      selector:
+        matchLabels:
+          app: healthcare-frontend-stage3
+      endpoints:
+        - port: http
+          path: /metrics
+          interval: 30s
+    
+    - name: healthcare-backend-monitor
+      selector:
+        matchLabels:
+          app: healthcare-backend-stage3
+      endpoints:
+        - port: http
+          path: /metrics
+          interval: 30s
+
+# Prometheus Rules Configuration
+prometheusRule:
+  enabled: true
+  
+  # Healthcare-specific alert rules
+  additionalPrometheusRules:
+    - name: healthcare-alerts
+      groups:
+        - name: healthcare.rules
+          rules:
+            - alert: HealthcareBackendDown
+              expr: up{job="healthcare-backend"} == 0
+              for: 1m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Healthcare backend is down"
+                description: "Healthcare backend has been down for more than 1 minute"
+            
+            - alert: HealthcareFrontendDown
+              expr: up{job="healthcare-frontend"} == 0
+              for: 1m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Healthcare frontend is down"
+                description: "Healthcare frontend has been down for more than 1 minute"
+            
+            - alert: HighCPUUsage
+              expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "High CPU usage detected"
+                description: "CPU usage is above 80% for more than 5 minutes"
+            
+            - alert: HighMemoryUsage
+              expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+              for: 5m
+              labels:
+                severity: warning
+              annotations:
+                summary: "High memory usage detected"
+                description: "Memory usage is above 85% for more than 5 minutes"
+
+# Network Policies (optional - for security)
+networkPolicy:
+  enabled: false
+
+# Pod Security Policies (optional - for security)
+podSecurityPolicy:
+  enabled: false
+
+# Service Account Configuration
+serviceAccount:
+  create: true
+  name: "healthcare-monitoring"
+
+# RBAC Configuration
+rbac:
+  create: true
+
+# Security Context Configuration
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+
+

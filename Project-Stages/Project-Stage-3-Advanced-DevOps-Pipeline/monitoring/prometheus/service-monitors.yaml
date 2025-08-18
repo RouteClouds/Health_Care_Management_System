@@ -1,0 +1,177 @@
+---
+# Service Monitor for Healthcare Frontend
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: healthcare-frontend-monitor
+  namespace: monitoring
+  labels:
+    app: healthcare-frontend
+    release: healthcare-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: frontend-stage3
+  namespaceSelector:
+    matchNames:
+    - healthcare-stage3-dev
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'go_.*'
+      action: drop
+    - sourceLabels: [__name__]
+      regex: 'process_.*'
+      action: drop
+
+---
+# Service Monitor for Healthcare Backend
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: healthcare-backend-monitor
+  namespace: monitoring
+  labels:
+    app: healthcare-backend
+    release: healthcare-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: backend-stage3
+  namespaceSelector:
+    matchNames:
+    - healthcare-stage3-dev
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'go_.*'
+      action: drop
+    - sourceLabels: [__name__]
+      regex: 'process_.*'
+      action: drop
+
+---
+# Pod Monitor for Healthcare Applications (alternative approach)
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: healthcare-apps-monitor
+  namespace: monitoring
+  labels:
+    app: healthcare-apps
+    release: healthcare-monitoring
+spec:
+  selector:
+    matchLabels:
+      monitoring: "enabled"
+  namespaceSelector:
+    matchNames:
+    - healthcare-stage3-dev
+  podMetricsEndpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+
+---
+# Service Monitor for ArgoCD (GitOps monitoring)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-monitor
+  namespace: monitoring
+  labels:
+    app: argocd
+    release: healthcare-monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
+  namespaceSelector:
+    matchNames:
+    - argocd
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# Service Monitor for PostgreSQL Database
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgresql-monitor
+  namespace: monitoring
+  labels:
+    app: postgresql
+    release: healthcare-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: postgres-exporter
+  namespaceSelector:
+    matchNames:
+    - healthcare-stage3-dev
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# Service Monitor for NGINX Ingress Controller (if used)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nginx-ingress-monitor
+  namespace: monitoring
+  labels:
+    app: nginx-ingress
+    release: healthcare-monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+  namespaceSelector:
+    matchNames:
+    - ingress-nginx
+  endpoints:
+  - port: prometheus
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# Service Monitor for AWS Load Balancer Controller
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: aws-load-balancer-controller-monitor
+  namespace: monitoring
+  labels:
+    app: aws-load-balancer-controller
+    release: healthcare-monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aws-load-balancer-controller
+  namespaceSelector:
+    matchNames:
+    - kube-system
+  endpoints:
+  - port: webhook-server
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s

@@ -1,0 +1,235 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: healthcare-system-alerts
+  namespace: monitoring
+  labels:
+    app: healthcare-monitoring
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: healthcare.application.rules
+    interval: 30s
+    rules:
+    
+    # Frontend Application Alerts
+    - alert: HealthcareFrontendDown
+      expr: up{job="healthcare-frontend"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: frontend
+        component: healthcare-app
+      annotations:
+        summary: "Healthcare Frontend is down"
+        description: "Healthcare frontend application has been down for more than 2 minutes"
+        runbook_url: "https://docs.healthcare-system.com/runbooks/frontend-down"
+    
+    - alert: HealthcareFrontendHighErrorRate
+      expr: rate(http_requests_total{job="healthcare-frontend",status=~"5.."}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: frontend
+        component: healthcare-app
+      annotations:
+        summary: "High error rate in Healthcare Frontend"
+        description: "Frontend error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+    
+    - alert: HealthcareFrontendHighLatency
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="healthcare-frontend"}[5m])) > 2
+      for: 5m
+      labels:
+        severity: warning
+        service: frontend
+        component: healthcare-app
+      annotations:
+        summary: "High latency in Healthcare Frontend"
+        description: "95th percentile latency is {{ $value }}s over the last 5 minutes"
+    
+    # Backend Application Alerts
+    - alert: HealthcareBackendDown
+      expr: up{job="healthcare-backend"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: backend
+        component: healthcare-app
+      annotations:
+        summary: "Healthcare Backend is down"
+        description: "Healthcare backend API has been down for more than 2 minutes"
+        runbook_url: "https://docs.healthcare-system.com/runbooks/backend-down"
+    
+    - alert: HealthcareBackendHighErrorRate
+      expr: rate(http_requests_total{job="healthcare-backend",status=~"5.."}[5m]) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        service: backend
+        component: healthcare-app
+      annotations:
+        summary: "High error rate in Healthcare Backend"
+        description: "Backend API error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+    
+    - alert: HealthcareBackendHighLatency
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="healthcare-backend"}[5m])) > 1
+      for: 5m
+      labels:
+        severity: warning
+        service: backend
+        component: healthcare-app
+      annotations:
+        summary: "High latency in Healthcare Backend"
+        description: "95th percentile API latency is {{ $value }}s over the last 5 minutes"
+    
+    # Database Connection Alerts
+    - alert: HealthcareDatabaseConnectionHigh
+      expr: pg_stat_activity_count{datname="healthcare_db"} > 80
+      for: 5m
+      labels:
+        severity: warning
+        service: database
+        component: postgresql
+      annotations:
+        summary: "High database connections"
+        description: "Database has {{ $value }} active connections, approaching limit"
+    
+    - alert: HealthcareDatabaseSlowQueries
+      expr: rate(pg_stat_statements_mean_time_ms[5m]) > 1000
+      for: 5m
+      labels:
+        severity: warning
+        service: database
+        component: postgresql
+      annotations:
+        summary: "Slow database queries detected"
+        description: "Average query time is {{ $value }}ms over the last 5 minutes"
+    
+    # Business Logic Alerts
+    - alert: HealthcareAppointmentBookingFailure
+      expr: rate(appointment_bookings_total{status="failed"}[5m]) > 0.1
+      for: 3m
+      labels:
+        severity: warning
+        service: appointments
+        component: business-logic
+      annotations:
+        summary: "High appointment booking failure rate"
+        description: "Appointment booking failure rate is {{ $value | humanizePercentage }}"
+    
+    - alert: HealthcareUserRegistrationFailure
+      expr: rate(user_registrations_total{status="failed"}[5m]) > 0.05
+      for: 3m
+      labels:
+        severity: warning
+        service: user-management
+        component: business-logic
+      annotations:
+        summary: "High user registration failure rate"
+        description: "User registration failure rate is {{ $value | humanizePercentage }}"
+
+  - name: healthcare.infrastructure.rules
+    interval: 30s
+    rules:
+    
+    # Pod Resource Alerts
+    - alert: HealthcarePodCPUHigh
+      expr: rate(container_cpu_usage_seconds_total{namespace="healthcare-stage3-dev",container!="POD",container!=""}[5m]) * 100 > 80
+      for: 5m
+      labels:
+        severity: warning
+        service: infrastructure
+        component: kubernetes
+      annotations:
+        summary: "High CPU usage in Healthcare pod"
+        description: "Pod {{ $labels.pod }} CPU usage is {{ $value }}%"
+    
+    - alert: HealthcarePodMemoryHigh
+      expr: container_memory_usage_bytes{namespace="healthcare-stage3-dev",container!="POD",container!=""} / container_spec_memory_limit_bytes * 100 > 85
+      for: 5m
+      labels:
+        severity: warning
+        service: infrastructure
+        component: kubernetes
+      annotations:
+        summary: "High memory usage in Healthcare pod"
+        description: "Pod {{ $labels.pod }} memory usage is {{ $value }}%"
+    
+    - alert: HealthcarePodRestartHigh
+      expr: rate(kube_pod_container_status_restarts_total{namespace="healthcare-stage3-dev"}[15m]) > 0
+      for: 0m
+      labels:
+        severity: warning
+        service: infrastructure
+        component: kubernetes
+      annotations:
+        summary: "Healthcare pod restarting frequently"
+        description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes"
+    
+    # Load Balancer Alerts
+    - alert: HealthcareLoadBalancerDown
+      expr: probe_success{job="blackbox",instance=~".*healthcare.*"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: load-balancer
+        component: infrastructure
+      annotations:
+        summary: "Healthcare Load Balancer is down"
+        description: "Load balancer health check failed for {{ $labels.instance }}"
+    
+    # Storage Alerts
+    - alert: HealthcarePVCStorageHigh
+      expr: kubelet_volume_stats_used_bytes{namespace="healthcare-stage3-dev"} / kubelet_volume_stats_capacity_bytes * 100 > 85
+      for: 5m
+      labels:
+        severity: warning
+        service: storage
+        component: kubernetes
+      annotations:
+        summary: "High storage usage in Healthcare PVC"
+        description: "PVC {{ $labels.persistentvolumeclaim }} usage is {{ $value }}%"
+
+  - name: healthcare.business.rules
+    interval: 60s
+    rules:
+    
+    # Business Metrics Recording Rules
+    - record: healthcare:appointment_booking_rate_5m
+      expr: rate(appointment_bookings_total[5m])
+    
+    - record: healthcare:user_registration_rate_5m
+      expr: rate(user_registrations_total[5m])
+    
+    - record: healthcare:api_request_rate_5m
+      expr: rate(http_requests_total{job="healthcare-backend"}[5m])
+    
+    - record: healthcare:frontend_page_load_time_95p
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="healthcare-frontend"}[5m]))
+    
+    - record: healthcare:backend_api_latency_95p
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="healthcare-backend"}[5m]))
+    
+    # Business SLA Alerts
+    - alert: HealthcareSLAViolation
+      expr: healthcare:frontend_page_load_time_95p > 3
+      for: 10m
+      labels:
+        severity: critical
+        service: sla
+        component: performance
+      annotations:
+        summary: "Healthcare SLA violation - Page load time"
+        description: "95th percentile page load time {{ $value }}s exceeds 3s SLA for 10 minutes"
+    
+    - alert: HealthcareAPIAvailabilityLow
+      expr: (rate(http_requests_total{job="healthcare-backend",status!~"5.."}[5m]) / rate(http_requests_total{job="healthcare-backend"}[5m])) * 100 < 99.5
+      for: 5m
+      labels:
+        severity: critical
+        service: sla
+        component: availability
+      annotations:
+        summary: "Healthcare API availability below SLA"
+        description: "API availability is {{ $value }}%, below 99.5% SLA"

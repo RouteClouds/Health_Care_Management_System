@@ -12,11 +12,17 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-AWS_ACCOUNT_ID="867344452513"
+# Configuration - Auto-detect AWS Account ID and generate unique bucket name
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null)
 AWS_REGION="us-east-1"
-S3_BUCKET="healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}"
+
+# Generate 4-digit random suffix for unique bucket naming
+RANDOM_SUFFIX=$(shuf -i 1000-9999 -n 1)
+S3_BUCKET="healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}-${RANDOM_SUFFIX}"
 DYNAMODB_TABLE="healthcare-terraform-locks-stage3"
+
+# Store bucket name for other scripts
+BUCKET_NAME_FILE="${HOME}/.healthcare-stage3-bucket-name"
 
 # Logging functions
 log_info() {
@@ -38,24 +44,22 @@ log_error() {
 # Check AWS CLI configuration
 check_aws_config() {
     log_info "Checking AWS configuration..."
-    
+
     if ! aws sts get-caller-identity > /dev/null 2>&1; then
         log_error "AWS CLI not configured or credentials invalid"
         log_info "Please run: aws configure"
         exit 1
     fi
-    
-    local account_id=$(aws sts get-caller-identity --query Account --output text)
-    if [ "$account_id" != "$AWS_ACCOUNT_ID" ]; then
-        log_warning "Current AWS Account ID: $account_id"
-        log_warning "Expected AWS Account ID: $AWS_ACCOUNT_ID"
-        read -p "Continue anyway? (y/N): " confirm
-        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
+
+    # Validate AWS Account ID was retrieved
+    if [[ -z "$AWS_ACCOUNT_ID" ]]; then
+        log_error "Failed to retrieve AWS Account ID"
+        exit 1
     fi
-    
+
     log_success "AWS configuration verified"
+    log_info "AWS Account ID: $AWS_ACCOUNT_ID"
+    log_info "S3 Bucket Name: $S3_BUCKET (with random suffix: $RANDOM_SUFFIX)"
 }
 
 # Create S3 bucket for Terraform state
@@ -158,6 +162,43 @@ verify_resources() {
     fi
 }
 
+# Save bucket name for other scripts
+save_bucket_name() {
+    log_info "Saving bucket name for other scripts..."
+
+    # Save to file for other scripts to use
+    echo "$S3_BUCKET" > "$BUCKET_NAME_FILE"
+
+    # Also save to environment variables file if it exists
+    if [[ -f "${HOME}/.healthcare-stage3-env" ]]; then
+        sed -i "/^S3_BUCKET=/d" "${HOME}/.healthcare-stage3-env"
+        echo "S3_BUCKET=$S3_BUCKET" >> "${HOME}/.healthcare-stage3-env"
+    fi
+
+    log_success "Bucket name saved to $BUCKET_NAME_FILE"
+}
+
+# Update terraform backend configurations
+update_terraform_backend() {
+    log_info "Updating Terraform backend configurations..."
+
+    local terraform_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+    # Update main backend.tf
+    if [[ -f "$terraform_dir/terraform/backend.tf" ]]; then
+        sed -i "s/healthcare-terraform-state-stage3-[0-9]*/healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}-${RANDOM_SUFFIX}/g" "$terraform_dir/terraform/backend.tf"
+        log_success "Updated terraform/backend.tf"
+    fi
+
+    # Update environments/dev/providers.tf
+    if [[ -f "$terraform_dir/terraform/environments/dev/providers.tf" ]]; then
+        sed -i "s/healthcare-terraform-state-stage3-[0-9]*/healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}-${RANDOM_SUFFIX}/g" "$terraform_dir/terraform/environments/dev/providers.tf"
+        log_success "Updated terraform/environments/dev/providers.tf"
+    fi
+
+    log_success "Terraform backend configurations updated"
+}
+
 # Main execution
 main() {
     echo "🚀 AWS Backend Resources Setup for Stage-3"
@@ -179,7 +220,9 @@ main() {
     create_s3_bucket
     create_dynamodb_table
     verify_resources
-    
+    save_bucket_name
+    update_terraform_backend
+
     log_success "🎉 AWS backend resources created successfully!"
     echo ""
     log_info "Next steps:"

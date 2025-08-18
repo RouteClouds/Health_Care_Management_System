@@ -17,12 +17,20 @@
 
 1. [Pre-Destruction Checklist](#pre-destruction-checklist)
 2. [Data Backup Procedures](#data-backup-procedures)
-3. [Application Cleanup](#application-cleanup)
-4. [Infrastructure Destruction](#infrastructure-destruction)
-5. [AWS Resource Cleanup](#aws-resource-cleanup)
-6. [Local Environment Cleanup](#local-environment-cleanup)
-7. [Verification Procedures](#verification-procedures)
-8. [Cost Verification](#cost-verification)
+3. [🆕 Automated Complete Destruction](#automated-complete-destruction)
+4. [Manual Application Cleanup](#manual-application-cleanup)
+5. [Manual Infrastructure Destruction](#manual-infrastructure-destruction)
+6. [AWS Resource Cleanup](#aws-resource-cleanup)
+7. [Local Environment Cleanup](#local-environment-cleanup)
+8. [Verification Procedures](#verification-procedures)
+9. [Cost Verification](#cost-verification)
+10. [🆕 Monitoring Stack Cleanup](#monitoring-stack-cleanup)
+
+---
+
+## 🚀 **QUICK START - Automated Destruction**
+
+**For users who want complete automated destruction, jump to [Automated Complete Destruction](#automated-complete-destruction)**
 
 ---
 
@@ -134,7 +142,58 @@ echo "✅ Application data exported"
 
 ---
 
-## 🚀 Application Cleanup
+## 🆕 **Automated Complete Destruction**
+
+### **🚀 One-Command Complete Infrastructure Destruction**
+
+**NEW: We have created an automated script that handles complete infrastructure destruction with minimal user intervention.**
+
+```bash
+# Navigate to Stage-3 directory
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+
+# Run the automated complete destruction script
+./scripts/cleanup/destroy-complete-infrastructure.sh
+```
+
+**What this script does:**
+- ✅ **Kubernetes Cleanup**: Removes all namespaces, applications, and resources
+- ✅ **Load Balancer Cleanup**: Automatically removes all load balancers
+- ✅ **Terraform Destroy**: Runs complete Terraform infrastructure destruction
+- ✅ **ECR Cleanup**: Removes container repositories and images
+- ✅ **Resource Verification**: Confirms all resources are destroyed
+- ✅ **Cost Optimization**: Ensures no ongoing AWS charges
+
+**Safety Features:**
+- 🔒 **Double Confirmation**: Requires typing 'DESTROY' and 'YES' to proceed
+- 🔍 **Resource Preview**: Shows exactly what will be destroyed
+- ✅ **Verification**: Confirms successful destruction of all resources
+- 📊 **Status Report**: Provides detailed destruction status
+
+### **🆕 Monitoring Stack Cleanup**
+
+**NEW: Dedicated monitoring stack cleanup script for Prometheus, Grafana, and AlertManager.**
+
+```bash
+# Clean up monitoring stack only
+./scripts/monitoring/cleanup-monitoring-stack.sh
+
+# Validate monitoring cleanup
+./scripts/monitoring/validate-monitoring-stack.sh
+```
+
+**Monitoring cleanup includes:**
+- 🔍 **Prometheus**: Metrics collection system
+- 📊 **Grafana**: Dashboard and visualization
+- 🚨 **AlertManager**: Alert management system
+- 📈 **Node Exporter**: System metrics collection
+- 🎯 **Custom Rules**: Healthcare-specific alert rules
+
+---
+
+## 🔧 **Manual Application Cleanup**
+
+**Note: Use this section only if you prefer manual step-by-step cleanup or if the automated script fails.**
 
 ### **Phase 1: Stop All Applications**
 ```bash
@@ -217,6 +276,12 @@ kubectl delete namespace argocd --wait=true
 
 echo "✅ ArgoCD removed"
 ```
+
+---
+
+## 🔧 **Manual Infrastructure Destruction**
+
+**Note: Use this section only if you prefer manual step-by-step destruction or if the automated script fails.**
 
 ### **Phase 3: Terraform Infrastructure Destruction**
 ```bash
@@ -460,6 +525,61 @@ echo "⚠️  Some resources may have delayed billing (like data transfer)"
 
 ---
 
+## 🆕 **Monitoring Stack Cleanup**
+
+### **Dedicated Monitoring Infrastructure Cleanup**
+
+**NEW: We have created specialized scripts for monitoring stack management.**
+
+#### **Complete Monitoring Stack Removal**
+```bash
+# Navigate to Stage-3 directory
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+
+# Clean up complete monitoring stack
+./scripts/monitoring/cleanup-monitoring-stack.sh
+```
+
+**What gets removed:**
+- 🔍 **Prometheus Server**: Metrics collection and storage
+- 📊 **Grafana**: Dashboards and visualization
+- 🚨 **AlertManager**: Alert management and notifications
+- 📈 **Node Exporter**: System metrics collection
+- 🎯 **Service Monitors**: Application monitoring configurations
+- 📋 **Custom Alert Rules**: Healthcare-specific alerting
+- 💾 **Persistent Volumes**: All monitoring data storage
+
+#### **Monitoring Stack Validation**
+```bash
+# Validate monitoring cleanup
+./scripts/monitoring/validate-monitoring-stack.sh
+```
+
+#### **Quick Monitoring Deployment (No Persistence)**
+```bash
+# For testing - deploy monitoring without persistent storage
+./scripts/monitoring/quick-deploy-monitoring.sh
+```
+
+---
+
+## 📊 **New Script Locations**
+
+### **Infrastructure Destruction Scripts**
+- **Complete Destruction**: `./scripts/cleanup/destroy-complete-infrastructure.sh`
+- **Monitoring Cleanup**: `./scripts/monitoring/cleanup-monitoring-stack.sh`
+- **Monitoring Validation**: `./scripts/monitoring/validate-monitoring-stack.sh`
+- **Quick Monitoring Deploy**: `./scripts/monitoring/quick-deploy-monitoring.sh`
+
+### **Script Features**
+- ✅ **Enhanced Error Handling**: Robust failure recovery
+- ✅ **Resource Verification**: Confirms successful cleanup
+- ✅ **Cost Optimization**: Ensures no ongoing charges
+- ✅ **Safety Confirmations**: Multiple confirmation steps
+- ✅ **Detailed Logging**: Comprehensive operation logs
+
+---
+
 ## ⚠️ **FINAL WARNING**
 
 **Once this destruction process is completed:**
@@ -468,8 +588,27 @@ echo "⚠️  Some resources may have delayed billing (like data transfer)"
 - ❌ **All configurations will need to be recreated from scratch**
 - ❌ **This process cannot be reversed**
 
-**Estimated Total Destruction Time: 2-3 hours**
+**Estimated Destruction Time:**
+- 🚀 **Automated Script**: 15-30 minutes
+- 🔧 **Manual Process**: 2-3 hours
 
 ---
 
-*This destruction guide ensures complete and safe removal of all Stage-3 resources while preserving critical data and configurations for future reference.*
+## 🆕 **What's New in This Guide**
+
+### **Added Features:**
+- ✅ **Automated Complete Destruction Script**: One-command infrastructure removal
+- ✅ **Monitoring Stack Management**: Dedicated monitoring cleanup scripts
+- ✅ **Enhanced Safety Features**: Multiple confirmation steps
+- ✅ **Resource Verification**: Automated verification of destruction
+- ✅ **Cost Optimization**: Ensures no ongoing AWS charges
+
+### **Improved Processes:**
+- 🔄 **Streamlined Workflow**: Reduced destruction time from hours to minutes
+- 🛡️ **Enhanced Safety**: Better confirmation and verification processes
+- 📊 **Better Monitoring**: Dedicated monitoring infrastructure management
+- 🔍 **Comprehensive Validation**: Automated verification of cleanup
+
+---
+
+*This enhanced destruction guide provides both automated and manual options for complete and safe removal of all Stage-3 resources while preserving critical data and configurations for future reference.*

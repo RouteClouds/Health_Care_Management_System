@@ -1,0 +1,68 @@
+# Minimal Prometheus Stack Configuration for Healthcare System
+fullnameOverride: "healthcare-monitoring"
+namespaceOverride: "monitoring"
+
+prometheus:
+  prometheusSpec:
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "200m"
+    retention: "7d"
+    retentionSize: "5GB"
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "gp2"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+grafana:
+  enabled: true
+  adminPassword: "healthcare-admin-2024"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "100m"
+  persistence:
+    enabled: true
+    storageClassName: "gp2"
+    size: 2Gi
+  service:
+    type: LoadBalancer
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "50m"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "gp2"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+
+nodeExporter:
+  enabled: true
+kubeStateMetrics:
+  enabled: true
+prometheusOperator:
+  enabled: true
+defaultRules:
+  create: true

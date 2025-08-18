@@ -1,0 +1,185 @@
+# No-Persistence Prometheus Stack Configuration for Healthcare System
+# This configuration deploys monitoring without persistent storage to avoid PVC binding issues
+
+# Global configuration
+fullnameOverride: "healthcare-monitoring"
+namespaceOverride: "monitoring"
+
+# Prometheus Server Configuration
+prometheus:
+  prometheusSpec:
+    # Resource allocation (minimal for testing)
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "200m"
+    
+    # NO PERSISTENT STORAGE - data will be lost on restart
+    # This is for initial testing only
+    storageSpec: {}
+    
+    # Retention policy (shorter since no persistence)
+    retention: "2h"
+    retentionSize: "1GB"
+    
+    # Service discovery configuration
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+# Grafana Configuration
+grafana:
+  enabled: true
+  
+  # Admin credentials
+  adminPassword: "healthcare-admin-2024"
+  
+  # Resource allocation (minimal)
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "100m"
+  
+  # NO PERSISTENT STORAGE - dashboards will be lost on restart
+  persistence:
+    enabled: false
+  
+  # Service configuration for external access
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+  
+  # Grafana configuration
+  grafana.ini:
+    server:
+      root_url: "http://localhost:3000"
+      serve_from_sub_path: false
+    
+    security:
+      admin_user: "admin"
+      allow_embedding: true
+    
+    auth.anonymous:
+      enabled: false
+  
+  # Datasources
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://healthcare-monitoring-prometheus:9090
+        access: proxy
+        isDefault: true
+        editable: true
+
+# AlertManager Configuration
+alertmanager:
+  enabled: true
+  
+  alertmanagerSpec:
+    # Resource allocation (minimal)
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "50m"
+    
+    # NO PERSISTENT STORAGE
+    storage: {}
+    
+    # Basic configuration
+    config:
+      global:
+        smtp_smarthost: 'localhost:587'
+        smtp_from: 'alerts@healthcare-system.com'
+      
+      route:
+        group_by: ['alertname', 'cluster', 'service']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 1h
+        receiver: 'healthcare-alerts'
+      
+      receivers:
+      - name: 'healthcare-alerts'
+        email_configs:
+        - to: 'devops@healthcare-system.com'
+          subject: 'Healthcare System Alert: {{ .GroupLabels.alertname }}'
+          body: |
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            {{ end }}
+
+# Node Exporter Configuration
+nodeExporter:
+  enabled: true
+  
+# Kube State Metrics Configuration
+kubeStateMetrics:
+  enabled: true
+
+# Prometheus Operator Configuration
+prometheusOperator:
+  enabled: true
+  
+  # Resource allocation (minimal)
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "100m"
+
+# Default rules for Kubernetes monitoring
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false  # Disable to reduce resource usage
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: false  # Disable to reduce resource usage
+    kubeApiserverHistogram: false  # Disable to reduce resource usage
+    kubeApiserverSlos: false  # Disable to reduce resource usage
+    kubelet: true
+    kubeProxy: false  # Disable to reduce resource usage
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+# Disable components that require more resources
+kubeControllerManager:
+  enabled: false
+
+kubeEtcd:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeProxy:
+  enabled: false

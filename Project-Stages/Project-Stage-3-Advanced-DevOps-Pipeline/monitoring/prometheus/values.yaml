@@ -1,0 +1,283 @@
+# Prometheus Stack Configuration for Healthcare System
+# This configuration deploys a comprehensive monitoring stack with Prometheus, Grafana, and AlertManager
+
+# Global configuration
+fullnameOverride: "healthcare-monitoring"
+namespaceOverride: "monitoring"
+
+# Prometheus Server Configuration
+prometheus:
+  prometheusSpec:
+    # Resource allocation for healthcare workload (reduced for initial deployment)
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+
+    # Storage configuration (reduced size for initial deployment)
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "gp2"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+    
+    # Retention policy
+    retention: "30d"
+    retentionSize: "45GB"
+    
+    # Service discovery configuration
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    
+    # Additional scrape configs for healthcare applications
+    additionalScrapeConfigs:
+      - job_name: 'healthcare-frontend'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - healthcare-stage3-dev
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: frontend-stage3
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+      
+      - job_name: 'healthcare-backend'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - healthcare-stage3-dev
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: backend-stage3
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+# Grafana Configuration
+grafana:
+  enabled: true
+  
+  # Admin credentials
+  adminPassword: "healthcare-admin-2024"
+  
+  # Resource allocation (reduced for initial deployment)
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+  # Persistence (reduced size for initial deployment)
+  persistence:
+    enabled: true
+    storageClassName: "gp2"
+    size: 5Gi
+  
+  # Service configuration for external access
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+  
+  # Grafana configuration
+  grafana.ini:
+    server:
+      root_url: "http://localhost:3000"
+      serve_from_sub_path: false
+
+    security:
+      admin_user: "admin"
+      allow_embedding: true
+    
+    auth.anonymous:
+      enabled: false
+    
+    dashboards:
+      default_home_dashboard_path: "/var/lib/grafana/dashboards/healthcare-overview.json"
+  
+  # Dashboard providers
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'healthcare-dashboards'
+        orgId: 1
+        folder: 'Healthcare System'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+  
+  # Datasources
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://healthcare-monitoring-prometheus:9090
+        access: proxy
+        isDefault: true
+        editable: true
+
+# AlertManager Configuration
+alertmanager:
+  enabled: true
+  
+  alertmanagerSpec:
+    # Resource allocation (reduced for initial deployment)
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "250m"
+
+    # Storage (reduced size for initial deployment)
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "gp2"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+    
+    # Configuration
+    config:
+      global:
+        smtp_smarthost: 'localhost:587'
+        smtp_from: 'alerts@healthcare-system.com'
+      
+      route:
+        group_by: ['alertname', 'cluster', 'service']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 1h
+        receiver: 'healthcare-alerts'
+        routes:
+        - match:
+            severity: critical
+          receiver: 'critical-alerts'
+        - match:
+            severity: warning
+          receiver: 'warning-alerts'
+      
+      receivers:
+      - name: 'healthcare-alerts'
+        email_configs:
+        - to: 'devops@healthcare-system.com'
+          subject: 'Healthcare System Alert: {{ .GroupLabels.alertname }}'
+          body: |
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            Labels: {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}
+            {{ end }}
+      
+      - name: 'critical-alerts'
+        email_configs:
+        - to: 'oncall@healthcare-system.com'
+          subject: 'CRITICAL: Healthcare System Alert'
+          body: |
+            CRITICAL ALERT DETECTED
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            Severity: {{ .Labels.severity }}
+            {{ end }}
+      
+      - name: 'warning-alerts'
+        email_configs:
+        - to: 'monitoring@healthcare-system.com'
+          subject: 'WARNING: Healthcare System Alert'
+          body: |
+            Warning Alert
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            {{ end }}
+
+# Node Exporter Configuration
+nodeExporter:
+  enabled: true
+  
+# Kube State Metrics Configuration
+kubeStateMetrics:
+  enabled: true
+
+# Prometheus Operator Configuration
+prometheusOperator:
+  enabled: true
+  
+  # Resource allocation
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+# Default rules for Kubernetes monitoring
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: true
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlos: true
+    kubelet: true
+    kubeProxy: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true

@@ -330,10 +330,55 @@ jobs:
           commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
           commit_author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
 
+  setup-terraform-backend:
+    name: Setup Terraform Backend
+    runs-on: ubuntu-latest
+    needs: [update-gitops]
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      backend-bucket: ${{ steps.backend-setup.outputs.bucket-name }}
+      backend-table: ${{ steps.backend-setup.outputs.table-name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform Backend
+        id: backend-setup
+        working-directory: ${{ env.TERRAFORM_PATH }}/backend-setup
+        run: |
+          echo "🔧 Setting up Terraform backend infrastructure..."
+
+          # Initialize Terraform for backend setup
+          terraform init
+
+          # Plan backend resources
+          terraform plan -out=backend-plan
+
+          # Apply backend resources
+          terraform apply -auto-approve backend-plan
+
+          # Get outputs
+          BUCKET_NAME=$(terraform output -raw s3_bucket_name)
+          TABLE_NAME=$(terraform output -raw dynamodb_table_name)
+
+          echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          echo "table-name=$TABLE_NAME" >> $GITHUB_OUTPUT
+
+          echo "✅ Terraform backend setup completed"
+          echo "S3 Bucket: $BUCKET_NAME"
+          echo "DynamoDB Table: $TABLE_NAME"
+
   deploy-infrastructure:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
-    needs: [update-gitops]  # Changed: Run after GitOps is updated
+    needs: [setup-terraform-backend]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
@@ -351,15 +396,66 @@ jobs:
         with:
           terraform_version: 1.6.0
 
+      - name: Initialize Terraform with Backend
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "🔧 Initializing Terraform with S3 backend..."
+          echo "Backend Bucket: ${{ needs.setup-terraform-backend.outputs.backend-bucket }}"
+          echo "Backend Table: ${{ needs.setup-terraform-backend.outputs.backend-table }}"
+
+          # Initialize with the created backend
+          terraform init
+
+          echo "✅ Terraform initialized with S3 backend"
+
       - name: Terraform Plan
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
-          terraform init
+          echo "📋 Planning infrastructure deployment..."
           terraform plan -out=tfplan
+
+          # Show plan summary
+          terraform show -no-color tfplan | head -50
 
       - name: Terraform Apply
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
-        run: terraform apply -auto-approve tfplan
+        run: |
+          echo "🚀 Deploying infrastructure..."
+          echo "This will create:"
+          echo "  - VPC with public/private subnets"
+          echo "  - EKS cluster with managed node groups"
+          echo "  - RDS PostgreSQL database"
+          echo "  - ECR repositories"
+          echo "  - Security groups and IAM roles"
+          echo ""
+
+          # Apply with auto-approval for CI/CD
+          terraform apply -auto-approve tfplan
+
+          echo "✅ Infrastructure deployment completed"
+
+      - name: Validate Infrastructure
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "🔍 Validating deployed infrastructure..."
+
+          # Get outputs
+          EKS_CLUSTER_NAME=$(terraform output -raw cluster_name)
+          RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
+
+          echo "EKS Cluster: $EKS_CLUSTER_NAME"
+          echo "RDS Endpoint: $RDS_ENDPOINT"
+
+          # Validate EKS cluster
+          aws eks describe-cluster --name $EKS_CLUSTER_NAME --region ${{ env.AWS_REGION }}
+
+          # Update kubeconfig
+          aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region ${{ env.AWS_REGION }}
+
+          # Test cluster connectivity
+          kubectl get nodes
+
+          echo "✅ Infrastructure validation completed"
 
   deploy-application:
     name: Deploy Application with Automated Database Setup

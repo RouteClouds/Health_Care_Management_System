@@ -18,8 +18,10 @@ This directory contains all automation scripts for the Healthcare Management Sys
 ```
 scripts/
 ├── 🛠️ setup/                          # Initial setup and configuration
-│   ├── create-aws-backend.sh          # S3 bucket and DynamoDB for Terraform
+│   ├── create-aws-backend.sh          # S3 bucket and DynamoDB for Terraform (Enhanced)
 │   ├── create-ecr-repositories.sh     # ECR repositories creation
+│   ├── 🆕 setup-environment-variables.sh # Automated environment variables setup
+│   ├── 🆕 list-aws-account-configurations.sh # AWS Account ID configuration analysis
 │   └── install-tools.sh               # Required tools installation
 ├── 🔄 migration/                       # Migration and transformation
 │   ├── migrate-to-stage3.sh           # Automated naming convention migration
@@ -42,7 +44,13 @@ scripts/
 │   ├── git-status-check.sh            # Git status validation
 │   └── setup-branch-protection.sh     # GitHub branch protection
 ├── 🧹 cleanup/                         # Environment cleanup
-│   └── cleanup-existing-resources.sh  # Resource cleanup automation
+│   ├── cleanup-existing-resources.sh  # Resource cleanup automation
+│   └── 🆕 destroy-complete-infrastructure.sh # Complete infrastructure destruction
+├── 📊 monitoring/                      # 🆕 Monitoring stack management
+│   ├── deploy-monitoring-stack-v2.sh  # Enhanced monitoring deployment
+│   ├── quick-deploy-monitoring.sh     # Quick monitoring (no persistence)
+│   ├── cleanup-monitoring-stack.sh    # Monitoring stack cleanup
+│   └── validate-monitoring-stack.sh   # Monitoring validation
 └── 📊 Root Level Scripts               # Main automation scripts
     ├── build-with-network-resilience.sh    # Network-resilient Docker builds
     ├── deploy-healthcare.sh                # Complete application deployment
@@ -60,19 +68,22 @@ scripts/
 # 1. Install required tools
 ./setup/install-tools.sh
 
-# 2. Create AWS backend infrastructure
+# 🆕 2. Setup environment variables (automated)
+./setup/setup-environment-variables.sh
+
+# 3. Create AWS backend infrastructure
 ./setup/create-aws-backend.sh
 
-# 3. Create ECR repositories
+# 4. Create ECR repositories
 ./setup/create-ecr-repositories.sh
 
-# 4. Deploy complete infrastructure
+# 5. Deploy complete infrastructure
 ./deployment/create-eks-cluster.sh
 
-# 5. Deploy application with automated database setup
+# 6. Deploy application with automated database setup
 ./deploy-healthcare.sh
 
-# 6. Validate deployment
+# 7. Validate deployment
 ./test-frontend-backend-connectivity.sh
 ```
 
@@ -205,26 +216,147 @@ npx prisma db seed
 # ✅ All tools installed successfully!
 ```
 
-### **2. create-aws-backend.sh** (`setup/create-aws-backend.sh`)
+### **🆕 2. create-aws-backend.sh** (`setup/create-aws-backend.sh`) - **ENHANCED**
 
-**Purpose**: Creates S3 bucket and DynamoDB table for Terraform state management.
+**Purpose**: Creates AWS backend infrastructure for Terraform state management with **unique naming and automation**.
+
+**🆕 Enhanced Features:**
+- ✅ **Auto-detects AWS Account ID**: No manual configuration needed
+- ✅ **Unique S3 bucket naming**: Adds 4-digit random suffix for global uniqueness
+- ✅ **Automatic Terraform updates**: Updates backend configurations automatically
+- ✅ **Bucket name persistence**: Saves bucket name for other scripts to use
+- ✅ **Enhanced error handling**: Robust failure recovery
 
 **What it creates:**
-- ✅ S3 bucket for Terraform state storage
-- ✅ DynamoDB table for state locking
-- ✅ Proper IAM permissions
-- ✅ Versioning and encryption enabled
+- ✅ **S3 bucket** with unique naming: `healthcare-terraform-state-stage3-{account-id}-{random}`
+- ✅ **DynamoDB table** for state locking: `healthcare-terraform-locks-stage3`
+- ✅ **Bucket versioning** enabled for state history
+- ✅ **Encryption** enabled for security (AES256)
+- ✅ **Public access blocking** for security
+- ✅ **🆕 Backend configuration updates**: Automatically updates Terraform files
+
+**🆕 Automation Features:**
+- **Unique Naming**: Prevents conflicts between multiple users
+- **Configuration Updates**: Updates `terraform/backend.tf` and `terraform/environments/dev/providers.tf`
+- **Bucket Name Storage**: Saves bucket name to `~/.healthcare-stage3-bucket-name`
+- **Environment Integration**: Updates `.env` file with bucket information
 
 **Usage:**
 ```bash
 ./setup/create-aws-backend.sh
 
-# Creates:
-# - S3 bucket: healthcare-terraform-state-{account-id}
-# - DynamoDB table: healthcare-terraform-locks
+# Enhanced output:
+# 🚀 AWS Backend Resources Setup
+# ✅ AWS Account ID: 123456789012
+# ✅ S3 Bucket Name: healthcare-terraform-state-stage3-123456789012-7834
+# ✅ S3 bucket created with versioning and encryption
+# ✅ DynamoDB table created: healthcare-terraform-locks-stage3
+# ✅ Bucket name saved for other scripts
+# ✅ Terraform backend configurations updated
+# 🎉 AWS backend resources created successfully!
 ```
 
-### **3. create-ecr-repositories.sh** (`setup/create-ecr-repositories.sh`)
+### **🆕 3. setup-environment-variables.sh** (`setup/setup-environment-variables.sh`)
+
+**Purpose**: **Automated environment variables configuration** for Stage-3 deployment.
+
+**Priority**: **HIGH** - Must be run before any infrastructure deployment.
+
+**🚀 Key Features:**
+- ✅ **Automatic Directory Validation**: Ensures you're in the correct project directory
+- ✅ **AWS Account Detection**: Auto-detects your AWS account ID
+- ✅ **Predefined Naming**: Uses consistent cluster and ECR names
+- ✅ **Persistent Configuration**: Saves variables to ~/.bashrc and .env file
+- ✅ **Comprehensive Validation**: Verifies all variables are properly set
+- ✅ **🆕 AWS Account ID Replacement**: Automatically replaces old AWS Account ID in all files
+- ✅ **🆕 ECR Registry Updates**: Updates ECR registry URLs throughout the project
+
+**What it configures:**
+- `STAGE3_PROJECT_ROOT`: Current project directory (auto-detected)
+- `AWS_REGION`: AWS region (us-east-1)
+- `AWS_ACCOUNT_ID`: Your AWS account ID (auto-detected)
+- `STAGE3_CLUSTER_NAME`: EKS cluster name (healthcare-eks-stage3-dev)
+- `STAGE3_ECR_REGISTRY`: ECR registry URL (auto-generated)
+- `STAGE3_NAMESPACE`: Kubernetes namespace (healthcare-stage3-dev)
+- `STAGE3_DB_NAME`: Database name (healthcare_db)
+- `STAGE3_ENVIRONMENT`: Environment type (dev)
+
+**🆕 Enhanced Features:**
+- **File Replacement**: Automatically replaces AWS Account ID in all configuration files
+- **ECR URL Updates**: Updates ECR registry URLs in Kubernetes manifests
+- **Comprehensive Search**: Searches Terraform, Kubernetes, GitOps, and script files
+- **Backup Creation**: Creates backups before making changes
+
+**Usage:**
+```bash
+# Navigate to Stage-3 directory first
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+
+# Run the automated setup
+./scripts/setup/setup-environment-variables.sh
+
+# Expected output:
+# 🚀 Stage-3 Environment Variables Setup
+# ✅ Prerequisites check completed
+# ✅ Project directory validated
+# ✅ Environment variables configured
+# ✅ Environment variables saved to ~/.bashrc
+# ✅ .env file created
+# 🆕 ✅ Updated 15 files with new AWS Account ID
+# 🆕 ✅ Updated 8 files with new ECR registry
+# 🎉 Environment setup completed successfully!
+```
+
+**💡 Important Notes:**
+- The cluster name is **predefined** and will be created in later steps
+- The ECR registry URL is **auto-generated** based on your AWS account
+- No manual input required - everything is automated
+- Creates backup of ~/.bashrc before making changes
+- **🆕 Replaces AWS Account ID in ALL project files automatically**
+
+### **🆕 4. list-aws-account-configurations.sh** (`setup/list-aws-account-configurations.sh`)
+
+**Purpose**: **Comprehensive AWS Account ID configuration analysis** and replacement guidance.
+
+**🔍 Key Features:**
+- ✅ **File Discovery**: Finds ALL files containing old AWS Account ID references
+- ✅ **Critical File Listing**: Identifies must-update configuration files
+- ✅ **Replacement Commands**: Generates automated replacement commands
+- ✅ **Configuration Validation**: Validates current AWS setup
+- ✅ **Detailed Reporting**: Comprehensive analysis report
+
+**What it analyzes:**
+- **Terraform Files**: Backend configurations, variables, and resources
+- **Kubernetes Manifests**: Deployment files and service configurations
+- **GitOps Files**: ArgoCD and GitOps configurations
+- **Scripts**: All shell scripts and automation files
+- **Documentation**: README and guide files
+- **CI/CD Files**: GitHub Actions workflows
+
+**Usage:**
+```bash
+# Run the configuration analysis
+./scripts/setup/list-aws-account-configurations.sh
+
+# Expected output:
+# 🔍 AWS Account ID Configuration Analysis
+# 📋 Found 25 files with AWS Account ID references
+# 🎯 Critical files that MUST be updated:
+#   - terraform/backend.tf
+#   - k8s/applications/frontend/deployment.yaml
+#   - .github/workflows/stage3-ci.yml
+# 🔧 Generated replacement commands
+# ✅ Analysis completed!
+```
+
+**Report Sections:**
+1. **File Discovery**: Lists all files with AWS Account ID references
+2. **Critical Files**: Identifies essential files that must be updated
+3. **Replacement Commands**: Provides automated replacement scripts
+4. **Validation**: Checks current AWS configuration
+5. **Summary**: Comprehensive report with recommendations
+
+### **4. create-ecr-repositories.sh** (`setup/create-ecr-repositories.sh`)
 
 **Purpose**: Creates ECR repositories for Docker images.
 
@@ -448,6 +580,135 @@ node validate-configs.js
 - ✅ **ECR images** and repositories
 - ✅ **S3 buckets** and DynamoDB tables
 - ✅ **CloudFormation stacks** if applicable
+
+### **🆕 2. destroy-complete-infrastructure.sh** (`cleanup/destroy-complete-infrastructure.sh`)
+
+**Purpose**: **COMPLETE AUTOMATED INFRASTRUCTURE DESTRUCTION** - One-command solution for destroying all AWS resources.
+
+**🚀 Key Features:**
+- ✅ **Automated Kubernetes Cleanup**: Removes all namespaces and applications
+- ✅ **Load Balancer Management**: Automatically removes all load balancers
+- ✅ **Terraform Destruction**: Complete infrastructure teardown
+- ✅ **ECR Repository Cleanup**: Removes container repositories and images
+- ✅ **Resource Verification**: Confirms successful destruction
+- ✅ **Cost Optimization**: Ensures no ongoing AWS charges
+
+**🛡️ Safety Features:**
+- 🔒 **Double Confirmation**: Requires typing 'DESTROY' and 'YES'
+- 🔍 **Resource Preview**: Shows exactly what will be destroyed
+- ✅ **Verification**: Automated verification of destruction
+- 📊 **Status Report**: Detailed destruction status
+
+**Usage:**
+```bash
+# Navigate to Stage-3 directory
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+
+# Run complete infrastructure destruction
+./scripts/cleanup/destroy-complete-infrastructure.sh
+
+# Follow prompts:
+# 1. Type 'DESTROY' to confirm
+# 2. Type 'YES' to proceed
+```
+
+**What gets destroyed:**
+- 🏗️ **EKS Cluster**: Complete Kubernetes cluster
+- 🗄️ **RDS Database**: PostgreSQL database with ALL data
+- 🌐 **VPC & Networking**: All networking components
+- 📦 **ECR Repositories**: Container images and repositories
+- ⚖️ **Load Balancers**: All application load balancers
+- 🔐 **IAM Roles**: Service roles and policies
+- 💾 **Storage**: All persistent volumes and data
+- 📊 **Monitoring**: All monitoring and logging data
+
+**Estimated Time**: 15-30 minutes (vs 2-3 hours manual)
+
+---
+
+## 📊 **🆕 MONITORING STACK SCRIPTS**
+
+### **1. deploy-monitoring-stack-v2.sh** (`monitoring/deploy-monitoring-stack-v2.sh`)
+
+**Purpose**: **Enhanced monitoring stack deployment** with automatic resource optimization.
+
+**🚀 Key Features:**
+- ✅ **Automatic Resource Detection**: Adapts to cluster capacity
+- ✅ **Prometheus Stack**: Metrics collection and storage
+- ✅ **Grafana Dashboards**: Visual monitoring interface
+- ✅ **AlertManager**: Proactive alerting system
+- ✅ **Healthcare-Specific Metrics**: Custom business metrics
+- ✅ **Error Recovery**: Robust deployment handling
+
+**Usage:**
+```bash
+./scripts/monitoring/deploy-monitoring-stack-v2.sh
+```
+
+### **2. quick-deploy-monitoring.sh** (`monitoring/quick-deploy-monitoring.sh`)
+
+**Purpose**: **Quick monitoring deployment** without persistent storage for testing.
+
+**🎯 Use Cases:**
+- ⚡ **Quick Testing**: Fast deployment for development
+- 🧪 **CI/CD Testing**: Temporary monitoring in pipelines
+- 🔧 **Troubleshooting**: Quick monitoring setup
+
+**Features:**
+- ⚡ **Fast Deployment**: No PVC binding delays
+- 🧪 **Testing Focused**: Minimal resource requirements
+- ⚠️ **No Persistence**: Data lost on pod restart
+
+**Usage:**
+```bash
+./scripts/monitoring/quick-deploy-monitoring.sh
+```
+
+### **3. cleanup-monitoring-stack.sh** (`monitoring/cleanup-monitoring-stack.sh`)
+
+**Purpose**: **Complete monitoring stack removal** with enhanced cleanup.
+
+**🧹 Cleanup Features:**
+- 🔍 **Prometheus**: Metrics server and storage
+- 📊 **Grafana**: Dashboards and configurations
+- 🚨 **AlertManager**: Alert rules and notifications
+- 📈 **Node Exporter**: System metrics collection
+- 🎯 **Custom Resources**: Healthcare-specific monitoring
+- 💾 **Persistent Storage**: All monitoring data
+
+**Safety Features:**
+- 🔒 **Confirmation Required**: Prevents accidental deletion
+- 🔍 **Resource Preview**: Shows what will be removed
+- ✅ **Verification**: Confirms successful cleanup
+- 🛡️ **Force Cleanup**: Handles stuck resources
+
+**Usage:**
+```bash
+./scripts/monitoring/cleanup-monitoring-stack.sh
+```
+
+### **4. validate-monitoring-stack.sh** (`monitoring/validate-monitoring-stack.sh`)
+
+**Purpose**: **Comprehensive monitoring validation** with detailed testing.
+
+**🧪 Validation Tests:**
+- ✅ **Pod Status**: All monitoring pods running
+- ✅ **Service Connectivity**: Service accessibility
+- ✅ **Storage Binding**: PVC binding status
+- ✅ **API Accessibility**: Prometheus/Grafana APIs
+- ✅ **Custom Resources**: Alert rules and monitors
+- ✅ **Resource Usage**: CPU/Memory consumption
+
+**Test Results:**
+- 📊 **Detailed Report**: Pass/fail status for each test
+- 🔍 **Access Information**: Connection details
+- 📈 **Resource Metrics**: Current usage statistics
+- 🎯 **Recommendations**: Optimization suggestions
+
+**Usage:**
+```bash
+./scripts/monitoring/validate-monitoring-stack.sh
+```
 
 ---
 
@@ -1278,6 +1539,50 @@ cd ../src-code && npm test
 
 ---
 
-**🎯 These scripts automate the entire Stage 2 setup process, making it easy for students to get started quickly and reliably.**
+## 🆕 **WHAT'S NEW IN THIS UPDATE**
 
-**📞 Support**: For script issues, check the [Troubleshooting Guide](../docs/TROUBLESHOOTING.md) or [Master Setup Guide](../docs/MASTER-SETUP-GUIDE.md).
+### **🛠️ Enhanced Setup Scripts**
+- ✅ **🆕 setup-environment-variables.sh**: Complete automated environment configuration
+  - Auto-detects AWS Account ID and project directory
+  - Replaces AWS Account ID in ALL configuration files automatically
+  - Updates ECR registry URLs throughout the project
+  - Creates persistent environment configuration
+- ✅ **🆕 list-aws-account-configurations.sh**: Comprehensive configuration analysis
+  - Lists ALL files containing AWS Account ID references
+  - Identifies critical files that must be updated
+  - Generates automated replacement commands
+  - Provides detailed configuration validation
+- ✅ **Enhanced create-aws-backend.sh**: Improved backend setup
+  - Unique S3 bucket naming with random suffix
+  - Automatic Terraform configuration updates
+  - Enhanced error handling and validation
+
+### **🚀 Enhanced Infrastructure Management**
+- ✅ **Complete Infrastructure Destruction**: One-command automated teardown
+- ✅ **Monitoring Stack Management**: Dedicated monitoring infrastructure scripts
+- ✅ **Enhanced Safety Features**: Multiple confirmation steps and verification
+- ✅ **Cost Optimization**: Automated resource cleanup to prevent ongoing charges
+
+### **📊 New Monitoring Capabilities**
+- ✅ **Prometheus Stack**: Comprehensive metrics collection
+- ✅ **Grafana Dashboards**: Visual monitoring and alerting
+- ✅ **Healthcare-Specific Metrics**: Custom business logic monitoring
+- ✅ **Quick Deploy Options**: Testing-focused deployment without persistence
+
+### **🛡️ Improved Safety & Reliability**
+- ✅ **Enhanced Error Handling**: Robust failure recovery mechanisms
+- ✅ **Resource Verification**: Automated verification of operations
+- ✅ **Detailed Logging**: Comprehensive operation tracking
+- ✅ **Force Cleanup Options**: Handles stuck resources effectively
+
+### **⚡ Performance Improvements**
+- ✅ **Reduced Destruction Time**: From 2-3 hours to 15-30 minutes
+- ✅ **Automated Resource Detection**: Adapts to cluster capacity
+- ✅ **Network Resilience**: Better handling of network issues
+- ✅ **Streamlined Workflows**: Simplified user experience
+
+---
+
+**🎯 These enhanced scripts provide complete automation for Stage-3 infrastructure management, from deployment to destruction, making it easy for students and professionals to manage complex DevOps environments reliably.**
+
+**📞 Support**: For script issues, check the [Stage-3 Destruction Guide](../Stage-3-Destruction-Guide.md) or [Troubleshooting Guide](../docs/TROUBLESHOOTING.md).
