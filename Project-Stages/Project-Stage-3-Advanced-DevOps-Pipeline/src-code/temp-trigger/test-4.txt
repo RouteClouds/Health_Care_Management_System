@@ -1,1 +1,1 @@
-Deploying application with automated database setup"
+"Fixing automated database setup with Script"

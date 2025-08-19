@@ -31,6 +31,7 @@ scripts/
 │   ├── create-eks-cluster.sh          # EKS cluster creation
 │   ├── deploy-production.sh           # Production deployment
 │   ├── deploy-staging.sh              # Staging deployment
+│   ├── 🆕 update-database-config.sh   # Update database configuration with actual RDS endpoint
 │   └── validate-infrastructure.sh     # Infrastructure validation
 ├── 🔧 operations/                      # Day-to-day operational tasks
 │   └── trigger-pipeline.sh            # Manual pipeline triggering
@@ -1560,6 +1561,11 @@ cd ../src-code && npm test
 ### **🚀 Enhanced Infrastructure Management**
 - ✅ **Complete Infrastructure Destruction**: One-command automated teardown
 - ✅ **Monitoring Stack Management**: Dedicated monitoring infrastructure scripts
+- ✅ **🆕 Database Configuration Management**: Automated RDS endpoint configuration
+  - Updates GitOps manifests with actual Terraform outputs
+  - Replaces hardcoded database endpoints automatically
+  - Prevents 500 errors from database connection failures
+  - Includes backup and restore functionality
 - ✅ **Enhanced Safety Features**: Multiple confirmation steps and verification
 - ✅ **Cost Optimization**: Automated resource cleanup to prevent ongoing charges
 

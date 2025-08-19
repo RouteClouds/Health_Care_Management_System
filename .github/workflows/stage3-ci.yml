@@ -675,6 +675,17 @@ jobs:
           echo "🚀 Deploying application with automated database setup..."
           echo "Using GitOps manifests with image tag: ${{ github.sha }}"
 
+          # Use dedicated script for database configuration update
+          echo "🔧 Running automated database configuration update..."
+          cd ../../../
+
+          # Make script executable and run it
+          chmod +x scripts/deployment/update-database-config.sh
+          ./scripts/deployment/update-database-config.sh
+
+          # Return to GitOps directory
+          cd gitops/environments/dev
+
           # Create namespace if it doesn't exist
           echo "🏗️ Ensuring namespace exists..."
 
@@ -748,32 +759,87 @@ jobs:
           LB_URL=$(kubectl get service frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
           echo "LoadBalancer URL: http://${LB_URL}"
 
+          # Check pod status first
+          echo "🔍 Checking pod status..."
+          kubectl get pods -n healthcare-stage3-dev
+          kubectl describe pods -n healthcare-stage3-dev
+
+          # Check backend logs for errors
+          echo "📋 Checking backend logs..."
+          kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=50 || echo "Could not get backend logs"
+
           # Wait for LoadBalancer to be ready
           echo "⏳ Waiting for LoadBalancer to be ready..."
           sleep 60
 
-          # Test database connectivity
-          echo "🗄️ Testing database connectivity..."
-          for i in {1..10}; do
-            if curl -f "http://${LB_URL}/api/health" | jq -e '.database == "connected"'; then
-              echo "✅ Database connection successful"
-              break
-            else
-              echo "⏳ Attempt $i/10: Database not ready yet, waiting..."
-              sleep 30
-            fi
-          done
+          # Test basic connectivity first
+          echo "🌐 Testing basic connectivity..."
+          if curl -I "http://${LB_URL}" --connect-timeout 10 --max-time 30; then
+            echo "✅ LoadBalancer is accessible"
+          else
+            echo "❌ LoadBalancer is not accessible"
+            exit 1
+          fi
 
-          # Test sample data availability
-          echo "👨‍⚕️ Testing sample data availability..."
-          if curl -f "http://${LB_URL}/api/doctors" | jq -e '.data.doctors | length > 0'; then
+          # Test health endpoint with detailed output
+          echo "🗄️ Testing health endpoint..."
+          HEALTH_RESPONSE=$(curl -s "http://${LB_URL}/api/health" || echo "CURL_FAILED")
+          echo "Health response: $HEALTH_RESPONSE"
+
+          if echo "$HEALTH_RESPONSE" | jq -e '.database == "connected"' >/dev/null 2>&1; then
+            echo "✅ Database connection successful"
+          else
+            echo "❌ Database connection failed or health endpoint not working"
+            echo "🔍 Debugging backend issues..."
+            kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=100
+            exit 1
+          fi
+
+          # Test doctors endpoint with detailed debugging
+          echo "👨‍⚕️ Testing doctors endpoint..."
+          DOCTORS_RESPONSE=$(curl -s "http://${LB_URL}/api/doctors" || echo "CURL_FAILED")
+          echo "Doctors response: $DOCTORS_RESPONSE"
+
+          if echo "$DOCTORS_RESPONSE" | jq -e '.data.doctors | length > 0' >/dev/null 2>&1; then
             echo "✅ Sample data available - automated database seeding successful"
           else
-            echo "❌ Sample data not available - database seeding may have failed"
+            echo "❌ Sample data not available - investigating..."
+
+            # Check if it's a 500 error or other issue
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://${LB_URL}/api/doctors")
+            echo "HTTP Status: $HTTP_STATUS"
+
+            if [[ "$HTTP_STATUS" == "500" ]]; then
+              echo "🔍 500 Internal Server Error detected - checking backend logs..."
+              kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=100
+
+              # Check database connection from backend pod
+              echo "🗄️ Testing database connection from backend pod..."
+              BACKEND_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[0].metadata.name}')
+              if [[ -n "$BACKEND_POD" ]]; then
+                echo "Testing from pod: $BACKEND_POD"
+                kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- env | grep -E "(DATABASE|DB_)" || echo "No database env vars found"
+              fi
+            fi
+
             exit 1
           fi
 
           echo "🎉 Automated database setup validation completed successfully!"
+
+      - name: Cleanup temporary files
+        if: always()
+        working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
+        run: |
+          echo "🧹 Cleaning up temporary files..."
+
+          # Restore original backend.yaml if backup exists
+          if [[ -f "backend.yaml.backup" ]]; then
+            mv backend.yaml.backup backend.yaml
+            echo "✅ Original backend.yaml restored"
+          else
+            echo "ℹ️ No backup file found, skipping restore"
+          fi
 
   recovery-gitops:
     name: Automated GitOps Recovery

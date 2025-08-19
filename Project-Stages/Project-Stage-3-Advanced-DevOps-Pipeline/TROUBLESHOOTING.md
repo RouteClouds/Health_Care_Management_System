@@ -1110,6 +1110,241 @@ fi
 - Similar issues may occur with other namespaces (monitoring, logging, etc.)
 - RBAC and network policy configurations can cause similar symptoms
 
+### **Issue: Database Connection Fails with 500 Error - Hardcoded RDS Endpoint**
+
+**Problem**: Application deployment succeeds but database connectivity test fails with HTTP 500 error because the backend is using a hardcoded placeholder RDS endpoint instead of the actual RDS endpoint created by Terraform.
+
+**Error Messages**:
+```
+🔍 Validating automated database setup...
+LoadBalancer URL: http://ae91d99305676467bac1f06f1789f29c-766284450.us-east-1.elb.amazonaws.com
+⏳ Waiting for LoadBalancer to be ready...
+🗄️ Testing database connectivity...
+true
+✅ Database connection successful
+👨‍⚕️ Testing sample data availability...
+curl: (22) The requested URL returned error: 500
+❌ Sample data not available - database seeding may have failed
+Error: Process completed with exit code 1.
+```
+
+**Root Cause**:
+1. **Hardcoded Database Endpoint**: GitOps manifest contains placeholder RDS endpoint
+2. **Configuration Mismatch**: Backend tries to connect to non-existent database server
+3. **Missing Configuration Update**: Pipeline doesn't update database configuration with actual RDS endpoint
+4. **Terraform Output Not Used**: Actual RDS endpoint from Terraform not propagated to application
+
+**Investigation Steps**:
+
+1. **Check Backend Logs**:
+```bash
+# Check backend pod logs for database connection errors
+kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=50
+
+# Expected error patterns:
+# - Connection refused
+# - Host not found
+# - Authentication failed
+```
+
+**Expected Error Output**:
+```
+Error: getaddrinfo ENOTFOUND healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com
+    at GetAddrInfoReqWrap.onlookup [as oncomplete] (dns.js:66:26)
+Database connection failed: Error: getaddrinfo ENOTFOUND healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com
+```
+
+2. **Check Database Configuration**:
+```bash
+# Check the database secret in the manifest
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
+grep -A 10 "database-credentials-stage3" backend.yaml
+
+# Check actual RDS endpoint from Terraform
+cd ../../../terraform/environments/dev
+terraform output db_instance_endpoint
+```
+
+**Expected Findings**:
+```yaml
+# In backend.yaml (INCORRECT - placeholder):
+stringData:
+  url: "postgresql://healthcare_stage3_user:healthcare_stage3_password_change_me@healthcare-eks-stage3-dev-db.c6t4q0g6i4n5.us-east-1.rds.amazonaws.com:5432/healthcare_stage3_db"
+
+# From Terraform (CORRECT - actual endpoint):
+healthcare-eks-stage3-dev-db.abc123xyz.us-east-1.rds.amazonaws.com:5432
+```
+
+**Solution Applied**:
+
+1. **✅ FULLY AUTOMATED: Enhanced Pipeline with Database Configuration Update**:
+```yaml
+# Added to deploy-application job - FULLY AUTOMATED
+- name: Deploy application with latest GitOps manifests
+  run: |
+    # Use dedicated script for database configuration update
+    echo "🔧 Running automated database configuration update..."
+    cd ../../../
+
+    # Make script executable and run it
+    chmod +x scripts/deployment/update-database-config.sh
+    ./scripts/deployment/update-database-config.sh
+
+    # Return to GitOps directory
+    cd gitops/environments/dev
+
+    # Continue with deployment...
+
+# Automatic cleanup after deployment
+- name: Cleanup temporary files
+  if: always()
+  run: |
+    # Restore original backend.yaml if backup exists
+    if [[ -f "backend.yaml.backup" ]]; then
+      mv backend.yaml.backup backend.yaml
+      echo "✅ Original backend.yaml restored"
+    fi
+```
+
+2. **Created Dedicated Update Script**:
+```bash
+# scripts/deployment/update-database-config.sh
+#!/bin/bash
+echo "🔧 Updating database configuration with actual RDS endpoint..."
+
+# Get RDS endpoint from Terraform
+cd terraform/environments/dev
+ACTUAL_RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint)
+
+# Update GitOps manifest
+cd ../../../gitops/environments/dev
+cp backend.yaml backend.yaml.backup
+sed -i "s|healthcare-eks-stage3-dev-db\.c6t4q0g6i4n5\.us-east-1\.rds\.amazonaws\.com|$ACTUAL_RDS_ENDPOINT|g" backend.yaml
+
+echo "✅ Database configuration updated"
+```
+
+3. **Enhanced Validation with Debugging**:
+```yaml
+# Enhanced validation step
+- name: Validate automated database setup
+  run: |
+    # Check pod status and logs
+    kubectl get pods -n healthcare-stage3-dev
+    kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=50
+
+    # Test health endpoint with detailed output
+    HEALTH_RESPONSE=$(curl -s "http://${LB_URL}/api/health")
+    echo "Health response: $HEALTH_RESPONSE"
+
+    # Test doctors endpoint with HTTP status
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://${LB_URL}/api/doctors")
+    echo "HTTP Status: $HTTP_STATUS"
+
+    if [[ "$HTTP_STATUS" == "500" ]]; then
+      echo "🔍 500 Internal Server Error detected - checking backend logs..."
+      kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=100
+    fi
+```
+
+**Manual Fix Steps**:
+
+1. **Update Database Configuration Manually**:
+```bash
+# Navigate to project directory
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+
+# Get actual RDS endpoint
+cd terraform/environments/dev
+ACTUAL_RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint)
+echo "Actual RDS endpoint: $ACTUAL_RDS_ENDPOINT"
+
+# Update GitOps manifest
+cd ../../../gitops/environments/dev
+cp backend.yaml backend.yaml.backup
+
+# Replace placeholder with actual endpoint
+sed -i "s|healthcare-eks-stage3-dev-db\.c6t4q0g6i4n5\.us-east-1\.rds\.amazonaws\.com|$ACTUAL_RDS_ENDPOINT|g" backend.yaml
+
+# Verify the change
+grep "postgresql://" backend.yaml
+```
+
+2. **Redeploy Backend with Updated Configuration**:
+```bash
+# Apply updated manifest
+kubectl apply -f backend.yaml
+
+# Wait for rollout to complete
+kubectl rollout status deployment/healthcare-backend-stage3 -n healthcare-stage3-dev
+
+# Check pod logs
+kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=20
+```
+
+**Expected Output After Fix**:
+```
+Database connection successful
+Server running on port 3001
+Connected to database: healthcare_stage3_db
+Database migrations completed
+Sample data seeded successfully
+```
+
+3. **Test Database Connectivity**:
+```bash
+# Get LoadBalancer URL
+LB_URL=$(kubectl get service frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+# Test health endpoint
+curl "http://${LB_URL}/api/health" | jq .
+
+# Test doctors endpoint
+curl "http://${LB_URL}/api/doctors" | jq .
+```
+
+**Expected Output**:
+```json
+# Health endpoint:
+{
+  "status": "healthy",
+  "database": "connected",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+
+# Doctors endpoint:
+{
+  "success": true,
+  "data": {
+    "doctors": [
+      {
+        "id": 1,
+        "name": "Dr. John Smith",
+        "specialization": "Cardiology"
+      }
+    ]
+  }
+}
+```
+
+**Prevention Strategies**:
+
+1. **Automated Configuration Management**: Always use Terraform outputs for dynamic values
+2. **Configuration Validation**: Verify database endpoints before deployment
+3. **Environment-Specific Configs**: Use environment variables instead of hardcoded values
+4. **Pipeline Integration**: Include configuration updates in CI/CD pipeline
+
+**Related Configuration Files**:
+- `gitops/environments/dev/backend.yaml` - Contains database configuration
+- `terraform/environments/dev/main.tf` - Defines RDS outputs
+- `terraform/modules/healthcare-platform/outputs.tf` - Module outputs
+
+**Common Variations**:
+- Different RDS endpoint formats (cluster vs instance)
+- Multiple environment configurations (dev, staging, prod)
+- Database credential management issues
+- Network connectivity problems between EKS and RDS
+
 ### **Issue: Unit Tests Failing in GitHub Actions Pipeline**
 
 **Problem**: GitHub Actions pipeline fails at "Unit Tests (Node 20.x)" job with React component import errors.
