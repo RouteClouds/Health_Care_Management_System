@@ -384,6 +384,176 @@ gh run list --workflow="Stage 3 CI (Advanced DevOps)" --limit 3
 - Resource conflicts in AWS (Terraform state locks)
 - Failed deployments due to concurrent infrastructure changes
 
+### **Issue: Terraform Command Not Found in Pipeline**
+
+**Problem**: GitHub Actions pipeline fails at the Terraform backend setup stage with "terraform: command not found" error.
+
+**Error Messages**:
+```
+/home/runner/work/_temp/566e3dd8-39a7-46bc-a4da-1bc2082b0f3f.sh: line 4: terraform: command not found
+🔧 Setting up Terraform backend infrastructure...
+Error: Process completed with exit code 127.
+```
+
+**Root Cause**: The `setup-terraform-backend` job is missing the Terraform installation step, causing the terraform binary to be unavailable when the script tries to run terraform commands.
+
+**Solution Steps**:
+
+1. **Check the GitHub Actions workflow file**:
+```bash
+# Check if Terraform setup step is missing
+grep -A 10 -B 5 "setup-terraform-backend" .github/workflows/stage3-ci.yml
+```
+
+2. **Add missing Terraform setup step**:
+```yaml
+# Add this step before any terraform commands in setup-terraform-backend job
+- name: Setup Terraform
+  uses: hashicorp/setup-terraform@v3
+  with:
+    terraform_version: 1.6.0
+```
+
+3. **Complete fix in workflow file**:
+```yaml
+setup-terraform-backend:
+  name: Setup Terraform Backend
+  runs-on: ubuntu-latest
+  needs: [update-gitops]
+  if: github.ref == 'refs/heads/main'
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    # ADD THIS MISSING STEP:
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.0
+
+    - name: Setup Terraform Backend
+      # ... rest of the terraform commands
+```
+
+4. **Commit and push the fix**:
+```bash
+git add .github/workflows/stage3-ci.yml
+git commit -m "fix: add missing Terraform setup step in backend setup job
+
+- Added hashicorp/setup-terraform@v3 action to setup-terraform-backend job
+- Ensures terraform binary is available before running terraform commands
+- Fixes 'terraform: command not found' error in pipeline
+- Consistent with deploy-infrastructure job that already has this step"
+
+git push origin main
+```
+
+**Verification**:
+- Pipeline should now proceed past the backend setup stage
+- Terraform commands will execute successfully
+- No more "command not found" errors
+
+### **Issue: DynamoDB Table Already Exists Error in Backend Setup**
+
+**Problem**: Terraform backend setup fails because DynamoDB table already exists from previous runs, but Terraform doesn't handle existing resources gracefully.
+
+**Error Messages**:
+```
+Error: creating AWS DynamoDB Table (healthcare-terraform-locks-stage3): operation error DynamoDB: CreateTable, https response error StatusCode: 400, RequestID: SOAD5JH3QLP2DK47N172D42MG3VV4KQNSO5AEMVJF66Q9ASUAAJG, ResourceInUseException: Table already exists: healthcare-terraform-locks-stage3
+
+  with aws_dynamodb_table.terraform_locks,
+  on main.tf line 82, in resource "aws_dynamodb_table" "terraform_locks":
+  82: resource "aws_dynamodb_table" "terraform_locks" {
+
+Error: Terraform exited with code 1.
+Error: Process completed with exit code 1.
+```
+
+**Root Cause**: Terraform tries to create resources that already exist without checking for existing resources or importing them into the state.
+
+**Solution Steps**:
+
+1. **Enhanced pipeline with resource checking**:
+The pipeline now includes automatic resource detection and import:
+
+```yaml
+- name: Setup Terraform Backend
+  run: |
+    # Check if backend resources already exist
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    EXPECTED_TABLE="healthcare-terraform-locks-stage3"
+
+    # Check if DynamoDB table exists
+    if aws dynamodb describe-table --table-name "$EXPECTED_TABLE" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+      echo "✅ DynamoDB table '$EXPECTED_TABLE' already exists"
+      TABLE_EXISTS=true
+    else
+      echo "📋 DynamoDB table '$EXPECTED_TABLE' does not exist, will create"
+      TABLE_EXISTS=false
+    fi
+
+    # Import existing resources if they exist
+    if [[ "$TABLE_EXISTS" == "true" ]]; then
+      echo "🔄 Importing existing DynamoDB table..."
+      terraform import aws_dynamodb_table.terraform_locks "$EXPECTED_TABLE" || echo "⚠️ Import failed, table might already be in state"
+    fi
+
+    # Apply with error handling
+    terraform apply -auto-approve backend-plan || {
+      echo "⚠️ Apply failed, checking if resources exist..."
+      if [[ "$TABLE_EXISTS" == "true" ]]; then
+        echo "✅ Using existing backend resources"
+        exit 0
+      else
+        echo "❌ Backend setup failed and resources don't exist"
+        exit 1
+      fi
+    }
+```
+
+2. **Manual fix if pipeline still fails**:
+```bash
+# Option 1: Import existing resources into Terraform state
+cd terraform/backend-setup
+terraform init
+terraform import aws_dynamodb_table.terraform_locks healthcare-terraform-locks-stage3
+terraform import aws_s3_bucket.terraform_state healthcare-terraform-state-stage3-YOUR_ACCOUNT_ID-XXXX
+
+# Option 2: Remove existing resources (CAUTION: Will lose state)
+aws dynamodb delete-table --table-name healthcare-terraform-locks-stage3 --region us-east-1
+aws s3 rb s3://healthcare-terraform-state-stage3-YOUR_ACCOUNT_ID-XXXX --force
+
+# Option 3: Use existing resources
+# Update terraform configuration to use data sources instead of resources
+```
+
+3. **Prevention for future runs**:
+```bash
+# The enhanced pipeline now automatically:
+# ✅ Checks for existing resources before creating
+# ✅ Imports existing resources into Terraform state
+# ✅ Handles creation failures gracefully
+# ✅ Uses existing resources when available
+```
+
+**Verification**:
+- Pipeline handles existing resources without errors
+- Backend setup completes successfully on subsequent runs
+- No manual intervention required for resource conflicts
+
+**Best Practices**:
+- Always check for existing resources before creation
+- Use Terraform import for existing infrastructure
+- Implement proper error handling in CI/CD pipelines
+- Consider using Terraform workspaces for environment isolation
+
 ### **Issue: Unit Tests Failing in GitHub Actions Pipeline**
 
 **Problem**: GitHub Actions pipeline fails at "Unit Tests (Node 20.x)" job with React component import errors.
