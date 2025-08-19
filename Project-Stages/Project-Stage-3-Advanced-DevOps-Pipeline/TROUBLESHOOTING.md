@@ -554,6 +554,105 @@ aws s3 rb s3://healthcare-terraform-state-stage3-YOUR_ACCOUNT_ID-XXXX --force
 - Implement proper error handling in CI/CD pipelines
 - Consider using Terraform workspaces for environment isolation
 
+### **Issue: Terraform Backend Setup Timeout and S3 Import Failures**
+
+**Problem**: Backend setup gets stuck with "Still modifying" status for DynamoDB table and S3 bucket import fails with malformed bucket ID.
+
+**Error Messages**:
+```
+aws_dynamodb_table.terraform_locks: Still modifying... [id=healthcare-terraform-locks-stage3, 5m20s elapsed]
+
+Error: Cannot import non-existent remote object
+While attempting to import an existing object to "aws_s3_bucket.terraform_state",
+the provider detected that no object exists with the given id.
+```
+
+**Root Cause**:
+1. **DynamoDB Timeout**: Table might be in a stuck state or being modified by another process
+2. **S3 Import Issue**: Bucket name format is incorrect due to tab characters in AWS CLI output
+3. **Resource Drift**: Terraform state doesn't match actual AWS resources
+
+**Enhanced Solution**:
+
+The pipeline now includes:
+
+1. **Functional Resource Testing**:
+```bash
+# Test if resources are actually functional before Terraform operations
+if aws s3 ls "s3://$BUCKET_NAME" >/dev/null 2>&1; then
+  echo "✅ S3 bucket is accessible"
+  S3_FUNCTIONAL=true
+fi
+
+if aws dynamodb describe-table --table-name "$EXPECTED_TABLE" >/dev/null 2>&1; then
+  echo "✅ DynamoDB table is accessible"
+  DYNAMO_FUNCTIONAL=true
+fi
+
+# Skip Terraform if both resources are functional
+if [[ "$S3_FUNCTIONAL" == "true" ]] && [[ "$DYNAMO_FUNCTIONAL" == "true" ]]; then
+  echo "🚀 Both resources are functional, skipping Terraform operations"
+  exit 0
+fi
+```
+
+2. **Improved S3 Bucket Detection**:
+```bash
+# Fix tab character issues in bucket name detection
+EXISTING_BUCKET=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}')].Name" --output text | tr '\t' '\n' | head -1)
+```
+
+3. **Terraform State Checking**:
+```bash
+# Check if resources are already in Terraform state before importing
+if terraform state list | grep -q "aws_dynamodb_table.terraform_locks"; then
+  echo "✅ DynamoDB table already in Terraform state"
+  TABLE_IN_STATE=true
+fi
+```
+
+4. **Timeout Protection**:
+```bash
+# Apply with 10-minute timeout to prevent indefinite hanging
+timeout 600 terraform apply -auto-approve backend-plan || {
+  if [[ $? -eq 124 ]]; then
+    echo "⏰ Terraform apply timed out after 10 minutes"
+    # Use existing resources if they're functional
+  fi
+}
+```
+
+**Manual Recovery Steps**:
+
+If the pipeline continues to have issues:
+
+```bash
+# Option 1: Reset Terraform state and use existing resources
+cd terraform/backend-setup
+rm -rf .terraform terraform.tfstate*
+terraform init
+
+# Check if resources exist and are functional
+aws s3 ls s3://healthcare-terraform-state-stage3-YOUR_ACCOUNT_ID-XXXX
+aws dynamodb describe-table --table-name healthcare-terraform-locks-stage3
+
+# If functional, the enhanced pipeline will detect and use them
+
+# Option 2: Force remove stuck DynamoDB table (CAUTION)
+aws dynamodb delete-table --table-name healthcare-terraform-locks-stage3 --region us-east-1
+# Wait for deletion to complete, then re-run pipeline
+
+# Option 3: Manual state import (if needed)
+terraform import aws_s3_bucket.terraform_state healthcare-terraform-state-stage3-YOUR_ACCOUNT_ID-XXXX
+terraform import aws_dynamodb_table.terraform_locks healthcare-terraform-locks-stage3
+```
+
+**Prevention**:
+- Enhanced pipeline now tests resource functionality before Terraform operations
+- Automatic timeout protection prevents indefinite hanging
+- Better error handling for various failure scenarios
+- Graceful fallback to existing resources when they're functional
+
 ### **Issue: Unit Tests Failing in GitHub Actions Pipeline**
 
 **Problem**: GitHub Actions pipeline fails at "Unit Tests (Node 20.x)" job with React component import errors.

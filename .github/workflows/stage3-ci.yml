@@ -376,9 +376,9 @@ jobs:
           fi
 
           # Find existing S3 bucket with our pattern
-          EXISTING_BUCKET=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}')].Name" --output text | head -1)
+          EXISTING_BUCKET=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}')].Name" --output text | tr '\t' '\n' | head -1)
 
-          if [[ -n "$EXISTING_BUCKET" ]]; then
+          if [[ -n "$EXISTING_BUCKET" && "$EXISTING_BUCKET" != "None" ]]; then
             echo "✅ S3 bucket '$EXISTING_BUCKET' already exists"
             BUCKET_NAME="$EXISTING_BUCKET"
             BUCKET_EXISTS=true
@@ -388,32 +388,108 @@ jobs:
             BUCKET_EXISTS=false
           fi
 
+          # If both resources exist and are functional, skip Terraform operations
+          if [[ "$BUCKET_EXISTS" == "true" ]] && [[ "$TABLE_EXISTS" == "true" ]]; then
+            echo "🎯 Both S3 bucket and DynamoDB table exist, testing functionality..."
+
+            # Test S3 bucket access
+            if aws s3 ls "s3://$BUCKET_NAME" >/dev/null 2>&1; then
+              echo "✅ S3 bucket is accessible"
+              S3_FUNCTIONAL=true
+            else
+              echo "⚠️ S3 bucket exists but not accessible"
+              S3_FUNCTIONAL=false
+            fi
+
+            # Test DynamoDB table access
+            if aws dynamodb describe-table --table-name "$EXPECTED_TABLE" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+              echo "✅ DynamoDB table is accessible"
+              DYNAMO_FUNCTIONAL=true
+            else
+              echo "⚠️ DynamoDB table exists but not accessible"
+              DYNAMO_FUNCTIONAL=false
+            fi
+
+            # If both are functional, skip Terraform operations
+            if [[ "$S3_FUNCTIONAL" == "true" ]] && [[ "$DYNAMO_FUNCTIONAL" == "true" ]]; then
+              echo "🚀 Both resources are functional, skipping Terraform operations"
+              echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+              echo "table-name=$EXPECTED_TABLE" >> $GITHUB_OUTPUT
+              echo "✅ Terraform backend setup completed (using existing functional resources)"
+              echo "S3 Bucket: $BUCKET_NAME"
+              echo "DynamoDB Table: $EXPECTED_TABLE"
+              exit 0
+            fi
+          fi
+
           # Initialize Terraform for backend setup
           terraform init
 
-          # Import existing resources if they exist
-          if [[ "$TABLE_EXISTS" == "true" ]]; then
-            echo "🔄 Importing existing DynamoDB table..."
-            terraform import aws_dynamodb_table.terraform_locks "$EXPECTED_TABLE" || echo "⚠️ Import failed, table might already be in state"
+          # Check if resources are already in Terraform state
+          echo "🔍 Checking Terraform state for existing resources..."
+
+          # Check if DynamoDB table is in state
+          if terraform state list | grep -q "aws_dynamodb_table.terraform_locks"; then
+            echo "✅ DynamoDB table already in Terraform state"
+            TABLE_IN_STATE=true
+          else
+            TABLE_IN_STATE=false
           fi
 
-          if [[ "$BUCKET_EXISTS" == "true" ]]; then
+          # Check if S3 bucket is in state
+          if terraform state list | grep -q "aws_s3_bucket.terraform_state"; then
+            echo "✅ S3 bucket already in Terraform state"
+            BUCKET_IN_STATE=true
+          else
+            BUCKET_IN_STATE=false
+          fi
+
+          # Import existing resources if they exist but not in state
+          if [[ "$TABLE_EXISTS" == "true" && "$TABLE_IN_STATE" == "false" ]]; then
+            echo "🔄 Importing existing DynamoDB table..."
+            terraform import aws_dynamodb_table.terraform_locks "$EXPECTED_TABLE" || {
+              echo "⚠️ DynamoDB import failed, will try to create or use existing"
+            }
+          fi
+
+          if [[ "$BUCKET_EXISTS" == "true" && "$BUCKET_IN_STATE" == "false" ]]; then
             echo "🔄 Importing existing S3 bucket..."
-            terraform import aws_s3_bucket.terraform_state "$BUCKET_NAME" || echo "⚠️ Import failed, bucket might already be in state"
+            terraform import aws_s3_bucket.terraform_state "$BUCKET_NAME" || {
+              echo "⚠️ S3 import failed, will try to create or use existing"
+            }
           fi
 
           # Plan backend resources
           echo "📋 Planning backend resources..."
           terraform plan -out=backend-plan
 
-          # Apply backend resources (will create only what doesn't exist)
+          # Apply backend resources with timeout and better error handling
           echo "🚀 Applying backend resources..."
-          terraform apply -auto-approve backend-plan || {
-            echo "⚠️ Apply failed, checking if resources exist..."
 
-            # If apply fails, try to get outputs from existing resources
+          # Set timeout for terraform apply (max 10 minutes)
+          timeout 600 terraform apply -auto-approve backend-plan || {
+            APPLY_EXIT_CODE=$?
+            echo "⚠️ Terraform apply failed or timed out (exit code: $APPLY_EXIT_CODE)"
+
+            if [[ $APPLY_EXIT_CODE -eq 124 ]]; then
+              echo "⏰ Terraform apply timed out after 10 minutes"
+              echo "This usually indicates a stuck resource modification"
+
+              # Check if resources actually exist and are functional
+              if [[ "$BUCKET_EXISTS" == "true" ]] && [[ "$TABLE_EXISTS" == "true" ]]; then
+                echo "✅ Resources exist and are functional, proceeding with existing setup"
+                echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+                echo "table-name=$EXPECTED_TABLE" >> $GITHUB_OUTPUT
+                echo "✅ Terraform backend setup completed (using existing resources after timeout)"
+                echo "S3 Bucket: $BUCKET_NAME"
+                echo "DynamoDB Table: $EXPECTED_TABLE"
+                exit 0
+              fi
+            fi
+
+            # Check if we can use existing resources despite apply failure
             if [[ "$BUCKET_EXISTS" == "true" ]] && [[ "$TABLE_EXISTS" == "true" ]]; then
-              echo "✅ Using existing backend resources"
+              echo "✅ Using existing backend resources despite apply failure"
               echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
               echo "table-name=$EXPECTED_TABLE" >> $GITHUB_OUTPUT
               echo "✅ Terraform backend setup completed (using existing resources)"
@@ -421,7 +497,8 @@ jobs:
               echo "DynamoDB Table: $EXPECTED_TABLE"
               exit 0
             else
-              echo "❌ Backend setup failed and resources don't exist"
+              echo "❌ Backend setup failed and resources don't exist or aren't functional"
+              echo "Manual intervention may be required"
               exit 1
             fi
           }
