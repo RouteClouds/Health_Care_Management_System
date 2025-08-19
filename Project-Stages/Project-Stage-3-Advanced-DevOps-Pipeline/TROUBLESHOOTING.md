@@ -1130,9 +1130,10 @@ Error: Process completed with exit code 1.
 
 **Root Cause**:
 1. **Hardcoded Database Endpoint**: GitOps manifest contains placeholder RDS endpoint
-2. **Configuration Mismatch**: Backend tries to connect to non-existent database server
-3. **Missing Configuration Update**: Pipeline doesn't update database configuration with actual RDS endpoint
-4. **Terraform Output Not Used**: Actual RDS endpoint from Terraform not propagated to application
+2. **Live Secret Not Updated**: Backend pods read from live Kubernetes Secret, not manifest file
+3. **Configuration Mismatch**: Backend tries to connect to non-existent database server
+4. **Missing Secret Update**: Pipeline updates manifest but not the live Secret in cluster
+5. **Environment Variable Persistence**: Pods continue using old DATABASE_URL from existing Secret
 
 **Investigation Steps**:
 
@@ -1206,22 +1207,58 @@ healthcare-eks-stage3-dev-db.abc123xyz.us-east-1.rds.amazonaws.com:5432
     fi
 ```
 
-2. **Created Dedicated Update Script**:
+2. **Enhanced Script with Live Secret Update**:
 ```bash
-# scripts/deployment/update-database-config.sh
+# scripts/deployment/update-database-config.sh - ENHANCED
 #!/bin/bash
-echo "🔧 Updating database configuration with actual RDS endpoint..."
+echo "🔧 Enhanced database configuration update with live Secret management..."
 
-# Get RDS endpoint from Terraform
-cd terraform/environments/dev
-ACTUAL_RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint)
+# Get RDS endpoint (Terraform preferred, AWS CLI fallback)
+if terraform output db_instance_endpoint >/dev/null 2>&1; then
+    ACTUAL_RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint)
+else
+    # AWS CLI fallback
+    ACTUAL_RDS_ENDPOINT=$(aws rds describe-db-instances --query "..." --output text)
+fi
 
-# Update GitOps manifest
-cd ../../../gitops/environments/dev
-cp backend.yaml backend.yaml.backup
-sed -i "s|healthcare-eks-stage3-dev-db\.c6t4q0g6i4n5\.us-east-1\.rds\.amazonaws\.com|$ACTUAL_RDS_ENDPOINT|g" backend.yaml
+RDS_HOSTNAME="${ACTUAL_RDS_ENDPOINT%%:*}"
 
-echo "✅ Database configuration updated"
+# Update live Kubernetes Secret directly (KEY FIX!)
+if kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev >/dev/null 2>&1; then
+    echo "🔐 Updating live Kubernetes Secret..."
+
+    # Get existing credentials
+    EXISTING_USER=$(kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o jsonpath='{.data.username}' | base64 -d)
+    EXISTING_PASS=$(kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o jsonpath='{.data.password}' | base64 -d)
+    EXISTING_DB=$(kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o jsonpath='{.data.database}' | base64 -d)
+
+    # Create new URL with actual RDS endpoint
+    NEW_URL="postgresql://${EXISTING_USER}:${EXISTING_PASS}@${RDS_HOSTNAME}:5432/${EXISTING_DB}"
+
+    # Update Secret with stringData (automatically base64 encoded)
+    kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: database-credentials-stage3
+  namespace: healthcare-stage3-dev
+type: Opaque
+stringData:
+  url: "${NEW_URL}"
+  host: "${RDS_HOSTNAME}"
+  port: "5432"
+  database: "${EXISTING_DB}"
+  username: "${EXISTING_USER}"
+  password: "${EXISTING_PASS}"
+EOF
+
+    echo "✅ Live Secret updated with actual RDS endpoint"
+    exit 0
+fi
+
+# Fallback: Update GitOps manifest if Secret doesn't exist yet
+echo "📝 Updating GitOps manifest as fallback..."
+# ... manifest update logic ...
 ```
 
 3. **Enhanced Validation with Debugging**:
@@ -1289,6 +1326,21 @@ Server running on port 3001
 Connected to database: healthcare_stage3_db
 Database migrations completed
 Sample data seeded successfully
+```
+
+**🔍 Quick Verification Commands**:
+
+```bash
+# Check the Secret contains correct RDS endpoint
+kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o jsonpath='{.data.url}' | base64 -d
+# Should show: postgresql://user:pass@healthcare-eks-stage3-dev-db.ACTUAL_ID.us-east-1.rds.amazonaws.com:5432/db
+
+# Check Secret host field
+kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o jsonpath='{.data.host}' | base64 -d
+# Should show: healthcare-eks-stage3-dev-db.ACTUAL_ID.us-east-1.rds.amazonaws.com
+
+# Verify it's NOT the old placeholder
+kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o jsonpath='{.data.url}' | base64 -d | grep -q "c6t4q0g6i4n5" && echo "❌ Still using old endpoint" || echo "✅ Using actual endpoint"
 ```
 
 3. **Test Database Connectivity**:
