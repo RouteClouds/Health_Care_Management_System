@@ -93,6 +93,16 @@ resource "aws_dynamodb_table" "terraform_locks" {
     Name        = "Healthcare Terraform Locks - Stage 3"
     Description = "Provides state locking for Terraform operations"
   }
+
+  # Lifecycle management to handle existing resources
+  lifecycle {
+    ignore_changes = [
+      # Ignore changes to these attributes if resource already exists
+      billing_mode,
+      hash_key,
+      attribute
+    ]
+  }
 }
 
 # Output the bucket name for use in backend configuration

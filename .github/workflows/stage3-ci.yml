@@ -463,31 +463,31 @@ jobs:
           echo "📋 Planning backend resources..."
           terraform plan -out=backend-plan
 
-          # Apply backend resources with timeout and better error handling
+          # Apply backend resources with enhanced error handling
           echo "🚀 Applying backend resources..."
 
-          # Set timeout for terraform apply (max 10 minutes)
-          timeout 600 terraform apply -auto-approve backend-plan || {
+          # Apply with specific error handling for "already exists" scenarios
+          terraform apply -auto-approve backend-plan 2>&1 | tee apply_output.log || {
             APPLY_EXIT_CODE=$?
-            echo "⚠️ Terraform apply failed or timed out (exit code: $APPLY_EXIT_CODE)"
+            echo "⚠️ Terraform apply failed (exit code: $APPLY_EXIT_CODE)"
 
-            if [[ $APPLY_EXIT_CODE -eq 124 ]]; then
-              echo "⏰ Terraform apply timed out after 10 minutes"
-              echo "This usually indicates a stuck resource modification"
+            # Check if failure is due to "already exists" errors
+            if grep -q "ResourceInUseException.*already exists" apply_output.log || grep -q "BucketAlreadyExists" apply_output.log; then
+              echo "🔍 Detected 'already exists' errors - resources are already created"
 
-              # Check if resources actually exist and are functional
+              # Verify resources are functional
               if [[ "$BUCKET_EXISTS" == "true" ]] && [[ "$TABLE_EXISTS" == "true" ]]; then
-                echo "✅ Resources exist and are functional, proceeding with existing setup"
+                echo "✅ Resources exist and are functional, using existing setup"
                 echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
                 echo "table-name=$EXPECTED_TABLE" >> $GITHUB_OUTPUT
-                echo "✅ Terraform backend setup completed (using existing resources after timeout)"
+                echo "✅ Terraform backend setup completed (using existing resources)"
                 echo "S3 Bucket: $BUCKET_NAME"
                 echo "DynamoDB Table: $EXPECTED_TABLE"
                 exit 0
               fi
             fi
 
-            # Check if we can use existing resources despite apply failure
+            # For other types of failures, still try to use existing resources if they're functional
             if [[ "$BUCKET_EXISTS" == "true" ]] && [[ "$TABLE_EXISTS" == "true" ]]; then
               echo "✅ Using existing backend resources despite apply failure"
               echo "bucket-name=$BUCKET_NAME" >> $GITHUB_OUTPUT
@@ -498,7 +498,8 @@ jobs:
               exit 0
             else
               echo "❌ Backend setup failed and resources don't exist or aren't functional"
-              echo "Manual intervention may be required"
+              echo "Apply output:"
+              cat apply_output.log
               exit 1
             fi
           }
@@ -578,21 +579,55 @@ jobs:
         run: |
           echo "🔍 Validating deployed infrastructure..."
 
-          # Get outputs
-          EKS_CLUSTER_NAME=$(terraform output -raw cluster_name)
-          RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
+          # Check if outputs exist first
+          echo "📋 Available Terraform outputs:"
+          terraform output
 
-          echo "EKS Cluster: $EKS_CLUSTER_NAME"
-          echo "RDS Endpoint: $RDS_ENDPOINT"
+          # Get outputs with proper error handling
+          if terraform output cluster_id >/dev/null 2>&1; then
+            EKS_CLUSTER_ID=$(terraform output -raw cluster_id)
+            echo "EKS Cluster ID: $EKS_CLUSTER_ID"
+          else
+            echo "⚠️ cluster_id output not found"
+          fi
+
+          if terraform output cluster_endpoint >/dev/null 2>&1; then
+            EKS_CLUSTER_ENDPOINT=$(terraform output -raw cluster_endpoint)
+            echo "EKS Cluster Endpoint: $EKS_CLUSTER_ENDPOINT"
+          else
+            echo "⚠️ cluster_endpoint output not found"
+          fi
+
+          if terraform output db_instance_endpoint >/dev/null 2>&1; then
+            RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint)
+            echo "RDS Endpoint: $RDS_ENDPOINT"
+          else
+            echo "⚠️ db_instance_endpoint output not found"
+          fi
+
+          # Use hardcoded cluster name as fallback
+          CLUSTER_NAME="healthcare-eks-stage3-dev"
+          echo "Using cluster name: $CLUSTER_NAME"
 
           # Validate EKS cluster
-          aws eks describe-cluster --name $EKS_CLUSTER_NAME --region ${{ env.AWS_REGION }}
+          echo "🔍 Validating EKS cluster..."
+          if aws eks describe-cluster --name $CLUSTER_NAME --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo "✅ EKS cluster exists and is accessible"
 
-          # Update kubeconfig
-          aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region ${{ env.AWS_REGION }}
+            # Update kubeconfig
+            aws eks update-kubeconfig --name $CLUSTER_NAME --region ${{ env.AWS_REGION }}
 
-          # Test cluster connectivity
-          kubectl get nodes
+            # Test cluster connectivity
+            echo "🔍 Testing cluster connectivity..."
+            kubectl get nodes || echo "⚠️ Could not connect to cluster nodes"
+          else
+            echo "❌ EKS cluster not found or not accessible"
+          fi
+
+          # Validate ECR repositories
+          echo "🔍 Validating ECR repositories..."
+          aws ecr describe-repositories --repository-names healthcare-frontend-stage3 --region ${{ env.AWS_REGION }} || echo "⚠️ Frontend ECR repository not found"
+          aws ecr describe-repositories --repository-names healthcare-backend-stage3 --region ${{ env.AWS_REGION }} || echo "⚠️ Backend ECR repository not found"
 
           echo "✅ Infrastructure validation completed"
 

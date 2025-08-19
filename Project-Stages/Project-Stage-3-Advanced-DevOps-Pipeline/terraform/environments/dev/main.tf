@@ -21,3 +21,55 @@ module "healthcare_infrastructure" {
     Project = "healthcare-management"
   }
 }
+
+# Outputs for pipeline validation
+output "cluster_id" {
+  description = "EKS cluster ID"
+  value       = module.healthcare_infrastructure.cluster_id
+}
+
+output "cluster_endpoint" {
+  description = "Endpoint for EKS control plane"
+  value       = module.healthcare_infrastructure.cluster_endpoint
+}
+
+output "cluster_security_group_id" {
+  description = "Security group ID attached to the EKS cluster"
+  value       = module.healthcare_infrastructure.cluster_security_group_id
+}
+
+output "db_instance_endpoint" {
+  description = "RDS instance endpoint"
+  value       = module.healthcare_infrastructure.db_instance_endpoint
+  sensitive   = true
+}
+
+output "db_instance_port" {
+  description = "RDS instance port"
+  value       = module.healthcare_infrastructure.db_instance_port
+}
+
+output "ecr_repository_frontend_url" {
+  description = "URL of the frontend ECR repository"
+  value       = module.healthcare_infrastructure.ecr_repository_frontend_url
+}
+
+output "ecr_repository_backend_url" {
+  description = "URL of the backend ECR repository"
+  value       = module.healthcare_infrastructure.ecr_repository_backend_url
+}
+
+output "vpc_id" {
+  description = "ID of the VPC"
+  value       = module.healthcare_infrastructure.vpc_id
+}
+
+output "private_subnets" {
+  description = "List of IDs of private subnets"
+  value       = module.healthcare_infrastructure.private_subnets
+}
+
+output "public_subnets" {
+  description = "List of IDs of public subnets"
+  value       = module.healthcare_infrastructure.public_subnets
+}
