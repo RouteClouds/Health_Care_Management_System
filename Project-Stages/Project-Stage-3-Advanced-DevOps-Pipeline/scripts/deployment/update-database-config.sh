@@ -8,6 +8,9 @@ set -euo pipefail
 
 echo "🔧 Updating database configuration with actual RDS endpoint..."
 
+# Optional mode argument ("cluster" forces in-cluster secret update)
+MODE="${1:-}"
+
 # Ensure we're at the Stage-3 project root (where terraform/ and gitops/ exist)
 if [[ ! -f "terraform/environments/dev/main.tf" ]]; then
     echo "❌ Error: Must be run from the Stage-3 project root directory"
@@ -83,7 +86,53 @@ fi
 RDS_HOSTNAME="${ACTUAL_RDS_ENDPOINT%%:*}"
 echo "🔎 Using RDS hostname for manifest substitution: ${RDS_HOSTNAME}"
 
-# Update GitOps manifests
+# Try updating the cluster Secret first if kubectl is available and the Secret exists,
+# or if mode is explicitly set to "cluster"
+CAN_USE_CLUSTER=false
+if command -v kubectl >/dev/null 2>&1; then
+    if kubectl get namespace healthcare-stage3-dev >/dev/null 2>&1; then
+        if kubectl -n healthcare-stage3-dev get secret database-credentials-stage3 >/dev/null 2>&1; then
+            CAN_USE_CLUSTER=true
+        elif [[ "$MODE" == "--mode=cluster" || "$MODE" == "cluster" ]]; then
+            # Secret may not exist yet, but if mode forces cluster, we'll still try to create it
+            CAN_USE_CLUSTER=true
+        fi
+    fi
+fi
+
+if [[ "$CAN_USE_CLUSTER" == "true" ]]; then
+    echo "🔐 Updating Kubernetes Secret 'database-credentials-stage3' in namespace 'healthcare-stage3-dev'..."
+
+    # Read existing values (fallbacks if keys are missing)
+    EXISTING_USER=$(kubectl -n healthcare-stage3-dev get secret database-credentials-stage3 -o jsonpath='{.data.username}' 2>/dev/null | base64 -d || echo "healthcare_stage3_user")
+    EXISTING_PASS=$(kubectl -n healthcare-stage3-dev get secret database-credentials-stage3 -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "healthcare_stage3_password_change_me")
+    EXISTING_DB=$(kubectl -n healthcare-stage3-dev get secret database-credentials-stage3 -o jsonpath='{.data.database}' 2>/dev/null | base64 -d || echo "healthcare_stage3_db")
+    EXISTING_PORT=$(kubectl -n healthcare-stage3-dev get secret database-credentials-stage3 -o jsonpath='{.data.port}' 2>/dev/null | base64 -d || echo "5432")
+
+    NEW_URL="postgresql://${EXISTING_USER}:${EXISTING_PASS}@${RDS_HOSTNAME}:${EXISTING_PORT}/${EXISTING_DB}"
+
+    cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: database-credentials-stage3
+  namespace: healthcare-stage3-dev
+type: Opaque
+stringData:
+  url: "${NEW_URL}"
+  host: "${RDS_HOSTNAME}"
+  port: "${EXISTING_PORT}"
+  database: "${EXISTING_DB}"
+  username: "${EXISTING_USER}"
+  password: "${EXISTING_PASS}"
+EOF
+
+    echo "✅ Secret updated with actual RDS endpoint: ${RDS_HOSTNAME}"
+    echo "ℹ️ Please restart the backend deployment to pick up new env vars."
+    exit 0
+fi
+
+# Fallback: Update GitOps manifest on disk (used when cluster resources are not available yet)
 GITOPS_DIR="gitops/environments/dev"
 BACKEND_MANIFEST="$GITOPS_DIR/backend.yaml"
 
@@ -92,33 +141,29 @@ if [[ ! -f "$BACKEND_MANIFEST" ]]; then
     exit 1
 fi
 
-echo "🔧 Updating database configuration in $BACKEND_MANIFEST..."
+echo "📝 Cluster Secret not available; updating GitOps manifest file: $BACKEND_MANIFEST"
 
 # Create backup
 cp "$BACKEND_MANIFEST" "$BACKEND_MANIFEST.backup"
 
 # Replace placeholder RDS endpoint hostname with actual hostname (not host:port)
-# Handle various possible placeholder formats
 sed -i "s|healthcare-eks-stage3-dev-db\\.c6t4q0g6i4n5\\.us-east-1\\.rds\\.amazonaws\\.com|$RDS_HOSTNAME|g" "$BACKEND_MANIFEST"
 sed -i "s|healthcare-eks-stage3-dev-db\\.cluster-[a-zA-Z0-9]*\\.us-east-1\\.rds\\.amazonaws\\.com|$RDS_HOSTNAME|g" "$BACKEND_MANIFEST"
 sed -i "s|YOUR_RDS_ENDPOINT_HERE|$RDS_HOSTNAME|g" "$BACKEND_MANIFEST"
 
-echo "✅ Database configuration updated"
+echo "✅ Manifest updated"
 echo "🔍 Verifying database URL update:"
 grep -A 2 -B 2 "postgresql://" "$BACKEND_MANIFEST" || echo "No postgresql URL found"
 
-# Verify the change was made
 if grep -q "$RDS_HOSTNAME" "$BACKEND_MANIFEST"; then
     echo "✅ RDS hostname successfully updated in manifest"
 else
     echo "⚠️ Warning: RDS hostname may not have been updated properly"
-    echo "Please check the manifest manually"
 fi
 
 echo "🎉 Database configuration update completed!"
 echo "📋 Backup saved as: $BACKEND_MANIFEST.backup"
 
-# In CI/CD environment, don't restore immediately - let the pipeline handle it
 if [[ -z "${CI:-}" ]]; then
     echo ""
     echo "💡 To restore the original configuration later, run:"
