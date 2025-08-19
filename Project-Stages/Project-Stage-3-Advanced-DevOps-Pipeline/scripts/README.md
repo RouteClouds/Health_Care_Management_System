@@ -31,6 +31,7 @@ scripts/
 │   ├── create-eks-cluster.sh          # EKS cluster creation
 │   ├── deploy-production.sh           # Production deployment
 │   ├── deploy-staging.sh              # Staging deployment
+│   ├── 🆕 install-aws-load-balancer-controller.sh # Install ALB controller for Application Load Balancer
 │   ├── 🆕 update-database-config.sh   # Update database configuration with actual RDS endpoint
 │   └── validate-infrastructure.sh     # Infrastructure validation
 ├── 🔧 operations/                      # Day-to-day operational tasks

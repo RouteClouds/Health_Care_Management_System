@@ -681,6 +681,17 @@ jobs:
             sudo apt-get install -y jq
           fi
 
+      - name: Install AWS Load Balancer Controller for ALB support
+        run: |
+          echo "🔧 Installing AWS Load Balancer Controller for Application Load Balancer support..."
+          cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+
+          # Install AWS Load Balancer Controller
+          chmod +x scripts/deployment/install-aws-load-balancer-controller.sh
+          ./scripts/deployment/install-aws-load-balancer-controller.sh healthcare-eks-stage3-dev
+
+          echo "✅ AWS Load Balancer Controller installed - ALB support ready"
+
       - name: Deploy application with latest GitOps manifests
         working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
         run: |
@@ -750,6 +761,15 @@ jobs:
             echo "🔍 Debugging information:"
             kubectl get namespaces
             kubectl describe namespace healthcare-stage3-dev || echo "Namespace does not exist"
+            exit 1
+          fi
+
+          echo "🌐 Deploying ingress (ALB) ..."
+          if kubectl apply -f ingress.yaml; then
+            echo "✅ Ingress applied"
+          else
+            echo "❌ Ingress apply failed"
+            kubectl describe ingress healthcare-stage3-ingress -n healthcare-stage3-dev || true
             exit 1
           fi
 
@@ -875,9 +895,37 @@ jobs:
         run: |
           echo "🔍 Validating automated database setup..."
 
-          # Get LoadBalancer URL
-          LB_URL=$(kubectl get service frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          echo "LoadBalancer URL: http://${LB_URL}"
+          # Get Application Load Balancer URL from Ingress
+          echo "🔍 Getting Application Load Balancer URL from Ingress..."
+
+          # Wait for Ingress to get ALB address
+          for i in {1..20}; do
+            ALB_URL=$(kubectl get ingress healthcare-stage3-ingress -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+            if [[ -n "$ALB_URL" ]]; then
+              echo "✅ Application Load Balancer URL found: http://$ALB_URL"
+              break
+            else
+              echo "⏳ Waiting for ALB to be provisioned... (attempt $i/20)"
+              sleep 30
+            fi
+          done
+
+          if [[ -z "$ALB_URL" ]]; then
+            echo "❌ Application Load Balancer URL not found after 10 minutes"
+            echo "🔍 Checking Ingress status..."
+            kubectl describe ingress healthcare-stage3-ingress -n healthcare-stage3-dev
+            echo "🔍 Checking AWS Load Balancer Controller logs..."
+            kubectl logs deployment/aws-load-balancer-controller -n kube-system --tail=50 || echo "Controller logs not available"
+
+            # Fallback: try to get any ALB in the region
+            echo "🔍 Checking for any ALBs in the region..."
+            aws elbv2 describe-load-balancers --region us-east-1 --query 'LoadBalancers[?Type==`application`].[LoadBalancerName,DNSName]' --output table || echo "No ALBs found"
+            exit 1
+          fi
+
+          # Use ALB URL for testing
+          LB_URL="$ALB_URL"
+          echo "🔗 Using Application Load Balancer: http://$LB_URL"
 
           # Check pod status first
           echo "🔍 Checking pod status..."
@@ -889,8 +937,8 @@ jobs:
           kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=50 || echo "Could not get backend logs"
 
           # Wait for LoadBalancer to be ready
-          echo "⏳ Waiting for LoadBalancer to be ready..."
-          sleep 60
+          echo "⏳ Waiting briefly before ALB checks..."
+          sleep 30
 
           # Test basic connectivity first
           echo "🌐 Testing basic connectivity..."
@@ -1028,8 +1076,16 @@ jobs:
         run: |
           echo "🔍 Validating recovery success..."
 
-          # Get LoadBalancer URL
-          LB_URL=$(kubectl get service frontend-stage3-svc -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          # Get Application Load Balancer URL from Ingress
+          LB_URL=$(kubectl get ingress healthcare-stage3-ingress -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+
+          if [[ -z "$LB_URL" ]]; then
+            echo "❌ Application Load Balancer URL not available"
+            kubectl describe ingress healthcare-stage3-ingress -n healthcare-stage3-dev
+            exit 1
+          fi
+
+          echo "🔗 Using Application Load Balancer: http://$LB_URL"
 
           # Test application health
           for i in {1..5}; do

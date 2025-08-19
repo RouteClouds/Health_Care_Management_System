@@ -1,4 +1,40 @@
-# AWS Infrastructure Cleanup Script Documentation
+# 🧹 **Stage-3 Cleanup Scripts Documentation**
+
+## **📋 Available Cleanup Scripts**
+
+### **🔍 audit-aws-resources.sh** - Resource Discovery and Cost Analysis
+**Purpose**: Comprehensive audit of all AWS resources related to healthcare/stage3 projects.
+
+**Features:**
+- ✅ **Complete Resource Inventory**: VPCs, Subnets, NAT Gateways, Load Balancers, RDS, EKS, ECR
+- ✅ **Cost Analysis**: Estimates monthly costs for high-cost resources
+- ✅ **Detailed Reporting**: Saves comprehensive audit report with timestamps
+- ✅ **Multiple Resource Types**: Covers all AWS services used by the project
+
+**Usage:**
+```bash
+./scripts/cleanup/audit-aws-resources.sh
+# Expected savings identification: $400-600/month
+```
+
+### **🧹 cleanup-orphaned-resources.sh** - Orphaned Resources Cleanup
+**Purpose**: Removes AWS resources not managed by Terraform that were created during failed pipeline runs.
+
+**Features:**
+- ✅ **High-Cost Resource Focus**: Prioritizes NAT Gateways, RDS, Load Balancers
+- ✅ **Safe Deletion**: Multiple confirmation steps and error handling
+- ✅ **Comprehensive Coverage**: Cleans VPCs, Subnets, Security Groups, ECR repositories
+- ✅ **Cost Savings**: Can save $400-600/month in AWS costs
+
+**Usage:**
+```bash
+./scripts/cleanup/cleanup-orphaned-resources.sh
+# Requires confirmation: Type 'CLEANUP' to proceed
+```
+
+---
+
+# AWS Infrastructure Cleanup Script Documentation (Legacy)
 
 ## Overview
 
