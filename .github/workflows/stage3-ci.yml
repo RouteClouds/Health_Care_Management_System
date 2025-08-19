@@ -657,7 +657,17 @@ jobs:
 
       - name: Configure kubectl for EKS
         run: |
+          echo "🔧 Configuring kubectl for EKS cluster..."
           aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name healthcare-eks-stage3-dev
+
+          # Verify cluster connectivity
+          echo "🔍 Verifying cluster connectivity..."
+          kubectl cluster-info
+          kubectl get nodes
+
+          # List existing namespaces
+          echo "📋 Current namespaces:"
+          kubectl get namespaces
 
       - name: Deploy application with latest GitOps manifests
         working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
@@ -665,12 +675,63 @@ jobs:
           echo "🚀 Deploying application with automated database setup..."
           echo "Using GitOps manifests with image tag: ${{ github.sha }}"
 
-          # Apply all manifests (includes updated image tags)
-          kubectl apply -f backend.yaml
-          kubectl apply -f frontend.yaml
+          # Create namespace if it doesn't exist
+          echo "🏗️ Ensuring namespace exists..."
+
+          # Method 1: Try declarative approach
+          if kubectl create namespace healthcare-stage3-dev --dry-run=client -o yaml | kubectl apply -f -; then
+            echo "✅ Namespace created/verified using declarative approach"
+          else
+            echo "⚠️ Declarative approach failed, trying imperative approach..."
+            # Method 2: Try imperative approach
+            if kubectl create namespace healthcare-stage3-dev 2>/dev/null; then
+              echo "✅ Namespace created using imperative approach"
+            else
+              echo "ℹ️ Namespace might already exist, checking..."
+            fi
+          fi
+
+          # Verify namespace exists
+          if kubectl get namespace healthcare-stage3-dev >/dev/null 2>&1; then
+            echo "✅ Namespace healthcare-stage3-dev is ready"
+            kubectl describe namespace healthcare-stage3-dev
+          else
+            echo "❌ Failed to create or find namespace healthcare-stage3-dev"
+            echo "🔍 Available namespaces:"
+            kubectl get namespaces
+            exit 1
+          fi
+
+          # Apply all manifests with error handling
+          echo "📦 Deploying backend application..."
+          if kubectl apply -f backend.yaml; then
+            echo "✅ Backend deployment successful"
+          else
+            echo "❌ Backend deployment failed"
+            echo "🔍 Debugging information:"
+            kubectl get namespaces
+            kubectl describe namespace healthcare-stage3-dev || echo "Namespace does not exist"
+            exit 1
+          fi
+
+          echo "🌐 Deploying frontend application..."
+          if kubectl apply -f frontend.yaml; then
+            echo "✅ Frontend deployment successful"
+          else
+            echo "❌ Frontend deployment failed"
+            echo "🔍 Debugging information:"
+            kubectl get namespaces
+            kubectl describe namespace healthcare-stage3-dev || echo "Namespace does not exist"
+            exit 1
+          fi
 
           echo "✅ Application deployment initiated"
           echo "🗄️ Database migrations and seeding will run automatically in backend pods"
+
+          # Verify deployments were created
+          echo "🔍 Verifying deployments..."
+          kubectl get deployments -n healthcare-stage3-dev
+          kubectl get pods -n healthcare-stage3-dev
 
       - name: Wait for deployment rollout
         run: |

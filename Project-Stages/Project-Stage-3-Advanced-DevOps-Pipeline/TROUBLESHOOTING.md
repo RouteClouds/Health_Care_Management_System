@@ -855,6 +855,261 @@ aws ecr describe-repositories --region us-east-1
 3. **Fallback Values**: Provide hardcoded fallbacks for critical resource names
 4. **Testing**: Test output definitions locally before pipeline deployment
 
+### **Issue: Application Deployment Fails with "Namespace Not Found" Error**
+
+**Problem**: Application deployment fails because the Kubernetes namespace `healthcare-stage3-dev` doesn't exist when trying to apply GitOps manifests.
+
+**Error Messages**:
+```
+🚀 Deploying application with automated database setup...
+Using GitOps manifests with image tag: 98a16132ae92d0c7566683a64bd941b7e36779c3
+Error from server (NotFound): error when creating "backend.yaml": namespaces "healthcare-stage3-dev" not found
+Error from server (NotFound): error when creating "backend.yaml": namespaces "healthcare-stage3-dev" not found
+Error from server (NotFound): error when creating "backend.yaml": namespaces "healthcare-stage3-dev" not found
+Error from server (NotFound): error when creating "backend.yaml": namespaces "healthcare-stage3-dev" not found
+Error: Process completed with exit code 1.
+```
+
+**Root Cause**:
+1. **Missing Namespace Creation**: Pipeline assumes namespace exists but doesn't create it
+2. **Deployment Order**: Applications deployed before namespace creation
+3. **Infrastructure Gap**: EKS cluster exists but application namespace is missing
+4. **GitOps Manifest Dependencies**: Manifests specify namespace but don't create it
+
+**Solution Applied**:
+
+1. **Enhanced Namespace Creation in Pipeline**:
+```yaml
+# Added to deploy-application job
+- name: Deploy application with latest GitOps manifests
+  run: |
+    # Create namespace if it doesn't exist
+    echo "🏗️ Ensuring namespace exists..."
+
+    # Method 1: Try declarative approach
+    if kubectl create namespace healthcare-stage3-dev --dry-run=client -o yaml | kubectl apply -f -; then
+      echo "✅ Namespace created/verified using declarative approach"
+    else
+      echo "⚠️ Declarative approach failed, trying imperative approach..."
+      # Method 2: Try imperative approach
+      if kubectl create namespace healthcare-stage3-dev 2>/dev/null; then
+        echo "✅ Namespace created using imperative approach"
+      else
+        echo "ℹ️ Namespace might already exist, checking..."
+      fi
+    fi
+
+    # Verify namespace exists
+    if kubectl get namespace healthcare-stage3-dev >/dev/null 2>&1; then
+      echo "✅ Namespace healthcare-stage3-dev is ready"
+    else
+      echo "❌ Failed to create or find namespace"
+      exit 1
+    fi
+```
+
+2. **Enhanced Error Handling for Deployment**:
+```yaml
+# Apply manifests with error handling
+echo "📦 Deploying backend application..."
+if kubectl apply -f backend.yaml; then
+  echo "✅ Backend deployment successful"
+else
+  echo "❌ Backend deployment failed"
+  echo "🔍 Debugging information:"
+  kubectl get namespaces
+  kubectl describe namespace healthcare-stage3-dev || echo "Namespace does not exist"
+  exit 1
+fi
+```
+
+3. **Cluster Connectivity Verification**:
+```yaml
+# Verify cluster connectivity before deployment
+echo "🔍 Verifying cluster connectivity..."
+kubectl cluster-info
+kubectl get nodes
+echo "📋 Current namespaces:"
+kubectl get namespaces
+```
+
+**Manual Troubleshooting Steps**:
+
+1. **Check Cluster Connectivity**:
+```bash
+# Verify kubectl is configured correctly
+kubectl cluster-info
+
+# Check if cluster is accessible
+kubectl get nodes
+
+# List existing namespaces
+kubectl get namespaces
+```
+
+**Expected Output**:
+```
+NAME              STATUS   AGE
+default           Active   1h
+kube-system       Active   1h
+kube-public       Active   1h
+kube-node-lease   Active   1h
+```
+
+2. **Create Namespace Manually**:
+```bash
+# Create namespace using imperative command
+kubectl create namespace healthcare-stage3-dev
+
+# Or create using declarative approach
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: healthcare-stage3-dev
+  labels:
+    name: healthcare-stage3-dev
+    environment: dev
+    stage: stage-3
+    project: healthcare-management
+EOF
+```
+
+**Expected Output**:
+```
+namespace/healthcare-stage3-dev created
+```
+
+3. **Verify Namespace Creation**:
+```bash
+# Check namespace exists
+kubectl get namespace healthcare-stage3-dev
+
+# Get detailed information
+kubectl describe namespace healthcare-stage3-dev
+```
+
+**Expected Output**:
+```
+NAME                   STATUS   AGE
+healthcare-stage3-dev  Active   30s
+
+Name:         healthcare-stage3-dev
+Labels:       environment=dev
+              name=healthcare-stage3-dev
+              project=healthcare-management
+              stage=stage-3
+Annotations:  <none>
+Status:       Active
+```
+
+4. **Test Application Deployment**:
+```bash
+# Navigate to GitOps directory
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
+
+# Apply backend manifest
+kubectl apply -f backend.yaml
+
+# Apply frontend manifest
+kubectl apply -f frontend.yaml
+
+# Verify deployments
+kubectl get deployments -n healthcare-stage3-dev
+kubectl get pods -n healthcare-stage3-dev
+```
+
+**Expected Output**:
+```
+NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
+healthcare-backend-stage3   0/2     2            0           30s
+healthcare-frontend-stage3  0/2     2            0           30s
+
+NAME                                         READY   STATUS    RESTARTS   AGE
+healthcare-backend-stage3-xxx-xxx            0/1     Pending   0          30s
+healthcare-frontend-stage3-xxx-xxx           0/1     Pending   0          30s
+```
+
+**Common Variations of This Issue**:
+
+1. **RBAC Permissions**: Service account lacks namespace creation permissions
+```bash
+# Check current user permissions
+kubectl auth can-i create namespaces
+
+# If false, check cluster role bindings
+kubectl get clusterrolebindings | grep $(kubectl config current-context)
+```
+
+2. **Network Policies**: Namespace isolation preventing communication
+```bash
+# Check network policies
+kubectl get networkpolicies -n healthcare-stage3-dev
+
+# Check if default network policy is blocking traffic
+kubectl describe networkpolicy -n healthcare-stage3-dev
+```
+
+3. **Resource Quotas**: Namespace resource limits preventing pod creation
+```bash
+# Check resource quotas
+kubectl get resourcequotas -n healthcare-stage3-dev
+
+# Check limit ranges
+kubectl get limitranges -n healthcare-stage3-dev
+```
+
+**Prevention Strategies**:
+
+1. **Infrastructure as Code**: Include namespace creation in Terraform
+```hcl
+# Add to Terraform configuration
+resource "kubernetes_namespace" "healthcare_stage3_dev" {
+  metadata {
+    name = "healthcare-stage3-dev"
+    labels = {
+      environment = "dev"
+      stage       = "stage-3"
+      project     = "healthcare-management"
+    }
+  }
+}
+```
+
+2. **GitOps Namespace Manifest**: Create dedicated namespace manifest
+```yaml
+# gitops/environments/dev/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: healthcare-stage3-dev
+  labels:
+    name: healthcare-stage3-dev
+    environment: dev
+    stage: stage-3
+    project: healthcare-management
+```
+
+3. **Pipeline Validation**: Always verify namespace exists before deployment
+```bash
+# Add to pipeline
+if ! kubectl get namespace healthcare-stage3-dev >/dev/null 2>&1; then
+  echo "❌ Required namespace does not exist"
+  exit 1
+fi
+```
+
+**Expected Behavior After Fix**:
+- Pipeline creates namespace automatically if it doesn't exist
+- Application deployment succeeds without namespace errors
+- Comprehensive error handling provides clear debugging information
+- Fallback mechanisms handle various namespace creation scenarios
+
+**Related Issues**:
+- This pattern is common across Kubernetes deployments
+- Similar issues may occur with other namespaces (monitoring, logging, etc.)
+- RBAC and network policy configurations can cause similar symptoms
+
 ### **Issue: Unit Tests Failing in GitHub Actions Pipeline**
 
 **Problem**: GitHub Actions pipeline fails at "Unit Tests (Node 20.x)" job with React component import errors.
