@@ -1397,6 +1397,201 @@ curl "http://${LB_URL}/api/doctors" | jq .
 - Database credential management issues
 - Network connectivity problems between EKS and RDS
 
+### **Issue: Database Tables Don't Exist - Migration and Seeding Required**
+
+**Problem**: Backend connects to database but fails with "table does not exist" errors because database migrations haven't run and tables haven't been created.
+
+**Error Messages**:
+```
+Error fetching doctors: PrismaClientKnownRequestError:
+Invalid `prisma.doctor.findMany()` invocation in
+/app/dist/controllers/doctorController.js:28:31
+
+The table `public.doctors` does not exist in the current database.
+    at $n.handleRequestError (/app/node_modules/@prisma/client/runtime/library.js:121:7315)
+    ...
+  code: 'P2021',
+  clientVersion: '5.22.0',
+  meta: { modelName: 'Doctor', table: 'public.doctors' }
+```
+
+**Root Cause**:
+1. **Database Connection Works**: Backend successfully connects to RDS
+2. **Missing Database Schema**: Tables haven't been created via migrations
+3. **No Sample Data**: Database seeding hasn't run
+4. **Prisma Client Out of Sync**: Generated client doesn't match database schema
+
+**Solution Applied**:
+
+1. **✅ Enhanced Pipeline with Database Migration Step**:
+```yaml
+- name: Run database migrations and seeding
+  run: |
+    # Wait for backend pods to be ready
+    kubectl wait --for=condition=ready pod -l app=healthcare-backend-stage3 -n healthcare-stage3-dev --timeout=300s
+
+    # Get backend pod
+    BACKEND_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[0].metadata.name}')
+
+    # Run Prisma migrations
+    kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- npx prisma migrate deploy
+
+    # Generate Prisma client
+    kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- npx prisma generate
+
+    # Run database seeding
+    kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- npm run seed
+```
+
+2. **Fallback Manual Seeding**:
+```javascript
+// If npm run seed fails, pipeline runs manual seeding
+kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- node -e "
+  const { PrismaClient } = require('@prisma/client');
+  const prisma = new PrismaClient();
+
+  async function seed() {
+    const doctors = await prisma.doctor.createMany({
+      data: [
+        {
+          name: 'Dr. John Smith',
+          specialization: 'Cardiology',
+          email: 'john.smith@healthcare.com',
+          phone: '+1-555-0101'
+        },
+        // ... more doctors
+      ],
+      skipDuplicates: true
+    });
+    console.log(\`✅ Created \${doctors.count} doctors\`);
+  }
+
+  seed().catch(console.error).finally(() => prisma.\$disconnect());
+"
+```
+
+3. **Database Verification**:
+```javascript
+// Pipeline verifies seeding worked
+kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- node -e "
+  const { PrismaClient } = require('@prisma/client');
+  const prisma = new PrismaClient();
+
+  async function verify() {
+    const doctorCount = await prisma.doctor.count();
+    console.log(\`📊 Total doctors in database: \${doctorCount}\`);
+
+    if (doctorCount > 0) {
+      const doctors = await prisma.doctor.findMany({ take: 3 });
+      console.log('👨‍⚕️ Sample doctors:');
+      doctors.forEach(doc => console.log(\`  - \${doc.name} (\${doc.specialization})\`));
+    }
+  }
+
+  verify().catch(console.error).finally(() => prisma.\$disconnect());
+"
+```
+
+**Manual Fix Steps**:
+
+1. **Connect to Backend Pod**:
+```bash
+# Get backend pod name
+kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3
+
+# Connect to pod
+kubectl exec -it healthcare-backend-stage3-xxx-xxx -n healthcare-stage3-dev -- bash
+```
+
+2. **Run Database Migrations**:
+```bash
+# Inside the pod
+npx prisma migrate deploy
+
+# If migrations fail, force reset
+npx prisma db push --force-reset
+
+# Generate Prisma client
+npx prisma generate
+```
+
+3. **Seed Database Manually**:
+```bash
+# Try npm script first
+npm run seed
+
+# If that fails, run manual seeding
+node -e "
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+async function seed() {
+  console.log('🌱 Starting database seeding...');
+
+  const doctors = await prisma.doctor.createMany({
+    data: [
+      {
+        name: 'Dr. John Smith',
+        specialization: 'Cardiology',
+        email: 'john.smith@healthcare.com',
+        phone: '+1-555-0101'
+      },
+      {
+        name: 'Dr. Sarah Johnson',
+        specialization: 'Pediatrics',
+        email: 'sarah.johnson@healthcare.com',
+        phone: '+1-555-0102'
+      }
+    ],
+    skipDuplicates: true
+  });
+
+  console.log(\`✅ Created \${doctors.count} doctors\`);
+}
+
+seed().catch(console.error).finally(() => prisma.\$disconnect());
+"
+```
+
+4. **Verify Database Content**:
+```bash
+# Check tables exist
+node -e "
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+async function verify() {
+  const doctorCount = await prisma.doctor.count();
+  console.log(\`Total doctors: \${doctorCount}\`);
+
+  if (doctorCount > 0) {
+    const doctors = await prisma.doctor.findMany();
+    console.log('Doctors:', doctors);
+  }
+}
+
+verify().catch(console.error).finally(() => prisma.\$disconnect());
+"
+```
+
+**Expected Output After Fix**:
+```
+🌱 Starting database seeding...
+✅ Created 3 doctors
+📊 Total doctors in database: 3
+👨‍⚕️ Sample doctors:
+  - Dr. John Smith (Cardiology)
+  - Dr. Sarah Johnson (Pediatrics)
+  - Dr. Michael Brown (Orthopedics)
+✅ Database verification successful!
+```
+
+**Prevention Strategies**:
+1. **Automated Migrations**: Include migration step in deployment pipeline
+2. **Health Checks**: Verify database schema before starting application
+3. **Seeding Validation**: Confirm sample data exists after deployment
+4. **Prisma Client Sync**: Ensure generated client matches database schema
+
 ### **Issue: Unit Tests Failing in GitHub Actions Pipeline**
 
 **Problem**: GitHub Actions pipeline fails at "Unit Tests (Node 20.x)" job with React component import errors.

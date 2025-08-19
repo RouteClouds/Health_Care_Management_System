@@ -128,6 +128,20 @@ stringData:
 EOF
 
     echo "✅ Secret updated with actual RDS endpoint: ${RDS_HOSTNAME}"
+
+    # Verify the update worked
+    echo "🔍 Verifying Secret update..."
+    UPDATED_URL=$(kubectl -n healthcare-stage3-dev get secret database-credentials-stage3 -o jsonpath='{.data.url}' 2>/dev/null | base64 -d || echo "FAILED_TO_READ")
+    echo "📋 Updated Secret URL: $UPDATED_URL"
+
+    if echo "$UPDATED_URL" | grep -q "$RDS_HOSTNAME"; then
+        echo "✅ Secret verification successful - contains actual RDS hostname"
+    else
+        echo "⚠️ WARNING: Secret may not have been updated properly"
+        echo "Expected hostname: $RDS_HOSTNAME"
+        echo "Actual URL: $UPDATED_URL"
+    fi
+
     echo "ℹ️ Please restart the backend deployment to pick up new env vars."
     exit 0
 fi
