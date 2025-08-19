@@ -1,35 +1,87 @@
 #!/bin/bash
 
 # Update Database Configuration Script
-# This script updates the GitOps manifests with the actual RDS endpoint from Terraform
+# This script updates the GitOps manifests with the actual RDS endpoint (hostname)
+# Prefer Terraform outputs; fall back to AWS CLI if Terraform is unavailable or outputs are missing
 
-set -e
+set -euo pipefail
 
 echo "🔧 Updating database configuration with actual RDS endpoint..."
 
-# Check if we're in the right directory
+# Ensure we're at the Stage-3 project root (where terraform/ and gitops/ exist)
 if [[ ! -f "terraform/environments/dev/main.tf" ]]; then
-    echo "❌ Error: Must be run from the project root directory"
+    echo "❌ Error: Must be run from the Stage-3 project root directory"
     echo "Current directory: $(pwd)"
     exit 1
 fi
 
-# Get RDS endpoint from Terraform
-echo "🗄️ Getting RDS endpoint from Terraform..."
-cd terraform/environments/dev
+AWS_REGION_ENV="${AWS_REGION:-us-east-1}"
 
-if terraform output db_instance_endpoint >/dev/null 2>&1; then
-    ACTUAL_RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint)
-    echo "✅ Found RDS endpoint: $ACTUAL_RDS_ENDPOINT"
+# Helper to resolve RDS endpoint via AWS CLI
+resolve_rds_endpoint_via_aws() {
+    local region="$1"
+    local identifier_prefix="healthcare-eks-stage3-dev-db"
+    echo "🌐 Falling back to AWS CLI to resolve RDS endpoint (region=${region})..."
+    # Find the DB instance by identifier prefix
+    local query="DBInstances[?contains(DBInstanceIdentifier, \`${identifier_prefix}\`)].{addr:Endpoint.Address,port:Endpoint.Port}"
+    local result_json
+    if ! result_json=$(aws rds describe-db-instances --region "$region" --query "$query" --output json 2>/dev/null); then
+        echo "❌ AWS CLI failed to describe DB instances"
+        return 1
+    fi
+
+    local addr
+    local port
+    addr=$(echo "$result_json" | jq -r '.[0].addr // empty')
+    port=$(echo "$result_json" | jq -r '.[0].port // empty')
+    if [[ -z "${addr}" ]]; then
+        echo "❌ Could not locate RDS instance with identifier containing '${identifier_prefix}'"
+        return 1
+    fi
+    if [[ -z "${port}" ]]; then
+        port=5432
+    fi
+    echo "${addr}:${port}"
+}
+
+# Attempt to obtain endpoint via Terraform first; fall back to AWS CLI
+ACTUAL_RDS_ENDPOINT=""
+RDS_HOSTNAME=""
+
+echo "🗄️ Getting RDS endpoint from Terraform (preferred)..."
+pushd terraform/environments/dev >/dev/null
+if command -v terraform >/dev/null 2>&1; then
+    # Initialize backend to access remote state if needed, but keep it lightweight
+    if terraform output >/dev/null 2>&1; then
+        : # outputs accessible as-is
+    else
+        # Try init without prompting; if init fails, we'll fall back to AWS CLI
+        terraform init -input=false -no-color >/dev/null 2>&1 || true
+    fi
+
+    if terraform output db_instance_endpoint >/dev/null 2>&1; then
+        ACTUAL_RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint)
+        echo "✅ Found RDS endpoint via Terraform: $ACTUAL_RDS_ENDPOINT"
+    else
+        echo "ℹ️ Terraform outputs not available or missing 'db_instance_endpoint'"
+    fi
 else
-    echo "❌ Could not get RDS endpoint from Terraform outputs"
-    echo "📋 Available outputs:"
-    terraform output
-    exit 1
+    echo "ℹ️ Terraform is not installed in this job environment"
+fi
+popd >/dev/null
+
+if [[ -z "${ACTUAL_RDS_ENDPOINT}" ]]; then
+    if ACTUAL_RDS_ENDPOINT=$(resolve_rds_endpoint_via_aws "$AWS_REGION_ENV"); then
+        echo "✅ Found RDS endpoint via AWS CLI: $ACTUAL_RDS_ENDPOINT"
+    else
+        echo "❌ Could not determine RDS endpoint via Terraform or AWS CLI"
+        exit 1
+    fi
 fi
 
-# Return to project root
-cd ../../..
+# Extract hostname only (strip :port if present) to safely replace inside connection URL
+RDS_HOSTNAME="${ACTUAL_RDS_ENDPOINT%%:*}"
+echo "🔎 Using RDS hostname for manifest substitution: ${RDS_HOSTNAME}"
 
 # Update GitOps manifests
 GITOPS_DIR="gitops/environments/dev"
@@ -45,21 +97,21 @@ echo "🔧 Updating database configuration in $BACKEND_MANIFEST..."
 # Create backup
 cp "$BACKEND_MANIFEST" "$BACKEND_MANIFEST.backup"
 
-# Replace placeholder RDS endpoint with actual endpoint
+# Replace placeholder RDS endpoint hostname with actual hostname (not host:port)
 # Handle various possible placeholder formats
-sed -i "s|healthcare-eks-stage3-dev-db\.c6t4q0g6i4n5\.us-east-1\.rds\.amazonaws\.com|$ACTUAL_RDS_ENDPOINT|g" "$BACKEND_MANIFEST"
-sed -i "s|healthcare-eks-stage3-dev-db\.cluster-[a-zA-Z0-9]*\.us-east-1\.rds\.amazonaws\.com|$ACTUAL_RDS_ENDPOINT|g" "$BACKEND_MANIFEST"
-sed -i "s|YOUR_RDS_ENDPOINT_HERE|$ACTUAL_RDS_ENDPOINT|g" "$BACKEND_MANIFEST"
+sed -i "s|healthcare-eks-stage3-dev-db\\.c6t4q0g6i4n5\\.us-east-1\\.rds\\.amazonaws\\.com|$RDS_HOSTNAME|g" "$BACKEND_MANIFEST"
+sed -i "s|healthcare-eks-stage3-dev-db\\.cluster-[a-zA-Z0-9]*\\.us-east-1\\.rds\\.amazonaws\\.com|$RDS_HOSTNAME|g" "$BACKEND_MANIFEST"
+sed -i "s|YOUR_RDS_ENDPOINT_HERE|$RDS_HOSTNAME|g" "$BACKEND_MANIFEST"
 
 echo "✅ Database configuration updated"
 echo "🔍 Verifying database URL update:"
 grep -A 2 -B 2 "postgresql://" "$BACKEND_MANIFEST" || echo "No postgresql URL found"
 
 # Verify the change was made
-if grep -q "$ACTUAL_RDS_ENDPOINT" "$BACKEND_MANIFEST"; then
-    echo "✅ RDS endpoint successfully updated in manifest"
+if grep -q "$RDS_HOSTNAME" "$BACKEND_MANIFEST"; then
+    echo "✅ RDS hostname successfully updated in manifest"
 else
-    echo "⚠️ Warning: RDS endpoint may not have been updated properly"
+    echo "⚠️ Warning: RDS hostname may not have been updated properly"
     echo "Please check the manifest manually"
 fi
 
@@ -67,7 +119,7 @@ echo "🎉 Database configuration update completed!"
 echo "📋 Backup saved as: $BACKEND_MANIFEST.backup"
 
 # In CI/CD environment, don't restore immediately - let the pipeline handle it
-if [[ -z "$CI" ]]; then
+if [[ -z "${CI:-}" ]]; then
     echo ""
     echo "💡 To restore the original configuration later, run:"
     echo "   mv $BACKEND_MANIFEST.backup $BACKEND_MANIFEST"

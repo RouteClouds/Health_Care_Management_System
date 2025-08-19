@@ -1,1 +1,1 @@
-"Fixing automated database setup with Script"
+"Fixing automated database setup with Script-1"

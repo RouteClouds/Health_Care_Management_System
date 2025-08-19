@@ -669,6 +669,18 @@ jobs:
           echo "📋 Current namespaces:"
           kubectl get namespaces
 
+      - name: Setup Terraform (for database config script)
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Ensure jq is installed
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+
       - name: Deploy application with latest GitOps manifests
         working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
         run: |
