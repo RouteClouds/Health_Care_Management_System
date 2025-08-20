@@ -610,10 +610,25 @@ jobs:
           # Show plan summary
           terraform show -no-color tfplan | head -50
 
+      - name: Handle Infrastructure Conflicts
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "🔍 Handling potential infrastructure conflicts..."
+
+          # Make script executable and source it
+          chmod +x ../../../scripts/deployment/handle-infrastructure-conflicts.sh
+          source ../../../scripts/deployment/handle-infrastructure-conflicts.sh
+
+          # Use import strategy by default (can be overridden with repository variable)
+          CONFLICT_STRATEGY="${{ vars.INFRASTRUCTURE_CONFLICT_STRATEGY || 'import' }}"
+
+          # Handle conflicts based on strategy
+          handle_infrastructure_conflicts "$CONFLICT_STRATEGY"
+
       - name: Terraform Apply
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
-          echo "🚀 Deploying infrastructure with idempotent behavior..."
+          echo "🚀 Deploying infrastructure with conflict resolution..."
 
           # Show what will be created/updated based on existing infrastructure
           if [[ "${{ steps.infra-check.outputs.cluster-exists }}" == "true" ]]; then
@@ -631,16 +646,16 @@ jobs:
           if [[ "${{ steps.infra-check.outputs.vpc-exists }}" == "true" ]]; then
             echo "✅ VPC exists - Terraform will manage existing resource"
           else
-            echo "📋 VPC and networking will be created"
+            echo "📋 VPC and networking will be created (single NAT Gateway)"
           fi
 
           echo ""
-          echo "🔧 Applying Terraform plan (idempotent operation)..."
+          echo "🔧 Applying Terraform plan with conflict resolution..."
 
           # Apply with auto-approval for CI/CD
           terraform apply -auto-approve tfplan
 
-          echo "✅ Infrastructure deployment completed (idempotent)"
+          echo "✅ Infrastructure deployment completed with conflict resolution"
 
       - name: Validate Infrastructure
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev

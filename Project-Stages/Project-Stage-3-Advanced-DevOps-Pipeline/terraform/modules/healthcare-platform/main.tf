@@ -21,6 +21,7 @@ module "vpc" {
   public_subnets  = var.public_subnets
 
   enable_nat_gateway = true
+  single_nat_gateway = true  # 🔧 CRITICAL FIX: Use single NAT Gateway to avoid EIP limit
   enable_vpn_gateway = false
   enable_dns_hostnames = true
   enable_dns_support = true
