@@ -1,0 +1,12 @@
+Terraform State Backup
+=====================
+Source Bucket: healthcare-terraform-state-stage3-867344452513
+Backup Date: Wed Aug 20 05:19:26 UTC 2025
+Backup Directory: terraform-state-backup-20250820-051924
+Region: us-east-1
+
+Files backed up:
+
+
+To restore:
+aws s3 sync terraform-state-backup-20250820-051924/ s3://NEW-BUCKET-NAME/ --region us-east-1

@@ -32,6 +32,60 @@
 # Requires confirmation: Type 'CLEANUP' to proceed
 ```
 
+### **🎯 comprehensive-cleanup-orchestrator.sh** - Smart Cleanup Orchestrator
+**Purpose**: Intelligent cleanup orchestrator based on audit findings and Cursor delete plan best practices.
+
+**Features:**
+- ✅ **Multiple Modes**: audit, duplicates, complete
+- ✅ **Dependency-Aware**: Follows proper deletion order
+- ✅ **Cost-Optimized**: Targets highest-cost resources first
+- ✅ **Dry Run Support**: Test before actual deletion
+- ✅ **Smart Detection**: Identifies active vs duplicate resources
+
+**Usage:**
+```bash
+# Discover current resources and costs
+./scripts/cleanup/comprehensive-cleanup-orchestrator.sh audit
+
+# Remove duplicates (saves ~$135/month)
+./scripts/cleanup/comprehensive-cleanup-orchestrator.sh duplicates true   # dry run
+./scripts/cleanup/comprehensive-cleanup-orchestrator.sh duplicates false  # live run
+
+# Complete destruction (saves ~$450/month)
+./scripts/cleanup/comprehensive-cleanup-orchestrator.sh complete false
+```
+
+### **🔧 enhanced-duplicate-cleanup.sh** - Smart Duplicate VPC Cleanup
+**Purpose**: Removes duplicate VPCs while preserving the active EKS cluster VPC.
+
+**Features:**
+- ✅ **EKS-Aware**: Automatically identifies and preserves active VPC
+- ✅ **Dependency Order**: NAT Gateways → Load Balancers → Security Groups → Subnets → VPC
+- ✅ **High Savings**: Removes 3 duplicate NAT Gateways (~$135/month savings)
+- ✅ **Wait Mechanisms**: Proper waiting for long-running deletions
+- ✅ **Dry Run Support**: Test mode available
+
+**Usage:**
+```bash
+./scripts/cleanup/enhanced-duplicate-cleanup.sh true   # dry run
+./scripts/cleanup/enhanced-duplicate-cleanup.sh false  # live deletion
+```
+
+### **🗄️ cleanup-s3-buckets.sh** - S3 Buckets Cleanup
+**Purpose**: Handles multiple Terraform state buckets and assets bucket cleanup.
+
+**Features:**
+- ✅ **State Backup**: Automatically backs up Terraform state before deletion
+- ✅ **Smart Detection**: Identifies Terraform state vs assets buckets
+- ✅ **Safe Deletion**: Multiple confirmations and error handling
+- ✅ **Audit-Based**: Targets specific buckets found in audit
+
+**Usage:**
+```bash
+./scripts/cleanup/cleanup-s3-buckets.sh true   # dry run
+./scripts/cleanup/cleanup-s3-buckets.sh false  # live deletion
+```
+
 ---
 
 # AWS Infrastructure Cleanup Script Documentation (Legacy)

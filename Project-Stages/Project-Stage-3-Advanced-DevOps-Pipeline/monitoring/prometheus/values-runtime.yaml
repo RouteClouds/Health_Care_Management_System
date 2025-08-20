@@ -37,7 +37,22 @@ grafana:
     storageClassName: "gp2"
     size: 2Gi
   service:
-    type: LoadBalancer
+    type: ClusterIP
+
+  # Use ALB Ingress instead of LoadBalancer
+  ingress:
+    enabled: true
+    ingressClassName: alb
+    annotations:
+      kubernetes.io/ingress.class: alb
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    hosts:
+      - host: grafana.healthcare-stage3.local
+        paths:
+          - path: /
+            pathType: Prefix
 
 alertmanager:
   enabled: true

@@ -362,9 +362,23 @@ jobs:
 
           # Check if backend resources already exist
           AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          RANDOM_SUFFIX=$(shuf -i 1000-9999 -n 1)
-          EXPECTED_BUCKET="healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}-${RANDOM_SUFFIX}"
           EXPECTED_TABLE="healthcare-terraform-locks-stage3"
+
+          # ✅ FIXED: Look for existing bucket first (idempotent behavior)
+          echo "🔍 Looking for existing S3 backend bucket..."
+          EXISTING_BUCKET=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}')].Name" --output text | tr '\t' '\n' | head -1)
+
+          if [[ -n "$EXISTING_BUCKET" && "$EXISTING_BUCKET" != "None" ]]; then
+            BUCKET_NAME="$EXISTING_BUCKET"
+            echo "✅ Found existing S3 bucket: $BUCKET_NAME"
+            BUCKET_EXISTS=true
+          else
+            # Only generate random suffix if no existing bucket found
+            RANDOM_SUFFIX=$(shuf -i 1000-9999 -n 1)
+            BUCKET_NAME="healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}-${RANDOM_SUFFIX}"
+            echo "📋 No existing bucket found, will create: $BUCKET_NAME"
+            BUCKET_EXISTS=false
+          fi
 
           # Check if DynamoDB table exists
           if aws dynamodb describe-table --table-name "$EXPECTED_TABLE" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
@@ -373,19 +387,6 @@ jobs:
           else
             echo "📋 DynamoDB table '$EXPECTED_TABLE' does not exist, will create"
             TABLE_EXISTS=false
-          fi
-
-          # Find existing S3 bucket with our pattern
-          EXISTING_BUCKET=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}')].Name" --output text | tr '\t' '\n' | head -1)
-
-          if [[ -n "$EXISTING_BUCKET" && "$EXISTING_BUCKET" != "None" ]]; then
-            echo "✅ S3 bucket '$EXISTING_BUCKET' already exists"
-            BUCKET_NAME="$EXISTING_BUCKET"
-            BUCKET_EXISTS=true
-          else
-            echo "📋 No existing S3 bucket found, will create new one"
-            BUCKET_NAME="$EXPECTED_BUCKET"
-            BUCKET_EXISTS=false
           fi
 
           # If both resources exist and are functional, skip Terraform operations
@@ -543,15 +544,67 @@ jobs:
           echo "Backend Bucket: ${{ needs.setup-terraform-backend.outputs.backend-bucket }}"
           echo "Backend Table: ${{ needs.setup-terraform-backend.outputs.backend-table }}"
 
-          # Initialize with the created backend
-          terraform init
+          # Initialize with dynamic backend configuration (idempotent)
+          terraform init \
+            -backend-config="bucket=${{ needs.setup-terraform-backend.outputs.backend-bucket }}" \
+            -backend-config="key=dev/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ needs.setup-terraform-backend.outputs.backend-table }}" \
+            -backend-config="encrypt=true"
 
-          echo "✅ Terraform initialized with S3 backend"
+          echo "✅ Terraform initialized with S3 backend (idempotent)"
+
+      - name: Check Existing Infrastructure
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        id: infra-check
+        run: |
+          echo "🔍 Checking for existing infrastructure to ensure idempotent deployment..."
+
+          # Check if EKS cluster exists
+          if aws eks describe-cluster --name "healthcare-eks-stage3-dev" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo "✅ EKS cluster 'healthcare-eks-stage3-dev' already exists"
+            CLUSTER_EXISTS=true
+          else
+            echo "📋 EKS cluster 'healthcare-eks-stage3-dev' does not exist"
+            CLUSTER_EXISTS=false
+          fi
+
+          # Check if RDS instance exists
+          if aws rds describe-db-instances --db-instance-identifier "healthcare-eks-stage3-dev-db" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo "✅ RDS instance 'healthcare-eks-stage3-dev-db' already exists"
+            RDS_EXISTS=true
+          else
+            echo "📋 RDS instance 'healthcare-eks-stage3-dev-db' does not exist"
+            RDS_EXISTS=false
+          fi
+
+          # Check if VPC exists
+          VPC_COUNT=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=healthcare-eks-stage3-dev-vpc" --query 'Vpcs | length(@)' --output text)
+          if [[ "$VPC_COUNT" -gt 0 ]]; then
+            echo "✅ VPC 'healthcare-eks-stage3-dev-vpc' already exists (count: $VPC_COUNT)"
+            VPC_EXISTS=true
+          else
+            echo "📋 VPC 'healthcare-eks-stage3-dev-vpc' does not exist"
+            VPC_EXISTS=false
+          fi
+
+          # Set outputs for conditional deployment
+          echo "cluster-exists=$CLUSTER_EXISTS" >> $GITHUB_OUTPUT
+          echo "rds-exists=$RDS_EXISTS" >> $GITHUB_OUTPUT
+          echo "vpc-exists=$VPC_EXISTS" >> $GITHUB_OUTPUT
+
+          # Summary
+          echo ""
+          echo "📊 Infrastructure Status Summary:"
+          echo "   EKS Cluster: $CLUSTER_EXISTS"
+          echo "   RDS Instance: $RDS_EXISTS"
+          echo "   VPC: $VPC_EXISTS"
 
       - name: Terraform Plan
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
           echo "📋 Planning infrastructure deployment..."
+          echo "Existing infrastructure will be preserved and managed by Terraform state"
           terraform plan -out=tfplan
 
           # Show plan summary
@@ -560,19 +613,34 @@ jobs:
       - name: Terraform Apply
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
-          echo "🚀 Deploying infrastructure..."
-          echo "This will create:"
-          echo "  - VPC with public/private subnets"
-          echo "  - EKS cluster with managed node groups"
-          echo "  - RDS PostgreSQL database"
-          echo "  - ECR repositories"
-          echo "  - Security groups and IAM roles"
+          echo "🚀 Deploying infrastructure with idempotent behavior..."
+
+          # Show what will be created/updated based on existing infrastructure
+          if [[ "${{ steps.infra-check.outputs.cluster-exists }}" == "true" ]]; then
+            echo "✅ EKS cluster exists - Terraform will manage existing resource"
+          else
+            echo "📋 EKS cluster will be created"
+          fi
+
+          if [[ "${{ steps.infra-check.outputs.rds-exists }}" == "true" ]]; then
+            echo "✅ RDS instance exists - Terraform will manage existing resource"
+          else
+            echo "📋 RDS instance will be created"
+          fi
+
+          if [[ "${{ steps.infra-check.outputs.vpc-exists }}" == "true" ]]; then
+            echo "✅ VPC exists - Terraform will manage existing resource"
+          else
+            echo "📋 VPC and networking will be created"
+          fi
+
           echo ""
+          echo "🔧 Applying Terraform plan (idempotent operation)..."
 
           # Apply with auto-approval for CI/CD
           terraform apply -auto-approve tfplan
 
-          echo "✅ Infrastructure deployment completed"
+          echo "✅ Infrastructure deployment completed (idempotent)"
 
       - name: Validate Infrastructure
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
@@ -681,6 +749,15 @@ jobs:
             sudo apt-get install -y jq
           fi
 
+      - name: Install eksctl for AWS Load Balancer Controller
+        run: |
+          echo "🔧 Installing eksctl for AWS Load Balancer Controller..."
+          
+          # Install eksctl
+          curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+          sudo mv /tmp/eksctl /usr/local/bin
+          eksctl version
+
       - name: Install AWS Load Balancer Controller for ALB support
         run: |
           echo "🔧 Installing AWS Load Balancer Controller for Application Load Balancer support..."
@@ -766,11 +843,20 @@ jobs:
 
           echo "🌐 Deploying ingress (ALB) ..."
           if kubectl apply -f ingress.yaml; then
-            echo "✅ Ingress applied"
+            echo "✅ Main application ingress applied"
           else
-            echo "❌ Ingress apply failed"
+            echo "❌ Main ingress apply failed"
             kubectl describe ingress healthcare-stage3-ingress -n healthcare-stage3-dev || true
             exit 1
+          fi
+
+          echo "📊 Deploying Grafana ingress (ALB) ..."
+          if kubectl apply -f grafana-ingress.yaml; then
+            echo "✅ Grafana ingress applied"
+          else
+            echo "❌ Grafana ingress apply failed"
+            kubectl describe ingress grafana-stage3-ingress -n monitoring || true
+            echo "⚠️ Continuing without Grafana ingress"
           fi
 
           echo "✅ Application deployment initiated"

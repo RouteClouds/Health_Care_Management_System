@@ -11,9 +11,10 @@
 7. [Monitoring & Observability Issues](#monitoring--observability-issues)
 8. [Application-Specific Issues](#application-specific-issues)
 9. [Network & Connectivity Issues](#network--connectivity-issues)
-10. [Performance Issues](#performance-issues)
-11. [Security Issues](#security-issues)
-12. [Emergency Procedures](#emergency-procedures)
+10. [Load Balancer Configuration Issues](#load-balancer-configuration-issues)
+11. [Performance Issues](#performance-issues)
+12. [Security Issues](#security-issues)
+13. [Emergency Procedures](#emergency-procedures)
 
 ---
 
@@ -6612,3 +6613,526 @@ kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev -o yaml
 ---
 
 *This comprehensive case study demonstrates the importance of systematic troubleshooting, layer-by-layer analysis, and the value of documenting real-world issue resolution for future reference and pattern recognition.*
+
+---
+
+## 🔗 **LOAD BALANCER CONFIGURATION ISSUES**
+
+### **Issue: Wrong Load Balancer Types Created (Classic/Network instead of ALB)**
+
+**Problem**: Infrastructure creates Classic Load Balancers or Network Load Balancers instead of Application Load Balancers (ALBs), resulting in higher costs and fewer features.
+
+**Symptoms**:
+- ❌ Classic Load Balancers found in AWS console
+- ❌ Network Load Balancers created for monitoring services
+- ❌ Higher monthly costs (~$18-36/month vs ~$16/month for ALB)
+- ❌ Missing advanced routing features
+- ❌ No HTTP/HTTPS-specific features available
+
+**Error Patterns**:
+```bash
+# Discovery shows wrong LB types
+aws elb describe-load-balancers --query 'LoadBalancerDescriptions[].[LoadBalancerName,VPCId]'
+# Output: Classic LBs found (a46a32210135848f797d5b74ea975657)
+
+aws elbv2 describe-load-balancers --query 'LoadBalancers[?Type==`network`].[LoadBalancerName,Type]'
+# Output: Network LBs found (a4947ed79d2d04c99b7a728821a64139)
+```
+
+#### **Root Cause Analysis**
+
+**Common Causes**:
+1. **Services with `type: LoadBalancer`**: Creates Classic LBs by default
+2. **Network LB Annotations**: `service.beta.kubernetes.io/aws-load-balancer-type: "nlb"`
+3. **Missing AWS Load Balancer Controller**: No ALB support available
+4. **Legacy Configuration Files**: Old Stage-1/Stage-2 configurations
+5. **Monitoring Services**: Grafana/Prometheus using LoadBalancer type
+
+**Specific Issues Found**:
+
+**Issue 1: Frontend Service (Classic LB)**
+```yaml
+# ❌ WRONG - Creates Classic Load Balancer
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"  # ❌ Wrong type
+spec:
+  type: LoadBalancer  # ❌ Creates Classic LB
+  ports:
+  - port: 80
+    targetPort: 80
+```
+
+**Issue 2: Grafana Service (Network LB)**
+```yaml
+# ❌ WRONG - Creates Network Load Balancer
+grafana:
+  service:
+    type: LoadBalancer  # ❌ Creates NLB for monitoring
+```
+
+---
+
+### **Complete Load Balancer Issue Resolution**
+
+#### **Step 1: Discover Current Load Balancers**
+
+**Run Comprehensive Discovery**:
+```bash
+# Use the enhanced discovery script
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/cleanup
+./find-all-load-balancers.sh
+
+# Expected output shows:
+# Classic Load Balancers: a46a32210135848f797d5b74ea975657
+# Network Load Balancers: a4947ed79d2d04c99b7a728821a64139
+# Target Groups: k8s-healthca-frontend-*, k8s-monitori-healthca-*
+```
+
+**Identify Load Balancer Sources**:
+```bash
+# Check which services created the LBs
+kubectl get services -A -o wide | grep LoadBalancer
+
+# Check for problematic annotations
+kubectl get services -A -o yaml | grep -A5 -B5 "aws-load-balancer-type"
+```
+
+#### **Step 2: Fix Service Configurations**
+
+**Fix Frontend Service (Remove LoadBalancer)**:
+```bash
+# Check current frontend service
+kubectl get service frontend-stage3-svc -n healthcare-stage3-dev -o yaml
+
+# ✅ CORRECT - Should be ClusterIP
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-stage3-svc
+spec:
+  type: ClusterIP  # ✅ Use ClusterIP instead
+  ports:
+  - port: 80
+    targetPort: 80
+```
+
+**Fix Grafana Service (Remove LoadBalancer)**:
+```bash
+# Update Grafana values files
+vim monitoring/prometheus/values-optimized.yaml
+
+# ✅ CORRECT Configuration:
+grafana:
+  service:
+    type: ClusterIP  # ✅ Changed from LoadBalancer
+
+  # ✅ Add ALB Ingress instead
+  ingress:
+    enabled: true
+    ingressClassName: alb
+    annotations:
+      kubernetes.io/ingress.class: alb
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+```
+
+#### **Step 3: Install AWS Load Balancer Controller**
+
+**Verify ALB Controller Installation**:
+```bash
+# Check if AWS Load Balancer Controller is installed
+kubectl get deployment aws-load-balancer-controller -n kube-system
+
+# If not installed, run the installation script
+./scripts/deployment/install-aws-load-balancer-controller.sh
+
+# Expected output:
+# ✅ AWS Load Balancer Controller is running (2 replicas ready)
+# ✅ ALB support is available
+```
+
+**Verify Controller Logs**:
+```bash
+# Check controller logs for errors
+kubectl logs -n kube-system deployment/aws-load-balancer-controller
+
+# Should show successful startup without errors
+```
+
+#### **Step 4: Create ALB Ingress Resources**
+
+**Main Application ALB Ingress**:
+```yaml
+# gitops/environments/dev/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: healthcare-stage3-ingress
+  namespace: healthcare-stage3-dev
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health
+spec:
+  ingressClassName: alb
+  rules:
+  - host: healthcare-stage3.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-stage3-svc
+            port:
+              number: 80
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-stage3-svc
+            port:
+              number: 3001
+```
+
+**Grafana ALB Ingress**:
+```yaml
+# gitops/environments/dev/grafana-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-stage3-ingress
+  namespace: monitoring
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health
+spec:
+  ingressClassName: alb
+  rules:
+  - host: grafana.healthcare-stage3.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: healthcare-monitoring-grafana
+            port:
+              number: 80
+```
+
+#### **Step 5: Apply Updated Configurations**
+
+**Deploy Updated Services and Ingresses**:
+```bash
+# Apply updated service configurations
+kubectl apply -f gitops/environments/dev/frontend.yaml
+kubectl apply -f gitops/environments/dev/backend.yaml
+
+# Apply ALB ingresses
+kubectl apply -f gitops/environments/dev/ingress.yaml
+kubectl apply -f gitops/environments/dev/grafana-ingress.yaml
+
+# Update Grafana with new values
+helm upgrade healthcare-monitoring prometheus-community/kube-prometheus-stack \
+  -n monitoring \
+  -f monitoring/prometheus/values-optimized.yaml
+```
+
+**Verify ALB Creation**:
+```bash
+# Check ingress status
+kubectl get ingress -A
+
+# Expected output:
+# NAMESPACE               NAME                        CLASS   HOSTS                           ADDRESS                                                                  PORTS   AGE
+# healthcare-stage3-dev   healthcare-stage3-ingress  alb     healthcare-stage3.local         k8s-healthca-healthca-abc123-456789.us-east-1.elb.amazonaws.com      80      5m
+# monitoring              grafana-stage3-ingress     alb     grafana.healthcare-stage3.local k8s-monitori-grafanas-def456-789012.us-east-1.elb.amazonaws.com      80      3m
+
+# Verify ALBs in AWS
+aws elbv2 describe-load-balancers --query 'LoadBalancers[?Type==`application`].[LoadBalancerName,Type,State.Code]' --output table
+```
+
+#### **Step 6: Clean Up Old Load Balancers**
+
+**Remove Classic and Network Load Balancers**:
+```bash
+# Run the comprehensive cleanup script
+cd scripts/cleanup
+./final-orphaned-cleanup.sh true   # dry run first
+
+# Expected dry run output:
+# [DRY-RUN] Delete Classic Load Balancer a46a32210135848f797d5b74ea975657
+# [DRY-RUN] Delete Network Load Balancer a4947ed79d2d04c99b7a728821a64139
+
+# Execute actual cleanup
+./final-orphaned-cleanup.sh false
+
+# Confirm deletion
+aws elb describe-load-balancers --query 'LoadBalancerDescriptions[].LoadBalancerName'
+# Should return empty
+
+aws elbv2 describe-load-balancers --query 'LoadBalancers[?Type==`network`].LoadBalancerName'
+# Should return empty
+```
+
+#### **Step 7: Update CI/CD Pipeline**
+
+**Enhanced Pipeline Configuration**:
+```yaml
+# .github/workflows/stage3-ci.yml
+- name: Deploy ALB Ingresses
+  run: |
+    cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
+
+    # Apply main application ingress
+    kubectl apply -f ingress.yaml
+    echo "✅ Main application ingress applied"
+
+    # Apply Grafana ingress
+    kubectl apply -f grafana-ingress.yaml
+    echo "✅ Grafana ingress applied"
+
+    # Verify ALB creation
+    kubectl get ingress -A
+```
+
+---
+
+### **Verification and Testing**
+
+#### **Verify ALB Configuration**
+
+**Check ALB Status**:
+```bash
+# Verify only ALBs exist
+aws elbv2 describe-load-balancers --query 'LoadBalancers[].[LoadBalancerName,Type,State.Code]' --output table
+
+# Expected output:
+# |  k8s-healthca-healthca-abc123  |  application  |  active  |
+# |  k8s-monitori-grafanas-def456  |  application  |  active  |
+
+# Verify no Classic LBs
+aws elb describe-load-balancers --query 'LoadBalancerDescriptions[].LoadBalancerName'
+# Should return: []
+```
+
+**Test ALB Functionality**:
+```bash
+# Get ALB DNS names
+MAIN_ALB=$(kubectl get ingress healthcare-stage3-ingress -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+GRAFANA_ALB=$(kubectl get ingress grafana-stage3-ingress -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+# Test main application
+curl -I http://$MAIN_ALB
+# Expected: HTTP/1.1 200 OK
+
+# Test API routing
+curl http://$MAIN_ALB/api/health | jq .
+# Expected: {"status":"healthy","database":"connected"}
+
+# Test Grafana (if accessible)
+curl -I http://$GRAFANA_ALB
+# Expected: HTTP/1.1 200 OK or redirect
+```
+
+#### **Cost Verification**
+
+**Calculate Cost Savings**:
+```bash
+# Previous costs (Classic + Network LB):
+# Classic LB: $0.025/hour × 24 × 30 = ~$18/month
+# Network LB: $0.0225/hour × 24 × 30 = ~$16/month
+# Total: ~$34/month
+
+# New costs (2 ALBs):
+# ALB 1: $0.0225/hour × 24 × 30 = ~$16/month
+# ALB 2: $0.0225/hour × 24 × 30 = ~$16/month
+# Total: ~$32/month
+
+# Monthly savings: ~$2/month + better features
+```
+
+---
+
+### **Prevention Strategies**
+
+#### **Configuration Standards**
+
+**DO - Correct ALB Configuration**:
+```yaml
+# ✅ Service Configuration
+apiVersion: v1
+kind: Service
+spec:
+  type: ClusterIP  # ✅ Always use ClusterIP
+
+# ✅ ALB Ingress Configuration
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  ingressClassName: alb
+```
+
+**DON'T - Avoid These Configurations**:
+```yaml
+# ❌ WRONG - Creates Classic LB
+spec:
+  type: LoadBalancer
+
+# ❌ WRONG - Creates Network LB
+metadata:
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+
+# ❌ WRONG - Missing ALB annotations
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations: {}  # Missing ALB annotations
+```
+
+#### **Automated Validation**
+
+**CI/CD Pipeline Checks**:
+```bash
+# Add to pipeline validation
+- name: Validate Load Balancer Configuration
+  run: |
+    # Check for LoadBalancer services
+    if kubectl get services -A -o yaml | grep -q "type: LoadBalancer"; then
+      echo "❌ Found LoadBalancer services - should use ClusterIP + ALB Ingress"
+      kubectl get services -A -o yaml | grep -B5 -A5 "type: LoadBalancer"
+      exit 1
+    fi
+
+    # Check for NLB annotations
+    if kubectl get services -A -o yaml | grep -q "aws-load-balancer-type.*nlb"; then
+      echo "❌ Found NLB annotations - should use ALB Ingress"
+      exit 1
+    fi
+
+    # Verify ALB Controller exists
+    if ! kubectl get deployment aws-load-balancer-controller -n kube-system; then
+      echo "❌ AWS Load Balancer Controller not found"
+      exit 1
+    fi
+
+    echo "✅ Load balancer configuration validated"
+```
+
+#### **Monitoring and Alerts**
+
+**Cost Monitoring**:
+```bash
+# Create cost alert for unexpected LB types
+aws budgets create-budget --account-id $(aws sts get-caller-identity --query Account --output text) \
+  --budget '{
+    "BudgetName": "LoadBalancer-Cost-Alert",
+    "BudgetLimit": {"Amount": "50", "Unit": "USD"},
+    "TimeUnit": "MONTHLY",
+    "BudgetType": "COST",
+    "CostFilters": {
+      "Service": ["Amazon Elastic Load Balancing"]
+    }
+  }'
+```
+
+**Regular Audits**:
+```bash
+# Weekly LB audit script
+#!/bin/bash
+echo "🔍 Weekly Load Balancer Audit"
+echo "============================="
+
+# Check for Classic LBs
+CLASSIC_LBS=$(aws elb describe-load-balancers --query 'LoadBalancerDescriptions[].LoadBalancerName' --output text)
+if [[ -n "$CLASSIC_LBS" ]]; then
+  echo "⚠️ Classic Load Balancers found: $CLASSIC_LBS"
+else
+  echo "✅ No Classic Load Balancers"
+fi
+
+# Check for Network LBs
+NETWORK_LBS=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[?Type==`network`].LoadBalancerName' --output text)
+if [[ -n "$NETWORK_LBS" ]]; then
+  echo "⚠️ Network Load Balancers found: $NETWORK_LBS"
+else
+  echo "✅ No Network Load Balancers"
+fi
+
+# Check ALBs
+ALB_COUNT=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[?Type==`application`] | length(@)')
+echo "✅ Application Load Balancers: $ALB_COUNT"
+```
+
+---
+
+### **Troubleshooting Common ALB Issues**
+
+#### **Issue 1: ALB Not Created**
+```bash
+# Symptoms: Ingress shows no ADDRESS
+kubectl get ingress -A
+
+# Solution: Check AWS Load Balancer Controller
+kubectl logs -n kube-system deployment/aws-load-balancer-controller
+kubectl describe ingress healthcare-stage3-ingress -n healthcare-stage3-dev
+```
+
+#### **Issue 2: ALB Health Check Failures**
+```bash
+# Symptoms: ALB targets unhealthy
+aws elbv2 describe-target-health --target-group-arn $(aws elbv2 describe-target-groups --query 'TargetGroups[0].TargetGroupArn' --output text)
+
+# Solution: Fix health check path
+metadata:
+  annotations:
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health  # Correct path
+```
+
+#### **Issue 3: Multiple ALBs Created**
+```bash
+# Symptoms: Too many ALBs for same application
+aws elbv2 describe-load-balancers --query 'LoadBalancers[?Type==`application`].LoadBalancerName'
+
+# Solution: Use ALB grouping
+metadata:
+  annotations:
+    alb.ingress.kubernetes.io/group.name: healthcare-stage3  # Group ingresses
+```
+
+---
+
+### **Reference Documentation**
+
+**Complete ALB Configuration Guide**: `docs/ALB-Configuration-Guide.md`
+
+**Key Files Updated**:
+- `monitoring/prometheus/values-optimized.yaml` - Grafana service type
+- `monitoring/prometheus/values-runtime.yaml` - Grafana service type
+- `gitops/environments/dev/grafana-ingress.yaml` - Grafana ALB ingress
+- `.github/workflows/stage3-ci.yml` - Pipeline ALB deployment
+- `scripts/cleanup/final-orphaned-cleanup.sh` - LB cleanup
+
+**Cost Benefits**:
+- **ALB Features**: HTTP/HTTPS routing, path-based routing, WebSocket support
+- **Cost Optimization**: ~$2/month savings + better functionality
+- **Operational Benefits**: Better health checks, AWS WAF integration, SSL termination
+
+---
+
+*This comprehensive Load Balancer troubleshooting guide ensures cost-effective, feature-rich load balancing using only Application Load Balancers, preventing the creation of expensive Classic or Network Load Balancers.*

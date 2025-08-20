@@ -107,15 +107,28 @@ grafana:
     size: 5Gi              # Reduced from 10Gi
     accessMode: ReadWriteOnce
   
-  # Service configuration
+  # Service configuration - Use ClusterIP with ALB Ingress
   service:
-    type: LoadBalancer
+    type: ClusterIP
     port: 80
     targetPort: 3000
   
-  # Ingress configuration (if needed)
+  # Ingress configuration - Enable ALB for Grafana
   ingress:
-    enabled: false
+    enabled: true
+    ingressClassName: alb
+    annotations:
+      kubernetes.io/ingress.class: alb
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+      alb.ingress.kubernetes.io/healthcheck-path: /api/health
+    hosts:
+      - host: grafana.healthcare-stage3.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
   
   # Dashboard configuration
   dashboardProviders:

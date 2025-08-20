@@ -45,13 +45,13 @@ run_aws_command() {
     fi
 }
 
-# VPCs
+# VPCs (list all; include Name if present)
 run_aws_command "ec2" "VPCs" \
-    "aws ec2 describe-vpcs --region '$REGION' --query 'Vpcs[?contains(Tags[?Key==\`Name\`].Value|[0],\`healthcare\`) || contains(Tags[?Key==\`Name\`].Value|[0],\`stage3\`)].[VpcId,Tags[?Key==\`Name\`].Value|[0],State,CidrBlock]' --output table"
+    "aws ec2 describe-vpcs --region '$REGION' --query 'Vpcs[].{VpcId:VpcId,Name:to_string(Tags[?Key==\`Name\`].Value|[0]),State:State,CidrBlock:CidrBlock}' --output table"
 
-# Subnets
+# Subnets (list all; include Name if present)
 run_aws_command "ec2" "Subnets" \
-    "aws ec2 describe-subnets --region '$REGION' --query 'Subnets[?contains(Tags[?Key==\`Name\`].Value|[0],\`healthcare\`) || contains(Tags[?Key==\`Name\`].Value|[0],\`stage3\`)].[SubnetId,VpcId,AvailabilityZone,CidrBlock,Tags[?Key==\`Name\`].Value|[0]]' --output table"
+    "aws ec2 describe-subnets --region '$REGION' --query 'Subnets[].{SubnetId:SubnetId,VpcId:VpcId,AvailabilityZone:AvailabilityZone,CidrBlock:CidrBlock,Name:to_string(Tags[?Key==\`Name\`].Value|[0])}' --output table"
 
 # NAT Gateways
 run_aws_command "ec2" "NAT Gateways" \
@@ -85,9 +85,9 @@ run_aws_command "ecr" "ECR Repositories" \
 run_aws_command "ec2" "Security Groups" \
     "aws ec2 describe-security-groups --region '$REGION' --query 'SecurityGroups[?contains(GroupName,\`healthcare\`) || contains(GroupName,\`stage3\`) || contains(Description,\`healthcare\`) || contains(Description,\`stage3\`)].[GroupId,GroupName,VpcId,Description]' --output table"
 
-# Route Tables
+# Route Tables (list all; include Name if present)
 run_aws_command "ec2" "Route Tables" \
-    "aws ec2 describe-route-tables --region '$REGION' --query 'RouteTables[?contains(Tags[?Key==\`Name\`].Value|[0],\`healthcare\`) || contains(Tags[?Key==\`Name\`].Value|[0],\`stage3\`)].[RouteTableId,VpcId,Tags[?Key==\`Name\`].Value|[0]]' --output table"
+    "aws ec2 describe-route-tables --region '$REGION' --query 'RouteTables[].{RouteTableId:RouteTableId,VpcId:VpcId,Name:to_string(Tags[?Key==\`Name\`].Value|[0])}' --output table"
 
 # Elastic IPs
 run_aws_command "ec2" "Elastic IPs" \

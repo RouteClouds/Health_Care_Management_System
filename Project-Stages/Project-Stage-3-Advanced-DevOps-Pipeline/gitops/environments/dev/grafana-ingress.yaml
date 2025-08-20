@@ -1,0 +1,55 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-stage3-ingress
+  namespace: monitoring
+  labels:
+    app: grafana
+    environment: dev
+    stage: stage-3
+  annotations:
+    # AWS Load Balancer Controller annotations for ALB
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '30'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '5'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: '3'
+    
+    # Security and performance
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
+    alb.ingress.kubernetes.io/group.name: healthcare-stage3-monitoring
+    
+    # Tags for cost tracking
+    alb.ingress.kubernetes.io/tags: |
+      Environment=dev,
+      Stage=stage-3,
+      Application=healthcare-monitoring,
+      Component=grafana,
+      ManagedBy=kubernetes
+spec:
+  ingressClassName: alb
+  rules:
+  - host: grafana.healthcare-stage3.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: healthcare-monitoring-grafana
+            port:
+              number: 80
+  # Alternative rule without host for direct ALB access
+  - http:
+      paths:
+      - path: /grafana
+        pathType: Prefix
+        backend:
+          service:
+            name: healthcare-monitoring-grafana
+            port:
+              number: 80
