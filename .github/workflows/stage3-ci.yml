@@ -769,6 +769,37 @@ jobs:
 
           echo "✅ AWS Load Balancer Controller installed - ALB support ready"
 
+      - name: Validate Terraform State and Outputs
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "🔍 Validating Terraform state and outputs before database setup..."
+
+          # Check if terraform state exists and is accessible
+          if terraform state list >/dev/null 2>&1; then
+            echo "✅ Terraform state is accessible"
+
+            # List all available outputs
+            echo "📋 Available Terraform outputs:"
+            terraform output 2>/dev/null || echo "No outputs available"
+
+            # Specifically check for required outputs
+            if terraform output db_instance_endpoint >/dev/null 2>&1; then
+              RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint 2>/dev/null || echo "")
+              if [[ -n "$RDS_ENDPOINT" && "$RDS_ENDPOINT" =~ \.rds\.amazonaws\.com$ ]]; then
+                echo "✅ Valid RDS endpoint output found: $RDS_ENDPOINT"
+              else
+                echo "⚠️ RDS endpoint output exists but is invalid: '$RDS_ENDPOINT'"
+                echo "Will fall back to AWS CLI discovery"
+              fi
+            else
+              echo "⚠️ db_instance_endpoint output not found - will use AWS CLI fallback"
+            fi
+          else
+            echo "⚠️ Terraform state is not accessible or not initialized"
+            echo "🔄 Attempting to refresh state..."
+            terraform refresh -auto-approve || echo "State refresh failed - will use AWS CLI fallback"
+          fi
+
       - name: Deploy application with latest GitOps manifests
         working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
         run: |
@@ -781,6 +812,20 @@ jobs:
 
           # Make script executable and run it
           chmod +x scripts/deployment/update-database-config.sh
+          # Provide RDS endpoint override if Terraform outputs are missing
+          # Try to derive via AWS CLI as a pre-step to avoid sed failures
+          export AWS_REGION=${{ env.AWS_REGION }}
+          export RDS_ENDPOINT_OVERRIDE=$(aws rds describe-db-instances \
+            --db-instance-identifier healthcare-eks-stage3-dev-db \
+            --region $AWS_REGION \
+            --query 'DBInstances[0].Endpoint.Address' \
+            --output text 2>/dev/null || echo "")
+          if [[ -n "$RDS_ENDPOINT_OVERRIDE" && "$RDS_ENDPOINT_OVERRIDE" == *".rds.amazonaws.com" ]]; then
+            echo "✅ Using RDS endpoint override: $RDS_ENDPOINT_OVERRIDE"
+          else
+            echo "ℹ️ No RDS endpoint override available; script will fall back internally"
+            unset RDS_ENDPOINT_OVERRIDE || true
+          fi
           ./scripts/deployment/update-database-config.sh
           # Restart backend to pick up updated Secret
           echo "🔄 Restarting backend deployment to pick up updated DATABASE_URL..."

@@ -47,44 +47,96 @@ resolve_rds_endpoint_via_aws() {
     echo "${addr}:${port}"
 }
 
-# Attempt to obtain endpoint via Terraform first; fall back to AWS CLI
+# Attempt to obtain endpoint via env override, then Terraform, then AWS CLI
 ACTUAL_RDS_ENDPOINT=""
 RDS_HOSTNAME=""
 
-echo "🗄️ Getting RDS endpoint from Terraform (preferred)..."
-pushd terraform/environments/dev >/dev/null
-if command -v terraform >/dev/null 2>&1; then
-    # Initialize backend to access remote state if needed, but keep it lightweight
-    if terraform output >/dev/null 2>&1; then
-        : # outputs accessible as-is
+# Allow CI to override via environment variable
+if [[ -n "${RDS_ENDPOINT_OVERRIDE:-}" ]]; then
+    if [[ "$RDS_ENDPOINT_OVERRIDE" =~ \.rds\.amazonaws\.com$ ]]; then
+        ACTUAL_RDS_ENDPOINT="$RDS_ENDPOINT_OVERRIDE"
+        echo "✅ Using RDS endpoint from environment override: $ACTUAL_RDS_ENDPOINT"
     else
-        # Try init without prompting; if init fails, we'll fall back to AWS CLI
-        terraform init -input=false -no-color >/dev/null 2>&1 || true
+        echo "⚠️ Provided RDS_ENDPOINT_OVERRIDE is invalid: '$RDS_ENDPOINT_OVERRIDE'"
     fi
-
-    if terraform output db_instance_endpoint >/dev/null 2>&1; then
-        ACTUAL_RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint)
-        echo "✅ Found RDS endpoint via Terraform: $ACTUAL_RDS_ENDPOINT"
+elif [[ -n "${RDS_ENDPOINT:-}" ]]; then
+    if [[ "$RDS_ENDPOINT" =~ \.rds\.amazonaws\.com$ ]]; then
+        ACTUAL_RDS_ENDPOINT="$RDS_ENDPOINT"
+        echo "✅ Using RDS endpoint from environment: $ACTUAL_RDS_ENDPOINT"
     else
-        echo "ℹ️ Terraform outputs not available or missing 'db_instance_endpoint'"
+        echo "⚠️ Provided RDS_ENDPOINT is invalid: '$RDS_ENDPOINT'"
     fi
-else
-    echo "ℹ️ Terraform is not installed in this job environment"
 fi
-popd >/dev/null
 
+if [[ -z "$ACTUAL_RDS_ENDPOINT" ]]; then
+    echo "🗄️ Getting RDS endpoint from Terraform (preferred)..."
+    pushd terraform/environments/dev >/dev/null
+    if command -v terraform >/dev/null 2>&1; then
+        # Initialize backend to access remote state if needed, but keep it lightweight
+        if terraform output >/dev/null 2>&1; then
+            :
+        else
+            terraform init -input=false -no-color >/dev/null 2>&1 || true
+        fi
+
+        # Check if terraform output is available and valid
+        if terraform output db_instance_endpoint >/dev/null 2>&1; then
+            TEMP_OUTPUT=$(terraform output -raw db_instance_endpoint 2>/dev/null || echo "")
+            if [[ -n "$TEMP_OUTPUT" && "$TEMP_OUTPUT" =~ \\.[r]ds\\.amazonaws\\.com$ ]]; then
+                ACTUAL_RDS_ENDPOINT="$TEMP_OUTPUT"
+                echo "✅ Found valid RDS endpoint via Terraform: $ACTUAL_RDS_ENDPOINT"
+            else
+                echo "⚠️ Terraform output exists but is not a valid RDS endpoint: '$TEMP_OUTPUT'"
+                ACTUAL_RDS_ENDPOINT=""
+            fi
+        else
+            echo "ℹ️ Terraform output 'db_instance_endpoint' not available"
+            ACTUAL_RDS_ENDPOINT=""
+        fi
+    else
+        echo "ℹ️ Terraform is not installed in this job environment"
+    fi
+    popd >/dev/null
+fi
+
+# Enhanced AWS CLI fallback with multiple methods
 if [[ -z "${ACTUAL_RDS_ENDPOINT}" ]]; then
-    if ACTUAL_RDS_ENDPOINT=$(resolve_rds_endpoint_via_aws "$AWS_REGION_ENV"); then
-        echo "✅ Found RDS endpoint via AWS CLI: $ACTUAL_RDS_ENDPOINT"
+    echo "🌐 Using AWS CLI to discover RDS endpoint..."
+
+    # Try multiple methods to find the RDS instance
+    RDS_IDENTIFIER="healthcare-eks-stage3-dev-db"
+
+    # Method 1: Direct identifier lookup
+    if aws rds describe-db-instances --db-instance-identifier "$RDS_IDENTIFIER" --region "$AWS_REGION_ENV" >/dev/null 2>&1; then
+        ACTUAL_RDS_ENDPOINT=$(aws rds describe-db-instances \
+            --db-instance-identifier "$RDS_IDENTIFIER" \
+            --region "$AWS_REGION_ENV" \
+            --query 'DBInstances[0].Endpoint.Address' \
+            --output text 2>/dev/null)
+        echo "✅ Found RDS endpoint via AWS CLI (direct): $ACTUAL_RDS_ENDPOINT"
     else
-        echo "❌ Could not determine RDS endpoint via Terraform or AWS CLI"
-        exit 1
+        # Method 2: Search by tag or pattern
+        echo "🔍 Searching for RDS instance by pattern..."
+        if ACTUAL_RDS_ENDPOINT=$(resolve_rds_endpoint_via_aws "$AWS_REGION_ENV"); then
+            echo "✅ Found RDS endpoint via AWS CLI (search): $ACTUAL_RDS_ENDPOINT"
+        else
+            echo "❌ Could not determine RDS endpoint via Terraform or AWS CLI"
+            exit 1
+        fi
     fi
 fi
 
-# Extract hostname only (strip :port if present) to safely replace inside connection URL
+# Extract hostname and validate it
 RDS_HOSTNAME="${ACTUAL_RDS_ENDPOINT%%:*}"
-echo "🔎 Using RDS hostname for manifest substitution: ${RDS_HOSTNAME}"
+
+# Validate RDS hostname before using in sed
+if [[ ! "$RDS_HOSTNAME" =~ ^[a-zA-Z0-9.-]+\.rds\.amazonaws\.com$ ]]; then
+    echo "❌ Invalid RDS hostname format: '$RDS_HOSTNAME'"
+    echo "Expected format: *.rds.amazonaws.com"
+    exit 1
+fi
+
+echo "🔎 Using validated RDS hostname for manifest substitution: ${RDS_HOSTNAME}"
 
 # Try updating the cluster Secret first if kubectl is available and the Secret exists,
 # or if mode is explicitly set to "cluster"
@@ -160,10 +212,20 @@ echo "📝 Cluster Secret not available; updating GitOps manifest file: $BACKEND
 # Create backup
 cp "$BACKEND_MANIFEST" "$BACKEND_MANIFEST.backup"
 
-# Replace placeholder RDS endpoint hostname with actual hostname (not host:port)
+# Safe sed commands with proper escaping and validation
+echo "🔧 Replacing RDS endpoint placeholders with actual hostname..."
+
+# Replace known placeholder patterns (escape dots for regex)
 sed -i "s|healthcare-eks-stage3-dev-db\\.c6t4q0g6i4n5\\.us-east-1\\.rds\\.amazonaws\\.com|$RDS_HOSTNAME|g" "$BACKEND_MANIFEST"
 sed -i "s|healthcare-eks-stage3-dev-db\\.cluster-[a-zA-Z0-9]*\\.us-east-1\\.rds\\.amazonaws\\.com|$RDS_HOSTNAME|g" "$BACKEND_MANIFEST"
 sed -i "s|YOUR_RDS_ENDPOINT_HERE|$RDS_HOSTNAME|g" "$BACKEND_MANIFEST"
+
+# Verify the replacement worked
+if ! grep -q "$RDS_HOSTNAME" "$BACKEND_MANIFEST"; then
+    echo "⚠️ Warning: RDS hostname replacement may have failed"
+    echo "🔍 Checking for any remaining placeholders..."
+    grep -n "YOUR_RDS_ENDPOINT_HERE\|healthcare-eks-stage3-dev-db\\.c6t4q0g6i4n5" "$BACKEND_MANIFEST" || echo "No obvious placeholders found"
+fi
 
 echo "✅ Manifest updated"
 echo "🔍 Verifying database URL update:"
