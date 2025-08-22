@@ -76,7 +76,11 @@ check_infrastructure_health() {
     
     # Check for available EIPs that can be reused
     local available_eips
-    available_eips=$(aws ec2 describe-addresses --filters "Name=domain,Values=vpc" "Name=association.association-id,Values=" --query 'Addresses[].AllocationId' --output text)
+    # Query unassociated VPC EIPs correctly (AssociationId == null)
+    available_eips=$(aws ec2 describe-addresses \
+        --filters "Name=domain,Values=vpc" \
+        --query 'Addresses[?AssociationId==`null`].AllocationId' \
+        --output text)
     local eip_count
     eip_count=$(echo "$available_eips" | wc -w)
 

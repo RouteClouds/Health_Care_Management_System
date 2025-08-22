@@ -869,10 +869,69 @@ jobs:
         with:
           version: 'latest'
 
+      - name: Get infrastructure outputs for Ansible
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "📋 Gathering infrastructure information for Ansible..."
+
+          # Get RDS endpoint
+          RDS_ENDPOINT=""
+          if terraform output db_instance_endpoint >/dev/null 2>&1; then
+            RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint 2>/dev/null || echo "")
+          fi
+
+          # Fallback to AWS CLI if Terraform output not available
+          if [[ -z "$RDS_ENDPOINT" ]]; then
+            RDS_ENDPOINT=$(aws rds describe-db-instances \
+              --db-instance-identifier healthcare-eks-stage3-dev-db \
+              --region ${{ env.AWS_REGION }} \
+              --query 'DBInstances[0].Endpoint.Address' \
+              --output text 2>/dev/null || echo "")
+          fi
+
+          # Get Cluster name from Terraform outputs if available
+          CLUSTER_NAME="healthcare-eks-stage3-dev"
+          if terraform output cluster_id >/dev/null 2>&1; then
+            CLUSTER_NAME=$(terraform output -raw cluster_id 2>/dev/null || echo "healthcare-eks-stage3-dev")
+          fi
+
+          # Get AWS Account ID
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          # Export for Ansible
+          echo "RDS_ENDPOINT=$RDS_ENDPOINT" >> $GITHUB_ENV
+          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
+          echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
+
+          echo "📊 Infrastructure Information:"
+          echo "   RDS Endpoint: $RDS_ENDPOINT"
+          echo "   AWS Account ID: $AWS_ACCOUNT_ID"
+          echo "   EKS Cluster Name: $CLUSTER_NAME"
+
+      - name: Wait for EKS cluster to be ACTIVE
+        run: |
+          echo "⏳ Waiting for EKS cluster ($CLUSTER_NAME) to be ACTIVE..."
+          ATTEMPTS=70
+          SLEEP_SECONDS=30
+          STATUS="UNKNOWN"
+          for i in $(seq 1 $ATTEMPTS); do
+            STATUS=$(aws eks describe-cluster --region ${{ env.AWS_REGION }} --name "$CLUSTER_NAME" --query 'cluster.status' --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "Attempt $i/$ATTEMPTS - Cluster status: $STATUS"
+            if [[ "$STATUS" == "ACTIVE" ]]; then
+              echo "✅ Cluster is ACTIVE"
+              break
+            fi
+            sleep $SLEEP_SECONDS
+          done
+          if [[ "$STATUS" != "ACTIVE" ]]; then
+            echo "❌ EKS cluster is not ACTIVE or not found"
+            exit 1
+          fi
+
       - name: Configure kubectl for EKS
         run: |
           echo "🔧 Configuring kubectl for Ansible operations..."
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name healthcare-eks-stage3-dev
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$CLUSTER_NAME"
 
           # Verify cluster connectivity
           kubectl cluster-info
