@@ -9,10 +9,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.1"
-    }
   }
 }
 
@@ -33,19 +29,19 @@ provider "aws" {
 # Get current AWS account ID
 data "aws_caller_identity" "current" {}
 
-# Generate random suffix for unique bucket naming
-resource "random_integer" "bucket_suffix" {
-  min = 1000
-  max = 9999
-}
-
-# S3 bucket for Terraform state
+# S3 bucket for Terraform state (deterministic naming for idempotency)
 resource "aws_s3_bucket" "terraform_state" {
-  bucket = "healthcare-terraform-state-stage3-${data.aws_caller_identity.current.account_id}-${random_integer.bucket_suffix.result}"
+  bucket = "healthcare-terraform-state-stage3-${data.aws_caller_identity.current.account_id}"
+
+  # Lifecycle rule to prevent accidental deletion
+  lifecycle {
+    prevent_destroy = true
+  }
 
   tags = {
     Name        = "Healthcare Terraform State - Stage 3"
     Description = "Stores Terraform state files for Stage-3 infrastructure"
+    Purpose     = "terraform-backend"
   }
 }
 

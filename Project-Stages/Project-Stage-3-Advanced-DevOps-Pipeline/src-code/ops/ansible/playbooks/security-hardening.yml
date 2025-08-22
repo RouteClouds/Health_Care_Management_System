@@ -1,0 +1,279 @@
+---
+# Security Hardening Playbook for Healthcare Stage-3
+# Implements security best practices for AWS infrastructure and Kubernetes
+- name: Security Hardening for Healthcare Platform
+  hosts: localhost
+  gather_facts: yes
+  vars:
+    # Security configuration
+    allowed_cidr_blocks:
+      - "10.0.0.0/16"  # VPC CIDR
+    
+    # SSL/TLS configuration
+    ssl_policy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+    
+  tasks:
+    # Get VPC and subnet information
+    - name: Get VPC information
+      amazon.aws.ec2_vpc_info:
+        filters:
+          "tag:Name": "{{ k8s_cluster_name }}-vpc"
+        region: "{{ aws_region }}"
+      register: vpc_info
+
+    - name: Set VPC ID
+      set_fact:
+        vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
+      when: vpc_info.vpcs | length > 0
+
+    - name: Get EKS cluster security group
+      amazon.aws.ec2_security_group_info:
+        filters:
+          group-name: "*{{ k8s_cluster_name }}*"
+          vpc-id: "{{ vpc_id }}"
+        region: "{{ aws_region }}"
+      register: eks_sg_info
+
+    # RDS Security Group Hardening
+    - name: Create/Update RDS security group with strict rules
+      amazon.aws.ec2_security_group:
+        name: "{{ k8s_cluster_name }}-rds-sg-hardened"
+        description: "Hardened security group for RDS instance"
+        vpc_id: "{{ vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          # Only allow PostgreSQL access from EKS security group
+          - proto: tcp
+            ports: [5432]
+            group_id: "{{ eks_sg_info.security_groups[0].group_id }}"
+            rule_desc: "PostgreSQL from EKS cluster only"
+        rules_egress:
+          # Minimal egress - only allow responses
+          - proto: tcp
+            ports: [5432]
+            cidr_ip: "{{ vpc_info.vpcs[0].cidr_block }}"
+            rule_desc: "PostgreSQL responses within VPC"
+        tags: "{{ common_tags | combine({'Name': k8s_cluster_name + '-rds-sg-hardened', 'Purpose': 'database-security'}) }}"
+
+    # Application Load Balancer Security Group
+    - name: Create/Update ALB security group
+      amazon.aws.ec2_security_group:
+        name: "{{ k8s_cluster_name }}-alb-sg-hardened"
+        description: "Hardened security group for Application Load Balancer"
+        vpc_id: "{{ vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          # HTTPS only from internet
+          - proto: tcp
+            ports: [443]
+            cidr_ip: "0.0.0.0/0"
+            rule_desc: "HTTPS from internet"
+          # HTTP redirect to HTTPS
+          - proto: tcp
+            ports: [80]
+            cidr_ip: "0.0.0.0/0"
+            rule_desc: "HTTP redirect to HTTPS"
+        rules_egress:
+          # Allow outbound to EKS nodes
+          - proto: tcp
+            ports: [30000, 32767]
+            cidr_ip: "{{ vpc_info.vpcs[0].cidr_block }}"
+            rule_desc: "NodePort range to EKS"
+        tags: "{{ common_tags | combine({'Name': k8s_cluster_name + '-alb-sg-hardened', 'Purpose': 'load-balancer-security'}) }}"
+
+    # EKS Cluster Security Hardening
+    - name: Update EKS cluster logging configuration
+      amazon.aws.aws_eks_cluster:
+        name: "{{ k8s_cluster_name }}"
+        region: "{{ aws_region }}"
+        logging:
+          enable:
+            - api
+            - audit
+            - authenticator
+            - controllerManager
+            - scheduler
+        tags: "{{ common_tags }}"
+
+    # IAM Role for Enhanced Security
+    - name: Create IAM role for security monitoring
+      amazon.aws.iam_managed_policy:
+        name: "{{ k8s_cluster_name }}-security-monitoring-policy"
+        policy: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents",
+                  "logs:DescribeLogGroups",
+                  "logs:DescribeLogStreams"
+                ],
+                "Resource": "arn:aws:logs:{{ aws_region }}:{{ aws_account_id }}:log-group:/aws/eks/{{ k8s_cluster_name }}/*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudwatch:PutMetricData",
+                  "cloudwatch:GetMetricStatistics",
+                  "cloudwatch:ListMetrics"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+        state: present
+
+    # Kubernetes Security Configurations
+    - name: Create security-related Kubernetes resources
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: security-config
+            namespace: "{{ k8s_namespace }}"
+          type: Opaque
+          data:
+            # Security headers configuration
+            security_headers: "{{ security_headers_config | b64encode }}"
+            # CORS configuration
+            cors_config: "{{ cors_config | b64encode }}"
+      vars:
+        security_headers_config: |
+          X-Frame-Options: DENY
+          X-Content-Type-Options: nosniff
+          X-XSS-Protection: 1; mode=block
+          Strict-Transport-Security: max-age=31536000; includeSubDomains
+          Content-Security-Policy: default-src 'self'
+          Referrer-Policy: strict-origin-when-cross-origin
+        cors_config: |
+          {
+            "allowedOrigins": ["https://{{ app_domain }}"],
+            "allowedMethods": ["GET", "POST", "PUT", "DELETE"],
+            "allowedHeaders": ["Content-Type", "Authorization"],
+            "allowCredentials": true,
+            "maxAge": 86400
+          }
+
+    # Network Policies for Kubernetes
+    - name: Create network policy for database access
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: database-access-policy
+            namespace: "{{ k8s_namespace }}"
+          spec:
+            podSelector:
+              matchLabels:
+                app: healthcare-backend-stage3
+            policyTypes:
+              - Egress
+            egress:
+              # Allow DNS resolution
+              - to: []
+                ports:
+                  - protocol: UDP
+                    port: 53
+              # Allow database access
+              - to: []
+                ports:
+                  - protocol: TCP
+                    port: 5432
+
+    - name: Create network policy for frontend-backend communication
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: frontend-backend-policy
+            namespace: "{{ k8s_namespace }}"
+          spec:
+            podSelector:
+              matchLabels:
+                app: healthcare-frontend-stage3
+            policyTypes:
+              - Egress
+            egress:
+              # Allow backend API access
+              - to:
+                  - podSelector:
+                      matchLabels:
+                        app: healthcare-backend-stage3
+                ports:
+                  - protocol: TCP
+                    port: 3000
+
+    # SSL/TLS Certificate Management
+    - name: Create TLS certificate for application
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: healthcare-tls-cert
+            namespace: "{{ k8s_namespace }}"
+          spec:
+            secretName: healthcare-tls-secret
+            issuerRef:
+              name: letsencrypt-prod
+              kind: ClusterIssuer
+            dnsNames:
+              - "{{ app_domain }}"
+              - "api.{{ app_domain }}"
+      when: ssl_enabled | default(true)
+
+    # Security Scanning Configuration
+    - name: Create security scanning ConfigMap
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: security-scanning-config
+            namespace: "{{ k8s_namespace }}"
+          data:
+            scan_schedule: "0 2 * * *"  # Daily at 2 AM
+            scan_types: "vulnerability,compliance,secrets"
+            notification_webhook: "{{ lookup('env', 'SECURITY_WEBHOOK_URL') | default('') }}"
+      when: features.security_scanning | default(false)
+
+    # Pod Security Standards
+    - name: Create Pod Security Policy
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ k8s_namespace }}"
+            labels:
+              pod-security.kubernetes.io/enforce: restricted
+              pod-security.kubernetes.io/audit: restricted
+              pod-security.kubernetes.io/warn: restricted
+
+    # Validation
+    - name: Validate security group configurations
+      amazon.aws.ec2_security_group_info:
+        group-names:
+          - "{{ k8s_cluster_name }}-rds-sg-hardened"
+          - "{{ k8s_cluster_name }}-alb-sg-hardened"
+        region: "{{ aws_region }}"
+      register: security_groups_validation
+
+    - name: Display security hardening summary
+      debug:
+        msg: |
+          Security hardening completed successfully:
+          - RDS Security Group: {{ k8s_cluster_name }}-rds-sg-hardened
+          - ALB Security Group: {{ k8s_cluster_name }}-alb-sg-hardened
+          - EKS Logging: Enabled (api, audit, authenticator, controllerManager, scheduler)
+          - Network Policies: Created for database and frontend-backend communication
+          - TLS Certificate: {{ 'Configured' if ssl_enabled else 'Skipped' }}
+          - Pod Security Standards: Restricted mode enforced
+          - Security scanning: {{ 'Enabled' if features.security_scanning else 'Disabled' }}

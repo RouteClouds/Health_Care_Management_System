@@ -610,6 +610,53 @@ jobs:
           # Show plan summary
           terraform show -no-color tfplan | head -50
 
+      - name: Safety Guard - Validate Plan
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "🛡️ Running safety guard to prevent mass resource creation..."
+
+          # Parse terraform plan to count creates
+          CREATE_COUNT=$(terraform show -json tfplan | jq -r '.resource_changes[]? | select(.change.actions[]? == "create") | .address' | wc -l)
+          UPDATE_COUNT=$(terraform show -json tfplan | jq -r '.resource_changes[]? | select(.change.actions[]? == "update") | .address' | wc -l)
+          DELETE_COUNT=$(terraform show -json tfplan | jq -r '.resource_changes[]? | select(.change.actions[]? == "delete") | .address' | wc -l)
+
+          echo "📊 Terraform Plan Analysis:"
+          echo "   Resources to CREATE: $CREATE_COUNT"
+          echo "   Resources to UPDATE: $UPDATE_COUNT"
+          echo "   Resources to DELETE: $DELETE_COUNT"
+
+          # Safety threshold (can be overridden via repository variable)
+          SAFETY_THRESHOLD="${{ vars.TERRAFORM_CREATE_THRESHOLD || '5' }}"
+          FORCE_APPLY="${{ vars.FORCE_TERRAFORM_APPLY || 'false' }}"
+
+          echo "🎯 Safety threshold: $SAFETY_THRESHOLD creates"
+          echo "🔧 Force apply override: $FORCE_APPLY"
+
+          # Check if we're creating too many resources
+          if [[ "$CREATE_COUNT" -gt "$SAFETY_THRESHOLD" ]] && [[ "$FORCE_APPLY" != "true" ]]; then
+            echo "🚨 SAFETY GUARD TRIGGERED!"
+            echo "❌ Plan shows $CREATE_COUNT resources to be created, which exceeds threshold of $SAFETY_THRESHOLD"
+            echo ""
+            echo "📋 Resources to be created:"
+            terraform show -json tfplan | jq -r '.resource_changes[]? | select(.change.actions[]? == "create") | .address'
+            echo ""
+            echo "🛡️ This could indicate duplicate resource creation or unintended mass deployment."
+            echo "🔧 To override this safety check, set repository variable FORCE_TERRAFORM_APPLY=true"
+            echo "⚙️ To adjust threshold, set repository variable TERRAFORM_CREATE_THRESHOLD to desired number"
+            echo ""
+            echo "💡 Recommended actions:"
+            echo "   1. Review the plan carefully for duplicate resources"
+            echo "   2. Check if existing resources should be imported instead"
+            echo "   3. Verify this is an intentional fresh deployment"
+            exit 1
+          else
+            echo "✅ Safety guard passed - proceeding with deployment"
+            if [[ "$CREATE_COUNT" -gt 0 ]]; then
+              echo "📋 Resources that will be created:"
+              terraform show -json tfplan | jq -r '.resource_changes[]? | select(.change.actions[]? == "create") | .address'
+            fi
+          fi
+
       - name: Handle Infrastructure Conflicts
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
@@ -714,10 +761,240 @@ jobs:
 
           echo "✅ Infrastructure validation completed"
 
+      - name: Drift Detection & State Consistency Check
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "🔍 Running drift detection and state consistency check..."
+
+          # Run terraform plan to detect any drift
+          echo "📋 Checking for configuration drift..."
+          terraform plan -detailed-exitcode -out=drift-check-plan || {
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 2 ]; then
+              echo "⚠️ Configuration drift detected!"
+              echo "📋 Drift details:"
+              terraform show -no-color drift-check-plan | head -100
+
+              # Count the changes
+              CREATE_COUNT=$(terraform show -json drift-check-plan | jq -r '.resource_changes[]? | select(.change.actions[]? == "create") | .address' | wc -l)
+              UPDATE_COUNT=$(terraform show -json drift-check-plan | jq -r '.resource_changes[]? | select(.change.actions[]? == "update") | .address' | wc -l)
+              DELETE_COUNT=$(terraform show -json drift-check-plan | jq -r '.resource_changes[]? | select(.change.actions[]? == "delete") | .address' | wc -l)
+
+              echo "📊 Drift Summary:"
+              echo "   Resources to CREATE: $CREATE_COUNT"
+              echo "   Resources to UPDATE: $UPDATE_COUNT"
+              echo "   Resources to DELETE: $DELETE_COUNT"
+
+              # If only updates (configuration drift), that's acceptable
+              if [[ "$CREATE_COUNT" -eq 0 && "$DELETE_COUNT" -eq 0 ]]; then
+                echo "✅ Only configuration updates detected - acceptable drift"
+              else
+                echo "❌ Structural changes detected - this indicates potential issues"
+                echo "🔍 Resources with structural changes:"
+                if [[ "$CREATE_COUNT" -gt 0 ]]; then
+                  echo "   Creates:"
+                  terraform show -json drift-check-plan | jq -r '.resource_changes[]? | select(.change.actions[]? == "create") | .address'
+                fi
+                if [[ "$DELETE_COUNT" -gt 0 ]]; then
+                  echo "   Deletes:"
+                  terraform show -json drift-check-plan | jq -r '.resource_changes[]? | select(.change.actions[]? == "delete") | .address'
+                fi
+                exit 1
+              fi
+            elif [ $EXIT_CODE -eq 1 ]; then
+              echo "❌ Terraform plan failed"
+              exit 1
+            fi
+          }
+
+          if [ $? -eq 0 ]; then
+            echo "✅ No configuration drift detected - infrastructure is in desired state"
+          fi
+
+          # Validate state file integrity
+          echo "🔍 Validating Terraform state integrity..."
+          terraform state list > /tmp/state_resources.txt
+          RESOURCE_COUNT=$(wc -l < /tmp/state_resources.txt)
+          echo "📊 Resources in state: $RESOURCE_COUNT"
+
+          if [[ "$RESOURCE_COUNT" -lt 5 ]]; then
+            echo "⚠️ Suspiciously low resource count in state - possible state corruption"
+            echo "📋 Resources in state:"
+            cat /tmp/state_resources.txt
+          else
+            echo "✅ State file appears healthy with $RESOURCE_COUNT resources"
+          fi
+
+          # Clean up temporary files
+          rm -f drift-check-plan /tmp/state_resources.txt
+
+          echo "✅ Drift detection and state consistency check completed"
+
+  ansible-configuration:
+    name: Ansible Configuration Management
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Python and Ansible
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible and dependencies
+        run: |
+          echo "🔧 Installing Ansible and required collections..."
+          pip install ansible boto3 botocore kubernetes
+
+          # Install required Ansible collections
+          ansible-galaxy collection install amazon.aws
+          ansible-galaxy collection install kubernetes.core
+          ansible-galaxy collection install community.postgresql
+
+          echo "✅ Ansible installation completed"
+          ansible --version
+
+      - name: Setup kubectl for Ansible
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure kubectl for EKS
+        run: |
+          echo "🔧 Configuring kubectl for Ansible operations..."
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name healthcare-eks-stage3-dev
+
+          # Verify cluster connectivity
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Get infrastructure outputs for Ansible
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "📋 Gathering infrastructure information for Ansible..."
+
+          # Get RDS endpoint
+          RDS_ENDPOINT=""
+          if terraform output db_instance_endpoint >/dev/null 2>&1; then
+            RDS_ENDPOINT=$(terraform output -raw db_instance_endpoint 2>/dev/null || echo "")
+          fi
+
+          # Fallback to AWS CLI if Terraform output not available
+          if [[ -z "$RDS_ENDPOINT" ]]; then
+            RDS_ENDPOINT=$(aws rds describe-db-instances \
+              --db-instance-identifier healthcare-eks-stage3-dev-db \
+              --region ${{ env.AWS_REGION }} \
+              --query 'DBInstances[0].Endpoint.Address' \
+              --output text 2>/dev/null || echo "")
+          fi
+
+          # Get AWS Account ID
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          # Export for Ansible
+          echo "RDS_ENDPOINT=$RDS_ENDPOINT" >> $GITHUB_ENV
+          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
+
+          echo "📊 Infrastructure Information:"
+          echo "   RDS Endpoint: $RDS_ENDPOINT"
+          echo "   AWS Account ID: $AWS_ACCOUNT_ID"
+
+      - name: Run Database Configuration
+        working-directory: ${{ env.SOURCE_CODE_PATH }}/ops/ansible
+        run: |
+          echo "🗄️ Running database configuration with Ansible..."
+
+          # Set required environment variables
+          export DB_PASSWORD="${{ secrets.DB_PASSWORD || 'healthcare_stage3_password_change_me' }}"
+          export APP_DB_PASSWORD="${{ secrets.APP_DB_PASSWORD || 'healthcare_app_password_change_me' }}"
+          export READONLY_DB_PASSWORD="${{ secrets.READONLY_DB_PASSWORD || 'readonly_password_change_me' }}"
+          export BACKUP_DB_PASSWORD="${{ secrets.BACKUP_DB_PASSWORD || 'backup_password_change_me' }}"
+
+          # Run database configuration playbook
+          ansible-playbook -i inventory/ \
+            playbooks/database-config.yml \
+            -e environment=dev \
+            -e aws_region=${{ env.AWS_REGION }} \
+            -e aws_account_id=$AWS_ACCOUNT_ID \
+            -e rds_endpoint=$RDS_ENDPOINT \
+            -v
+
+          echo "✅ Database configuration completed"
+
+      - name: Run Security Hardening
+        working-directory: ${{ env.SOURCE_CODE_PATH }}/ops/ansible
+        run: |
+          echo "🛡️ Running security hardening with Ansible..."
+
+          # Run security hardening playbook
+          ansible-playbook -i inventory/ \
+            playbooks/security-hardening.yml \
+            -e environment=dev \
+            -e aws_region=${{ env.AWS_REGION }} \
+            -e aws_account_id=$AWS_ACCOUNT_ID \
+            -v
+
+          echo "✅ Security hardening completed"
+
+      - name: Run Monitoring Setup
+        working-directory: ${{ env.SOURCE_CODE_PATH }}/ops/ansible
+        run: |
+          echo "📊 Setting up monitoring with Ansible..."
+
+          # Set monitoring-specific environment variables
+          export GRAFANA_ADMIN_PASSWORD="${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin123' }}"
+          export GRAFANA_API_KEY="${{ secrets.GRAFANA_API_KEY || '' }}"
+          export SECURITY_WEBHOOK_URL="${{ secrets.SECURITY_WEBHOOK_URL || '' }}"
+
+          # Run monitoring setup playbook
+          ansible-playbook -i inventory/ \
+            playbooks/monitoring-setup.yml \
+            -e environment=dev \
+            -e aws_region=${{ env.AWS_REGION }} \
+            -e aws_account_id=$AWS_ACCOUNT_ID \
+            -v
+
+          echo "✅ Monitoring setup completed"
+
+      - name: Validate Ansible Configuration
+        working-directory: ${{ env.SOURCE_CODE_PATH }}/ops/ansible
+        run: |
+          echo "🔍 Validating Ansible configuration results..."
+
+          # Check database connectivity
+          echo "Testing database connectivity..."
+          kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev >/dev/null 2>&1 && \
+            echo "✅ Database credentials secret exists" || \
+            echo "⚠️ Database credentials secret not found"
+
+          # Check security configurations
+          echo "Checking security configurations..."
+          kubectl get networkpolicy -n healthcare-stage3-dev >/dev/null 2>&1 && \
+            echo "✅ Network policies configured" || \
+            echo "⚠️ Network policies not found"
+
+          # Check monitoring setup
+          echo "Checking monitoring setup..."
+          kubectl get configmap prometheus-config -n monitoring >/dev/null 2>&1 && \
+            echo "✅ Prometheus configuration exists" || \
+            echo "⚠️ Prometheus configuration not found"
+
+          echo "✅ Ansible configuration validation completed"
+
   deploy-application:
     name: Deploy Application with Automated Database Setup
     runs-on: ubuntu-latest
-    needs: [deploy-infrastructure]
+    needs: [deploy-infrastructure, ansible-configuration]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout

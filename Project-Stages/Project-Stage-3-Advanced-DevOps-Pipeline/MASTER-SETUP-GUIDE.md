@@ -7,10 +7,12 @@ This guide provides **complete step-by-step instructions** for deploying the Hea
 **What You'll Deploy:**
 - Enterprise-grade Kubernetes cluster (AWS EKS)
 - Infrastructure as Code (Terraform)
+- Configuration Management (Ansible)
 - GitOps deployment pipeline (ArgoCD)
 - Comprehensive monitoring (Prometheus/Grafana)
 - Centralized logging (ELK Stack)
 - Auto-scaling and high availability
+- Advanced security hardening and compliance
 
 **Estimated Total Time:** 4-6 hours
 **Skill Level:** Intermediate to Advanced
@@ -26,11 +28,12 @@ This guide provides **complete step-by-step instructions** for deploying the Hea
 6. [GitHub Configuration](#github-configuration)
 7. [Contributing to the Healthcare Management System](#contributing-to-the-healthcare-management-system)
 8. [Infrastructure Deployment](#infrastructure-deployment)
-9. [Application Deployment](#application-deployment)
-10. [ArgoCD Deployment and GitOps Configuration](#argocd-deployment-and-gitops-configuration)
-11. [Monitoring Setup](#monitoring-setup)
-12. [Validation & Testing](#validation--testing)
-13. [Troubleshooting](#troubleshooting)
+9. [Ansible Configuration Management](#ansible-configuration-management)
+10. [Application Deployment](#application-deployment)
+11. [ArgoCD Deployment and GitOps Configuration](#argocd-deployment-and-gitops-configuration)
+12. [Monitoring Setup](#monitoring-setup)
+13. [Validation & Testing](#validation--testing)
+14. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -1832,6 +1835,175 @@ echo "📊 Total expected time: 25-40 minutes"
 - **✅ GitOps jobs**: Should sync with ArgoCD in deployed cluster
 
 **⏱️ Estimated Time: 45-60 minutes infrastructure + 30 minutes pipeline testing**
+
+---
+
+## 🔧 Ansible Configuration Management
+
+### **Overview**
+
+After infrastructure deployment, Ansible automatically configures and hardens your environment with:
+
+- **🗄️ Database Configuration**: PostgreSQL parameter tuning, user management, extensions
+- **🛡️ Security Hardening**: Network policies, SSL/TLS setup, security groups
+- **📊 Monitoring Setup**: Prometheus configuration, Grafana dashboards, alerting rules
+- **🔐 Compliance**: Security standards and best practices implementation
+
+### **🎯 Automated Ansible Integration**
+
+**Ansible runs automatically in the CI/CD pipeline after infrastructure deployment:**
+
+```
+Infrastructure Deployment → Ansible Configuration → Application Deployment
+```
+
+**What Ansible Configures Automatically:**
+
+1. **🗄️ Database Configuration**
+   - PostgreSQL performance parameters
+   - Application database users and permissions
+   - Database extensions (pg_stat_statements, pgcrypto, uuid-ossp)
+   - Backup and monitoring configuration
+
+2. **🛡️ Security Hardening**
+   - Kubernetes network policies
+   - AWS security group rules
+   - SSL/TLS certificate management
+   - Pod security standards enforcement
+
+3. **📊 Monitoring & Observability**
+   - Prometheus scraping configuration
+   - Grafana dashboard deployment
+   - CloudWatch integration for RDS
+   - Log aggregation setup
+
+### **📋 Required Secrets Configuration**
+
+**Add these secrets to your GitHub repository for Ansible automation:**
+
+```bash
+# Navigate to your GitHub repository
+# Go to Settings → Secrets and variables → Actions
+# Add the following repository secrets:
+
+# Database passwords
+DB_PASSWORD=your_master_db_password_here
+APP_DB_PASSWORD=your_app_db_password_here
+READONLY_DB_PASSWORD=your_readonly_db_password_here
+BACKUP_DB_PASSWORD=your_backup_db_password_here
+
+# Monitoring credentials
+GRAFANA_ADMIN_PASSWORD=your_grafana_admin_password_here
+GRAFANA_API_KEY=your_grafana_api_key_here  # Optional
+
+# Security webhooks (optional)
+SECURITY_WEBHOOK_URL=your_security_webhook_url_here  # Optional
+```
+
+### **🔍 Manual Ansible Execution (Optional)**
+
+**If you need to run Ansible manually for troubleshooting:**
+
+```bash
+# Navigate to Ansible directory
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/ops/ansible
+
+# Install Ansible and dependencies
+pip install ansible boto3 botocore kubernetes
+ansible-galaxy collection install -r requirements.yml
+
+# Configure AWS and kubectl
+aws eks update-kubeconfig --region $AWS_REGION --name healthcare-eks-stage3-dev
+
+# Run individual playbooks
+ansible-playbook -i inventory/ playbooks/database-config.yml -e environment=dev
+ansible-playbook -i inventory/ playbooks/security-hardening.yml -e environment=dev
+ansible-playbook -i inventory/ playbooks/monitoring-setup.yml -e environment=dev
+```
+
+### **📊 Ansible Configuration Validation**
+
+**After pipeline completion, verify Ansible configurations:**
+
+```bash
+# Check database configuration
+kubectl get secret database-credentials-stage3 -n healthcare-stage3-dev
+
+# Verify security policies
+kubectl get networkpolicy -n healthcare-stage3-dev
+
+# Check monitoring setup
+kubectl get configmap prometheus-config -n monitoring
+kubectl get configmap grafana-dashboards -n monitoring
+
+# Validate RDS parameter group
+aws rds describe-db-parameter-groups --db-parameter-group-name healthcare-eks-stage3-dev-db-custom-params
+```
+
+### **🛠️ Ansible Directory Structure**
+
+```
+src-code/ops/ansible/
+├── ansible.cfg                    # Ansible configuration
+├── requirements.yml               # Collection dependencies
+├── inventory/
+│   ├── aws_ec2.yml                # AWS EC2 dynamic inventory
+│   ├── kubernetes.yml             # Kubernetes dynamic inventory
+│   └── group_vars/
+│       ├── all.yml                # Global variables
+│       └── development.yml        # Environment-specific variables
+└── playbooks/
+    ├── database-config.yml        # Database configuration
+    ├── security-hardening.yml     # Security hardening
+    └── monitoring-setup.yml       # Monitoring setup
+```
+
+### **🔧 Customizing Ansible Configuration**
+
+**To modify Ansible behavior, edit the group variables:**
+
+```bash
+# Edit global configuration
+nano src-code/ops/ansible/inventory/group_vars/all.yml
+
+# Edit environment-specific settings
+nano src-code/ops/ansible/inventory/group_vars/development.yml
+
+# Commit changes to trigger pipeline
+git add src-code/ops/ansible/
+git commit -m "config: update Ansible configuration"
+git push origin main
+```
+
+### **🚨 Troubleshooting Ansible Issues**
+
+**Common issues and solutions:**
+
+1. **Database Connection Failed**
+   ```bash
+   # Check RDS endpoint
+   aws rds describe-db-instances --db-instance-identifier healthcare-eks-stage3-dev-db
+
+   # Verify security groups
+   kubectl get secret database-credentials-stage3 -o yaml
+   ```
+
+2. **Kubernetes Access Issues**
+   ```bash
+   # Update kubeconfig
+   aws eks update-kubeconfig --region $AWS_REGION --name healthcare-eks-stage3-dev
+
+   # Check cluster connectivity
+   kubectl cluster-info
+   ```
+
+3. **Missing Secrets**
+   ```bash
+   # Verify GitHub secrets are configured
+   # Check pipeline logs for missing environment variables
+   ```
+
+**⏱️ Estimated Time: 10-15 minutes (automated in pipeline)**
 
 ---
 

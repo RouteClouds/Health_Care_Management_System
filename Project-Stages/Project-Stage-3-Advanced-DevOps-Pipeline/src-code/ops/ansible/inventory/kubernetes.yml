@@ -1,0 +1,117 @@
+# Kubernetes Dynamic Inventory for Healthcare Stage-3
+plugin: kubernetes.core.k8s
+
+# Kubernetes connection configuration
+connections:
+  # Use kubeconfig from environment or default location
+  - kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default('~/.kube/config', true) }}"
+
+# Resources to include in inventory
+resources:
+  # Pods
+  - api_version: v1
+    kind: Pod
+    namespace: healthcare-stage3-dev
+  
+  # Services  
+  - api_version: v1
+    kind: Service
+    namespace: healthcare-stage3-dev
+    
+  # Deployments
+  - api_version: apps/v1
+    kind: Deployment
+    namespace: healthcare-stage3-dev
+    
+  # ConfigMaps
+  - api_version: v1
+    kind: ConfigMap
+    namespace: healthcare-stage3-dev
+    
+  # Secrets
+  - api_version: v1
+    kind: Secret
+    namespace: healthcare-stage3-dev
+    
+  # Ingresses
+  - api_version: networking.k8s.io/v1
+    kind: Ingress
+    namespace: healthcare-stage3-dev
+
+# Grouping configuration
+keyed_groups:
+  # Group by namespace
+  - key: metadata.namespace
+    prefix: namespace
+    separator: "_"
+    
+  # Group by resource kind
+  - key: kind
+    prefix: kind
+    separator: "_"
+    
+  # Group by app label
+  - key: metadata.labels.app
+    prefix: app
+    separator: "_"
+    
+  # Group by component label
+  - key: metadata.labels.component
+    prefix: component
+    separator: "_"
+
+# Compose variables for each resource
+compose:
+  # Basic metadata
+  k8s_name: metadata.name
+  k8s_namespace: metadata.namespace
+  k8s_kind: kind
+  k8s_api_version: apiVersion
+  k8s_uid: metadata.uid
+  
+  # Labels and annotations
+  k8s_labels: metadata.labels | default({})
+  k8s_annotations: metadata.annotations | default({})
+  
+  # For pods specifically
+  k8s_pod_ip: status.podIP | default('')
+  k8s_node_name: spec.nodeName | default('')
+  k8s_phase: status.phase | default('')
+  
+  # For services
+  k8s_cluster_ip: spec.clusterIP | default('')
+  k8s_service_type: spec.type | default('')
+  
+  # Application-specific labels
+  app_name: metadata.labels.app | default('unknown')
+  app_version: metadata.labels.version | default('unknown')
+  environment: metadata.labels.environment | default('dev')
+
+# Groups based on application components
+groups:
+  # Healthcare application components
+  healthcare_backend: "metadata.labels.app == 'healthcare-backend-stage3'"
+  healthcare_frontend: "metadata.labels.app == 'healthcare-frontend-stage3'"
+  
+  # Database related
+  database_pods: "'database' in (metadata.labels.component | default(''))"
+  
+  # Monitoring components
+  monitoring_pods: "'monitoring' in (metadata.labels.component | default(''))"
+  
+  # Running pods only
+  running_pods: "kind == 'Pod' and status.phase == 'Running'"
+  
+  # Services
+  cluster_services: "kind == 'Service'"
+  
+  # Load balancers
+  load_balancers: "kind == 'Service' and spec.type == 'LoadBalancer'"
+
+# Use strict mode for better error handling
+strict: False
+
+# Cache configuration
+cache: True
+cache_plugin: memory
+cache_timeout: 300

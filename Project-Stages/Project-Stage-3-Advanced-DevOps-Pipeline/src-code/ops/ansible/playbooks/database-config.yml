@@ -1,0 +1,187 @@
+---
+# Database Configuration Playbook for Healthcare Stage-3
+# Configures RDS PostgreSQL instance with proper parameters, users, and monitoring
+- name: Configure PostgreSQL Database for Healthcare Platform
+  hosts: localhost
+  gather_facts: yes
+  vars:
+    # Database connection details (will be retrieved from AWS)
+    rds_endpoint: "{{ lookup('env', 'RDS_ENDPOINT') | default('') }}"
+    rds_port: "{{ db_port | default(5432) }}"
+    
+  tasks:
+    - name: Get RDS instance endpoint if not provided
+      amazon.aws.rds_instance_info:
+        db_instance_identifier: "{{ db_instance_identifier }}"
+        region: "{{ aws_region }}"
+      register: rds_info
+      when: rds_endpoint == ""
+      
+    - name: Set RDS endpoint from discovery
+      set_fact:
+        rds_endpoint: "{{ rds_info.instances[0].endpoint.address }}"
+      when: rds_endpoint == "" and rds_info.instances | length > 0
+      
+    - name: Fail if RDS endpoint not found
+      fail:
+        msg: "RDS endpoint not found. Ensure RDS instance exists and is accessible."
+      when: rds_endpoint == ""
+
+    - name: Display database connection info
+      debug:
+        msg: "Configuring database at {{ rds_endpoint }}:{{ rds_port }}"
+
+    # Database Parameter Group Configuration
+    - name: Create custom DB parameter group
+      amazon.aws.rds_param_group:
+        name: "{{ db_instance_identifier }}-custom-params"
+        description: "Custom parameter group for {{ db_instance_identifier }}"
+        engine: "{{ db_engine }}"
+        region: "{{ aws_region }}"
+        params:
+          # Performance tuning parameters
+          shared_preload_libraries: "{{ db_shared_preload_libraries }}"
+          max_connections: "{{ db_max_connections }}"
+          work_mem: "4MB"
+          maintenance_work_mem: "64MB"
+          effective_cache_size: "256MB"
+          random_page_cost: "1.1"
+          
+          # Logging parameters
+          log_statement: "{{ db_log_statement }}"
+          log_min_duration_statement: "{{ db_log_min_duration_statement }}"
+          log_checkpoints: "on"
+          log_connections: "on"
+          log_disconnections: "on"
+          log_lock_waits: "on"
+          
+          # Monitoring parameters
+          track_activities: "on"
+          track_counts: "on"
+          track_io_timing: "on"
+          track_functions: "all"
+          
+          # Security parameters
+          ssl: "on"
+          ssl_ciphers: "HIGH:MEDIUM:+3DES:!aNULL"
+          
+        tags: "{{ common_tags }}"
+      register: param_group_result
+
+    - name: Apply parameter group to RDS instance
+      amazon.aws.rds_instance:
+        db_instance_identifier: "{{ db_instance_identifier }}"
+        db_parameter_group_name: "{{ db_instance_identifier }}-custom-params"
+        region: "{{ aws_region }}"
+        apply_immediately: "{{ environment == 'dev' }}"
+      when: param_group_result.changed
+
+    # Database User Management
+    - name: Create application database users
+      community.postgresql.postgresql_user:
+        login_host: "{{ rds_endpoint }}"
+        login_port: "{{ rds_port }}"
+        login_user: "{{ db_username }}"
+        login_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+        name: "{{ item.username }}"
+        password: "{{ item.password }}"
+        priv: "{{ item.privileges }}"
+        db: "{{ db_name }}"
+        state: present
+        encrypted: yes
+      loop:
+        - username: "healthcare_app"
+          password: "{{ lookup('env', 'APP_DB_PASSWORD') | default('healthcare_app_password_change_me') }}"
+          privileges: "CONNECT/{{ db_name }}:ALL"
+        - username: "healthcare_readonly"
+          password: "{{ lookup('env', 'READONLY_DB_PASSWORD') | default('readonly_password_change_me') }}"
+          privileges: "CONNECT/{{ db_name }}:SELECT"
+        - username: "healthcare_backup"
+          password: "{{ lookup('env', 'BACKUP_DB_PASSWORD') | default('backup_password_change_me') }}"
+          privileges: "CONNECT/{{ db_name }}:SELECT"
+      no_log: true
+      retries: "{{ task_retry_count }}"
+      delay: "{{ task_retry_delay }}"
+
+    # Database Extensions
+    - name: Enable PostgreSQL extensions
+      community.postgresql.postgresql_ext:
+        login_host: "{{ rds_endpoint }}"
+        login_port: "{{ rds_port }}"
+        login_user: "{{ db_username }}"
+        login_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+        name: "{{ item }}"
+        db: "{{ db_name }}"
+        state: present
+      loop:
+        - pg_stat_statements
+        - pgcrypto
+        - uuid-ossp
+      retries: "{{ task_retry_count }}"
+      delay: "{{ task_retry_delay }}"
+
+    # Backup Configuration
+    - name: Configure automated backups
+      amazon.aws.rds_instance:
+        db_instance_identifier: "{{ db_instance_identifier }}"
+        backup_retention_period: "{{ db_backup_retention_period }}"
+        preferred_backup_window: "{{ db_backup_window }}"
+        preferred_maintenance_window: "{{ db_maintenance_window }}"
+        region: "{{ aws_region }}"
+        apply_immediately: "{{ environment == 'dev' }}"
+      when: features.database_backup | default(true)
+
+    # Performance Insights (if supported)
+    - name: Enable Performance Insights
+      amazon.aws.rds_instance:
+        db_instance_identifier: "{{ db_instance_identifier }}"
+        performance_insights_enabled: "{{ db_performance_insights_enabled | default(false) }}"
+        performance_insights_retention_period: 7
+        region: "{{ aws_region }}"
+        apply_immediately: "{{ environment == 'dev' }}"
+      when: 
+        - db_performance_insights_enabled | default(false)
+        - environment != 'dev'
+
+    # Database Monitoring Setup
+    - name: Create CloudWatch log group for database logs
+      amazon.aws.cloudwatchlogs_log_group:
+        log_group_name: "/aws/rds/instance/{{ db_instance_identifier }}/postgresql"
+        retention_in_days: "{{ log_retention_days }}"
+        region: "{{ aws_region }}"
+        tags: "{{ common_tags }}"
+
+    # Validation
+    - name: Test database connectivity
+      community.postgresql.postgresql_ping:
+        login_host: "{{ rds_endpoint }}"
+        login_port: "{{ rds_port }}"
+        login_user: "{{ db_username }}"
+        login_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+        db: "{{ db_name }}"
+      retries: 5
+      delay: 10
+
+    - name: Verify database extensions
+      community.postgresql.postgresql_query:
+        login_host: "{{ rds_endpoint }}"
+        login_port: "{{ rds_port }}"
+        login_user: "{{ db_username }}"
+        login_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+        db: "{{ db_name }}"
+        query: "SELECT extname FROM pg_extension WHERE extname IN ('pg_stat_statements', 'pgcrypto', 'uuid-ossp');"
+      register: extensions_result
+
+    - name: Display enabled extensions
+      debug:
+        msg: "Enabled extensions: {{ extensions_result.query_result | map(attribute='extname') | list }}"
+
+    - name: Database configuration completed
+      debug:
+        msg: |
+          Database configuration completed successfully:
+          - Endpoint: {{ rds_endpoint }}:{{ rds_port }}
+          - Parameter group: {{ db_instance_identifier }}-custom-params
+          - Extensions enabled: {{ extensions_result.query_result | map(attribute='extname') | list | join(', ') }}
+          - Backup retention: {{ db_backup_retention_period }} days
+          - Users created: healthcare_app, healthcare_readonly, healthcare_backup

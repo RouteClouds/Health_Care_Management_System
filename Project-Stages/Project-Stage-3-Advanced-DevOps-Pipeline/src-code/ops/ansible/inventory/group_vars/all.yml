@@ -1,0 +1,64 @@
+# Global variables for all hosts and environments
+---
+# Project configuration
+project_name: healthcare-management
+stage: stage-3
+deployment_date: "{{ ansible_date_time.date }}"
+
+# AWS Configuration
+aws_region: us-east-1
+aws_account_id: "{{ ansible_env.AWS_ACCOUNT_ID | default(lookup('env', 'AWS_ACCOUNT_ID')) }}"
+
+# Kubernetes Configuration
+k8s_namespace: healthcare-stage3-dev
+k8s_cluster_name: healthcare-eks-stage3-dev
+
+# Database Configuration
+db_instance_identifier: healthcare-eks-stage3-dev-db
+db_engine: postgres
+db_engine_version: "15.8"
+db_port: 5432
+db_name: healthcare_db
+db_username: healthcare_user
+
+# Application Configuration
+app_name: healthcare-platform
+app_version: "1.0.0"
+app_domain: "{{ environment }}.healthcare.local"
+
+# Security Configuration
+ssl_enabled: true
+encryption_at_rest: true
+backup_retention_days: 7
+
+# Monitoring Configuration
+monitoring_enabled: true
+prometheus_namespace: monitoring
+grafana_namespace: monitoring
+log_retention_days: 30
+
+# Resource Tagging
+common_tags:
+  Project: "{{ project_name }}"
+  Stage: "{{ stage }}"
+  Environment: "{{ environment }}"
+  ManagedBy: ansible
+  CreatedBy: stage3-pipeline
+  DeploymentDate: "{{ deployment_date }}"
+
+# Ansible Configuration
+ansible_python_interpreter: /usr/bin/python3
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+
+# Retry and timeout settings
+task_retry_count: 3
+task_retry_delay: 5
+connection_timeout: 30
+
+# Feature flags
+features:
+  database_backup: true
+  monitoring_alerts: true
+  log_aggregation: true
+  security_scanning: false
+  auto_scaling: true

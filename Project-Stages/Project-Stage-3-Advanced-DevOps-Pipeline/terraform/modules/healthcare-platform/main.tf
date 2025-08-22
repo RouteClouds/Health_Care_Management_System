@@ -26,6 +26,10 @@ module "vpc" {
   enable_dns_hostnames = true
   enable_dns_support = true
 
+  # EIP reuse configuration to prevent EIP limit issues
+  reuse_nat_ips = var.reuse_existing_eips
+  external_nat_ip_ids = var.existing_eip_ids
+
   # EKS specific tags
   public_subnet_tags = {
     "kubernetes.io/role/elb" = "1"
@@ -37,7 +41,7 @@ module "vpc" {
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
   }
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
   })
 }
@@ -67,8 +71,8 @@ module "eks" {
       desired_size = var.desired_nodes
 
       # Launch template configuration
-      launch_template_tags = var.tags
-      
+      launch_template_tags = local.common_tags
+
       # Node group scaling configuration
       update_config = {
         max_unavailable_percentage = 25
@@ -81,7 +85,7 @@ module "eks" {
 
       taints = []
 
-      tags = var.tags
+      tags = local.common_tags
     }
   }
 
@@ -90,7 +94,7 @@ module "eks" {
   manage_aws_auth_configmap = false
   create_aws_auth_configmap = false
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 # RDS Database
@@ -98,7 +102,7 @@ resource "aws_db_subnet_group" "healthcare" {
   name       = "${var.cluster_name}-db-subnet-group"
   subnet_ids = module.vpc.private_subnets
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_name}-db-subnet-group"
   })
 }
@@ -121,7 +125,7 @@ resource "aws_security_group" "rds" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_name}-rds-sg"
   })
 }
@@ -151,7 +155,7 @@ resource "aws_db_instance" "healthcare" {
   skip_final_snapshot = var.environment != "prod"
   deletion_protection = var.environment == "prod"
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_name}-database"
   })
 }
@@ -210,28 +214,54 @@ resource "aws_ecr_lifecycle_policy" "backend" {
   })
 }
 
-# S3 Bucket for Application Assets
-resource "aws_s3_bucket" "healthcare_assets" {
-  bucket = "healthcare-assets-stage3-${var.environment}-${data.aws_caller_identity.current.account_id}"
+# S3 Bucket for Application Assets - Idempotent Pattern
+# Try to use existing bucket first
+data "aws_s3_bucket" "existing_assets" {
+  count  = var.reuse_existing_resources && !var.force_new_resources ? 1 : 0
+  bucket = local.assets_bucket_name
+}
 
-  tags = merge(var.tags, {
-    Name = "healthcare-assets-${var.environment}"
+# Create bucket only if existing one not found or reuse is disabled
+resource "aws_s3_bucket" "healthcare_assets" {
+  count  = var.reuse_existing_resources && !var.force_new_resources && length(data.aws_s3_bucket.existing_assets) > 0 ? 0 : 1
+  bucket = local.assets_bucket_name
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  tags = merge(local.common_tags, {
+    Name        = "Healthcare Assets Bucket - Stage 3"
+    Description = "Stores healthcare application assets"
+    Purpose     = "application-assets"
   })
 }
 
+# Use existing or new bucket
+locals {
+  assets_bucket_id = var.reuse_existing_resources && !var.force_new_resources && length(data.aws_s3_bucket.existing_assets) > 0 ? data.aws_s3_bucket.existing_assets[0].id : aws_s3_bucket.healthcare_assets[0].id
+  assets_bucket_arn = var.reuse_existing_resources && !var.force_new_resources && length(data.aws_s3_bucket.existing_assets) > 0 ? data.aws_s3_bucket.existing_assets[0].arn : aws_s3_bucket.healthcare_assets[0].arn
+}
+
+# Bucket versioning (apply to existing or new bucket)
 resource "aws_s3_bucket_versioning" "healthcare_assets" {
-  bucket = aws_s3_bucket.healthcare_assets.id
+  bucket = local.assets_bucket_id
   versioning_configuration {
     status = "Enabled"
   }
+
+  depends_on = [aws_s3_bucket.healthcare_assets]
 }
 
+# Bucket encryption (apply to existing or new bucket)
 resource "aws_s3_bucket_server_side_encryption_configuration" "healthcare_assets" {
-  bucket = aws_s3_bucket.healthcare_assets.id
+  bucket = local.assets_bucket_id
 
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }
   }
+
+  depends_on = [aws_s3_bucket.healthcare_assets]
 }

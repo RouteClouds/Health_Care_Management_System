@@ -1,0 +1,87 @@
+# AWS EC2 Dynamic Inventory for Healthcare Stage-3
+plugin: aws_ec2
+
+# AWS Configuration
+regions:
+  - us-east-1
+
+# Instance filters
+filters:
+  # Only include instances with healthcare project tag
+  tag:Project: healthcare-management
+  tag:Stage: stage-3
+  instance-state-name: running
+
+# Keyed groups for organization
+keyed_groups:
+  # Group by environment
+  - key: tags.Environment
+    prefix: env
+    separator: "_"
+  
+  # Group by instance type
+  - key: instance_type
+    prefix: type
+    separator: "_"
+  
+  # Group by availability zone
+  - key: placement.availability_zone
+    prefix: az
+    separator: "_"
+  
+  # Group by VPC
+  - key: vpc_id
+    prefix: vpc
+    separator: "_"
+
+# Compose variables
+compose:
+  # Set ansible host to private IP for internal communication
+  ansible_host: private_ip_address
+  
+  # Instance metadata
+  ec2_instance_id: instance_id
+  ec2_instance_type: instance_type
+  ec2_architecture: architecture
+  ec2_availability_zone: placement.availability_zone
+  ec2_region: placement.region
+  ec2_vpc_id: vpc_id
+  ec2_subnet_id: subnet_id
+  
+  # Tags as variables
+  environment: tags.Environment | default('unknown')
+  project: tags.Project | default('unknown')
+  stage: tags.Stage | default('unknown')
+  
+  # Security groups
+  ec2_security_groups: security_groups | map(attribute='group_name') | list
+
+# Groups configuration
+groups:
+  # RDS instances (if any EC2-based databases)
+  rds_instances: "'rds' in (tags.Service | default(''))"
+  
+  # EKS worker nodes
+  eks_nodes: "'eks' in (tags.Service | default('')) or 'node' in (tags.Name | default(''))"
+  
+  # Monitoring instances
+  monitoring: "'monitoring' in (tags.Service | default(''))"
+  
+  # Development environment
+  development: "tags.Environment == 'dev'"
+  
+  # Production environment  
+  production: "tags.Environment == 'prod'"
+  
+  # Staging environment
+  staging: "tags.Environment == 'staging'"
+
+# Use private IP for internal AWS communication
+use_contrib_script_compatible_sanitization: True
+strict: False
+
+# Cache settings for performance
+cache: True
+cache_plugin: memory
+cache_timeout: 3600
+cache_connection: /tmp/ansible-inventory-cache

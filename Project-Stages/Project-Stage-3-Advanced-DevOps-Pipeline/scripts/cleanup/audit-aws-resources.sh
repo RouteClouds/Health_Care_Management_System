@@ -112,10 +112,10 @@ EKS_COUNT=$(aws eks list-clusters --region "$REGION" --query 'clusters[?contains
 CLB_COUNT=$(aws elb describe-load-balancers --region "$REGION" --query 'LoadBalancerDescriptions[?contains(LoadBalancerName,`healthcare`) || contains(LoadBalancerName,`stage3`)]' --output text 2>/dev/null | wc -l || echo "0")
 ALB_COUNT=$(aws elbv2 describe-load-balancers --region "$REGION" --query 'LoadBalancers[?contains(LoadBalancerName,`healthcare`) || contains(LoadBalancerName,`stage3`)]' --output text 2>/dev/null | wc -l || echo "0")
 
-echo "🚪 NAT Gateways: $NAT_COUNT (~$45/month each = $((NAT_COUNT * 45))/month)" | tee -a "$OUTPUT_FILE"
+echo "🚪 NAT Gateways: $NAT_COUNT (~\$45/month each = \$$(( NAT_COUNT * 45 ))/month)" | tee -a "$OUTPUT_FILE"
 echo "🗄️ RDS Instances: $RDS_COUNT (~$20-100/month each)" | tee -a "$OUTPUT_FILE"
-echo "🏷️ EKS Clusters: $EKS_COUNT (~$72/month each = $((EKS_COUNT * 72))/month)" | tee -a "$OUTPUT_FILE"
-echo "🔗 Classic LBs: $CLB_COUNT (~$18/month each = $((CLB_COUNT * 18))/month)" | tee -a "$OUTPUT_FILE"
+echo "🏷️ EKS Clusters: $EKS_COUNT (~\$72/month each = \$$(( EKS_COUNT * 72 ))/month)" | tee -a "$OUTPUT_FILE"
+echo "🔗 Classic LBs: $CLB_COUNT (~\$18/month each = \$$(( CLB_COUNT * 18 ))/month)" | tee -a "$OUTPUT_FILE"
 echo "🔗 ALB/NLBs: $ALB_COUNT (~$16-25/month each)" | tee -a "$OUTPUT_FILE"
 
 ESTIMATED_MONTHLY=$(( (NAT_COUNT * 45) + (EKS_COUNT * 72) + (CLB_COUNT * 18) + (RDS_COUNT * 30) + (ALB_COUNT * 20) ))

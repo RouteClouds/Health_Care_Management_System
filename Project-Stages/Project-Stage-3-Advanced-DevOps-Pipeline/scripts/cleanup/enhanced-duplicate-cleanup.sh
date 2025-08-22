@@ -130,6 +130,20 @@ cleanup_duplicate_vpc() {
                 "Delete NAT Gateway $nat (saves ~\$45/month)"
             wait_for_deletion "nat-gateway" "$nat" 600
         done
+        
+        # Release associated EIPs after NAT gateway deletion
+        log_info "🔌 Releasing Elastic IPs associated with deleted NAT gateways..."
+        local eips
+        eips=$(aws ec2 describe-addresses --region "$REGION" \
+            --query "Addresses[?contains(Tags[?Key=='Name'].Value|[0], 'healthcare-eks-stage3-dev-vpc') && AssociationId==null].AllocationId" \
+            --output text)
+        
+        if [[ -n "$eips" && "$eips" != "None" ]]; then
+            for eip in $eips; do
+                execute_command "aws ec2 release-address --allocation-id '$eip' --region '$REGION'" \
+                    "Release Elastic IP $eip (saves ~\$3.65/month)"
+            done
+        fi
     fi
     
     # 2. Delete Load Balancers in this VPC
@@ -173,7 +187,7 @@ cleanup_duplicate_vpc() {
         done
     fi
     
-    # 4. Delete Route Tables (non-main)
+    # 4. Delete Route Tables (non-main) - Improved handling
     log_info "🛣️ Deleting Route Tables in VPC $vpc_id..."
     local route_tables
     route_tables=$(aws ec2 describe-route-tables --region "$REGION" \
@@ -188,20 +202,27 @@ cleanup_duplicate_vpc() {
                 --query 'RouteTables[0].Associations[?Main].Main' --output text)
             
             if [[ "$is_main" != "True" ]]; then
-                # Disassociate first
+                # Get all associations for this route table
                 local associations
                 associations=$(aws ec2 describe-route-tables --route-table-ids "$rtb" --region "$REGION" \
                     --query 'RouteTables[0].Associations[].RouteTableAssociationId' --output text)
                 
+                # Disassociate all subnets from this route table
                 if [[ -n "$associations" && "$associations" != "None" ]]; then
                     for assoc in $associations; do
                         execute_command "aws ec2 disassociate-route-table --association-id '$assoc' --region '$REGION'" \
-                            "Disassociate Route Table $rtb" || true
+                            "Disassociate Route Table $rtb" || log_warning "Route table disassociation failed for $assoc"
                     done
+                    
+                    # Wait a moment for disassociation to complete
+                    if [[ "$DRY_RUN" == "false" ]]; then
+                        sleep 5
+                    fi
                 fi
                 
+                # Now delete the route table
                 execute_command "aws ec2 delete-route-table --route-table-id '$rtb' --region '$REGION'" \
-                    "Delete Route Table $rtb"
+                    "Delete Route Table $rtb" || log_warning "Route table deletion failed for $rtb"
             fi
         done
     fi
@@ -216,7 +237,7 @@ cleanup_duplicate_vpc() {
     if [[ -n "$subnets" && "$subnets" != "None" ]]; then
         for subnet in $subnets; do
             execute_command "aws ec2 delete-subnet --subnet-id '$subnet' --region '$REGION'" \
-                "Delete Subnet $subnet"
+                "Delete Subnet $subnet" || log_warning "Subnet deletion failed for $subnet"
         done
     fi
     

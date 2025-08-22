@@ -1,0 +1,67 @@
+# Development environment specific variables
+---
+environment: dev
+
+# Database Configuration for Development
+db_instance_class: db.t3.micro
+db_allocated_storage: 20
+db_max_allocated_storage: 100
+db_backup_retention_period: 1
+db_backup_window: "03:00-04:00"
+db_maintenance_window: "sun:04:00-sun:05:00"
+db_deletion_protection: false
+db_skip_final_snapshot: true
+
+# Performance settings for development
+db_performance_insights_enabled: false
+db_monitoring_interval: 0
+
+# Connection settings
+db_max_connections: 100
+db_shared_preload_libraries: "pg_stat_statements"
+db_log_statement: "all"
+db_log_min_duration_statement: 1000
+
+# Security settings for development
+db_publicly_accessible: false
+db_storage_encrypted: true
+
+# Application Configuration
+app_replicas: 1
+app_resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+# Monitoring Configuration
+monitoring_retention_days: 7
+log_level: debug
+metrics_enabled: true
+
+# Development-specific features
+features:
+  debug_mode: true
+  hot_reload: true
+  detailed_logging: true
+  performance_profiling: true
+  test_data_seeding: true
+
+# Security relaxed for development
+security:
+  strict_ssl: false
+  cors_enabled: true
+  debug_endpoints: true
+
+# Backup configuration
+backup_enabled: true
+backup_schedule: "0 2 * * *"  # Daily at 2 AM
+backup_retention: 3  # Keep 3 days
+
+# Cost optimization for development
+cost_optimization:
+  auto_shutdown: true
+  shutdown_schedule: "0 22 * * 1-5"  # Shutdown at 10 PM on weekdays
+  startup_schedule: "0 8 * * 1-5"    # Start at 8 AM on weekdays

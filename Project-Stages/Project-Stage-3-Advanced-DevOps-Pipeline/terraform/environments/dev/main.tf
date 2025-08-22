@@ -15,6 +15,14 @@ module "healthcare_infrastructure" {
   enable_grafana = true
   enable_elk_stack = true
 
+  # Idempotency controls
+  reuse_existing_resources = true
+  force_new_resources = false
+
+  # EIP reuse configuration
+  reuse_existing_eips = true
+  existing_eip_ids = []  # Will be populated by pipeline discovery
+
   tags = {
     Environment = "dev"
     Stage = "stage-3"

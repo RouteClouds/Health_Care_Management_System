@@ -1,0 +1,366 @@
+---
+# Monitoring Setup Playbook for Healthcare Stage-3
+# Configures Prometheus, Grafana, and alerting for comprehensive monitoring
+- name: Setup Monitoring Stack for Healthcare Platform
+  hosts: localhost
+  gather_facts: yes
+  vars:
+    # Monitoring configuration
+    prometheus_retention: "{{ monitoring_retention_days | default(15) }}d"
+    grafana_admin_password: "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default('admin123') }}"
+    
+  tasks:
+    # Prometheus Configuration
+    - name: Create Prometheus configuration ConfigMap
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: prometheus-config
+            namespace: "{{ prometheus_namespace }}"
+          data:
+            prometheus.yml: |
+              global:
+                scrape_interval: {{ prometheus_scrape_interval | default('30s') }}
+                evaluation_interval: 30s
+                external_labels:
+                  cluster: "{{ k8s_cluster_name }}"
+                  environment: "{{ environment }}"
+
+              rule_files:
+                - "/etc/prometheus/rules/*.yml"
+
+              scrape_configs:
+                # Kubernetes API server
+                - job_name: 'kubernetes-apiservers'
+                  kubernetes_sd_configs:
+                    - role: endpoints
+                  scheme: https
+                  tls_config:
+                    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                  bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+                  relabel_configs:
+                    - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+                      action: keep
+                      regex: default;kubernetes;https
+
+                # Kubernetes nodes
+                - job_name: 'kubernetes-nodes'
+                  kubernetes_sd_configs:
+                    - role: node
+                  scheme: https
+                  tls_config:
+                    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                  bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+                  relabel_configs:
+                    - action: labelmap
+                      regex: __meta_kubernetes_node_label_(.+)
+
+                # Healthcare backend application
+                - job_name: 'healthcare-backend'
+                  kubernetes_sd_configs:
+                    - role: pod
+                      namespaces:
+                        names: ["{{ k8s_namespace }}"]
+                  relabel_configs:
+                    - source_labels: [__meta_kubernetes_pod_label_app]
+                      action: keep
+                      regex: healthcare-backend-stage3
+                    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                      action: keep
+                      regex: true
+                    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                      action: replace
+                      target_label: __metrics_path__
+                      regex: (.+)
+                    - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                      action: replace
+                      regex: ([^:]+)(?::\d+)?;(\d+)
+                      replacement: $1:$2
+                      target_label: __address__
+
+                # Healthcare frontend application
+                - job_name: 'healthcare-frontend'
+                  kubernetes_sd_configs:
+                    - role: pod
+                      namespaces:
+                        names: ["{{ k8s_namespace }}"]
+                  relabel_configs:
+                    - source_labels: [__meta_kubernetes_pod_label_app]
+                      action: keep
+                      regex: healthcare-frontend-stage3
+
+                # PostgreSQL database metrics (if postgres_exporter is deployed)
+                - job_name: 'postgresql'
+                  static_configs:
+                    - targets: ['postgres-exporter:9187']
+                  scrape_interval: 60s
+
+              alerting:
+                alertmanagers:
+                  - static_configs:
+                      - targets:
+                          - alertmanager:9093
+
+    # Prometheus Alerting Rules
+    - name: Create Prometheus alerting rules
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: prometheus-rules
+            namespace: "{{ prometheus_namespace }}"
+          data:
+            healthcare-alerts.yml: |
+              groups:
+                - name: healthcare.rules
+                  rules:
+                    # Application health alerts
+                    - alert: HealthcareBackendDown
+                      expr: up{job="healthcare-backend"} == 0
+                      for: 5m
+                      labels:
+                        severity: critical
+                        service: healthcare-backend
+                      annotations:
+                        summary: "Healthcare backend is down"
+                        description: "Healthcare backend has been down for more than 5 minutes"
+
+                    - alert: HealthcareFrontendDown
+                      expr: up{job="healthcare-frontend"} == 0
+                      for: 5m
+                      labels:
+                        severity: critical
+                        service: healthcare-frontend
+                      annotations:
+                        summary: "Healthcare frontend is down"
+                        description: "Healthcare frontend has been down for more than 5 minutes"
+
+                    # Database alerts
+                    - alert: DatabaseConnectionHigh
+                      expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+                      for: 5m
+                      labels:
+                        severity: warning
+                        service: postgresql
+                      annotations:
+                        summary: "High database connections"
+                        description: "Database connections are above 80% of maximum"
+
+                    # Resource usage alerts
+                    - alert: HighMemoryUsage
+                      expr: (container_memory_usage_bytes / container_spec_memory_limit_bytes) * 100 > 90
+                      for: 10m
+                      labels:
+                        severity: warning
+                      annotations:
+                        summary: "High memory usage detected"
+                        description: "Container memory usage is above 90%"
+
+                    - alert: HighCPUUsage
+                      expr: rate(container_cpu_usage_seconds_total[5m]) * 100 > 80
+                      for: 10m
+                      labels:
+                        severity: warning
+                      annotations:
+                        summary: "High CPU usage detected"
+                        description: "Container CPU usage is above 80%"
+
+                    # Kubernetes cluster alerts
+                    - alert: PodCrashLooping
+                      expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+                      for: 5m
+                      labels:
+                        severity: warning
+                      annotations:
+                        summary: "Pod is crash looping"
+                        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is crash looping"
+
+    # Grafana Dashboard Configuration
+    - name: Create Grafana dashboard ConfigMap
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: grafana-dashboards
+            namespace: "{{ grafana_namespace }}"
+          data:
+            healthcare-dashboard.json: |
+              {
+                "dashboard": {
+                  "id": null,
+                  "title": "Healthcare Platform - Stage 3",
+                  "tags": ["healthcare", "stage3"],
+                  "timezone": "browser",
+                  "panels": [
+                    {
+                      "id": 1,
+                      "title": "Application Health",
+                      "type": "stat",
+                      "targets": [
+                        {
+                          "expr": "up{job=\"healthcare-backend\"}",
+                          "legendFormat": "Backend Status"
+                        },
+                        {
+                          "expr": "up{job=\"healthcare-frontend\"}",
+                          "legendFormat": "Frontend Status"
+                        }
+                      ],
+                      "fieldConfig": {
+                        "defaults": {
+                          "color": {
+                            "mode": "thresholds"
+                          },
+                          "thresholds": {
+                            "steps": [
+                              {"color": "red", "value": 0},
+                              {"color": "green", "value": 1}
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "id": 2,
+                      "title": "Request Rate",
+                      "type": "graph",
+                      "targets": [
+                        {
+                          "expr": "rate(http_requests_total{job=\"healthcare-backend\"}[5m])",
+                          "legendFormat": "Backend Requests/sec"
+                        }
+                      ]
+                    },
+                    {
+                      "id": 3,
+                      "title": "Response Time",
+                      "type": "graph",
+                      "targets": [
+                        {
+                          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"healthcare-backend\"}[5m]))",
+                          "legendFormat": "95th Percentile"
+                        }
+                      ]
+                    },
+                    {
+                      "id": 4,
+                      "title": "Database Connections",
+                      "type": "graph",
+                      "targets": [
+                        {
+                          "expr": "pg_stat_database_numbackends",
+                          "legendFormat": "Active Connections"
+                        }
+                      ]
+                    }
+                  ],
+                  "time": {
+                    "from": "now-1h",
+                    "to": "now"
+                  },
+                  "refresh": "30s"
+                }
+              }
+
+    # Grafana Data Source Configuration
+    - name: Configure Grafana data source
+      uri:
+        url: "http://grafana.{{ grafana_namespace }}.svc.cluster.local:3000/api/datasources"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ grafana_api_key | default('') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "Prometheus"
+          type: "prometheus"
+          url: "http://prometheus.{{ prometheus_namespace }}.svc.cluster.local:9090"
+          access: "proxy"
+          isDefault: true
+        status_code: [200, 409]  # 409 if already exists
+      when: grafana_api_key is defined
+
+    # CloudWatch Integration for RDS Monitoring
+    - name: Create CloudWatch dashboard for RDS
+      amazon.aws.cloudwatch_metric_alarm:
+        name: "{{ db_instance_identifier }}-high-cpu"
+        description: "RDS instance high CPU utilization"
+        metric_name: "CPUUtilization"
+        namespace: "AWS/RDS"
+        statistic: "Average"
+        comparison: "GreaterThanThreshold"
+        threshold: 80.0
+        period: 300
+        evaluation_periods: 2
+        dimensions:
+          DBInstanceIdentifier: "{{ db_instance_identifier }}"
+        region: "{{ aws_region }}"
+        tags: "{{ common_tags }}"
+      when: features.monitoring_alerts | default(false)
+
+    - name: Create RDS connection count alarm
+      amazon.aws.cloudwatch_metric_alarm:
+        name: "{{ db_instance_identifier }}-high-connections"
+        description: "RDS instance high connection count"
+        metric_name: "DatabaseConnections"
+        namespace: "AWS/RDS"
+        statistic: "Average"
+        comparison: "GreaterThanThreshold"
+        threshold: 80
+        period: 300
+        evaluation_periods: 2
+        dimensions:
+          DBInstanceIdentifier: "{{ db_instance_identifier }}"
+        region: "{{ aws_region }}"
+        tags: "{{ common_tags }}"
+      when: features.monitoring_alerts | default(false)
+
+    # Log Aggregation Setup
+    - name: Create log aggregation configuration
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: fluentd-config
+            namespace: kube-system
+          data:
+            fluent.conf: |
+              <source>
+                @type tail
+                path /var/log/containers/*healthcare*.log
+                pos_file /var/log/fluentd-healthcare.log.pos
+                tag kubernetes.healthcare.*
+                format json
+                time_key time
+                time_format %Y-%m-%dT%H:%M:%S.%NZ
+              </source>
+
+              <filter kubernetes.healthcare.**>
+                @type kubernetes_metadata
+              </filter>
+
+              <match kubernetes.healthcare.**>
+                @type cloudwatch_logs
+                log_group_name "/aws/eks/{{ k8s_cluster_name }}/healthcare"
+                log_stream_name "{{ environment }}"
+                region "{{ aws_region }}"
+                retention_in_days {{ log_retention_days }}
+              </match>
+      when: features.log_aggregation | default(true)
+
+    # Validation
+    - name: Verify monitoring configuration
+      debug:
+        msg: |
+          Monitoring setup completed successfully:
+          - Prometheus: Configured with {{ prometheus_scrape_interval | default('30s') }} scrape interval
+          - Grafana: Dashboard created for healthcare platform
+          - Alerting: {{ (prometheus_rules.changed | default(false)) | ternary('Configured', 'Already exists') }}
+          - CloudWatch: {{ features.monitoring_alerts | ternary('RDS alarms created', 'Alarms disabled') }}
+          - Log Aggregation: {{ features.log_aggregation | ternary('Enabled', 'Disabled') }}
+          - Retention: Prometheus {{ prometheus_retention }}, Logs {{ log_retention_days }} days

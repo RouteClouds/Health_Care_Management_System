@@ -134,3 +134,28 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# Resource reuse control variables for idempotency
+variable "reuse_existing_resources" {
+  description = "Whether to reuse existing resources when found"
+  type        = bool
+  default     = true
+}
+
+variable "force_new_resources" {
+  description = "Force creation of new resources even if existing ones are found"
+  type        = bool
+  default     = false
+}
+
+variable "reuse_existing_eips" {
+  description = "Whether to reuse existing EIPs for NAT gateways to prevent EIP limit issues"
+  type        = bool
+  default     = true
+}
+
+variable "existing_eip_ids" {
+  description = "List of existing EIP allocation IDs to reuse for NAT gateways"
+  type        = list(string)
+  default     = []
+}

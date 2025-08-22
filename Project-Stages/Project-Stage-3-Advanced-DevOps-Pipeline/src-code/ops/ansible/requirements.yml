@@ -1,0 +1,31 @@
+---
+# Ansible Collections Requirements for Healthcare Stage-3
+collections:
+  # AWS collection for managing AWS resources
+  - name: amazon.aws
+    version: ">=6.0.0"
+    
+  # Kubernetes collection for managing K8s resources
+  - name: kubernetes.core
+    version: ">=2.4.0"
+    
+  # PostgreSQL collection for database management
+  - name: community.postgresql
+    version: ">=2.4.0"
+    
+  # General utilities collection
+  - name: community.general
+    version: ">=7.0.0"
+    
+  # Crypto collection for certificate management
+  - name: community.crypto
+    version: ">=2.15.0"
+
+# Python dependencies
+python_requirements:
+  - boto3>=1.26.0
+  - botocore>=1.29.0
+  - kubernetes>=24.2.0
+  - psycopg2-binary>=2.9.0
+  - PyYAML>=6.0
+  - jmespath>=1.0.0
