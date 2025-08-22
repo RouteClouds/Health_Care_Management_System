@@ -70,6 +70,8 @@ retry_with_backoff_args() {
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+CLUSTER_NAME="${CLUSTER_NAME:-healthcare-eks-stage3-dev}"
+
 
 # Check infrastructure health and limits
 check_infrastructure_health() {
@@ -204,10 +206,19 @@ enhanced_pre_import() {
         log_info "✅ CloudWatch log group already in Terraform state"
     fi
 
+        # If resource is already in state but name differs from expected, remove it to avoid modifying wrong VPC
+        if terraform state show module.healthcare_infrastructure.aws_db_subnet_group.healthcare >/dev/null 2>&1; then
+            current_name=$(terraform state show module.healthcare_infrastructure.aws_db_subnet_group.healthcare | awk -F' = ' '/^\s*name\s*=/{print $2}' | tr -d '"')
+            if [[ "$current_name" != "$subnet_group_name" ]]; then
+                log_warning "⚠️ Terraform state has DB subnet group '$current_name' but expected '$subnet_group_name' - removing from state to allow correct creation"
+                terraform state rm module.healthcare_infrastructure.aws_db_subnet_group.healthcare || true
+            fi
+        fi
+
     # RDS Subnet Group with enhanced error handling
     if ! echo "$existing_resources" | grep -q "aws_db_subnet_group"; then
         log_info "🔍 Checking for existing RDS subnet group..."
-        local subnet_group_name="healthcare-eks-stage3-dev-db-subnet-group"
+        local subnet_group_name="healthcare-eks-stage3-dev-db-subnet-group-${ACCOUNT_ID}"
         if retry_with_backoff 3 2 "aws rds describe-db-subnet-groups --db-subnet-group-name \"$subnet_group_name\" >/dev/null 2>&1"; then
             log_info "📥 Importing RDS subnet group with retry logic..."
             if retry_with_backoff_args 2 1 terraform import module.healthcare_infrastructure.aws_db_subnet_group.healthcare "$subnet_group_name"; then

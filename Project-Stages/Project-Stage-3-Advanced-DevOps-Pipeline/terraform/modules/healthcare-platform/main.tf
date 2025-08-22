@@ -100,11 +100,15 @@ module "eks" {
 
 # RDS Database
 resource "aws_db_subnet_group" "healthcare" {
-  name       = "${var.cluster_name}-db-subnet-group"
+  name       = "${var.cluster_name}-db-subnet-group-${data.aws_caller_identity.current.account_id}"
   subnet_ids = module.vpc.private_subnets
 
+  lifecycle {
+    create_before_destroy = true
+  }
+
   tags = merge(local.common_tags, {
-    Name = "${var.cluster_name}-db-subnet-group"
+    Name = "${var.cluster_name}-db-subnet-group-${data.aws_caller_identity.current.account_id}"
   })
 }
 

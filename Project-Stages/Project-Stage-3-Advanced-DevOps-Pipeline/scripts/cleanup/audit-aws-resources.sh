@@ -97,6 +97,10 @@ run_aws_command "ec2" "Elastic IPs" \
 run_aws_command "s3" "S3 Buckets" \
     "aws s3api list-buckets --query 'Buckets[?contains(Name,\`healthcare\`) || contains(Name,\`stage3\`)].[Name,CreationDate]' --output table"
 
+# RDS DB Subnet Groups (names, VPCs, subnets)
+run_aws_command "rds" "RDS DB Subnet Groups" \
+    "aws rds describe-db-subnet-groups --region '$REGION' --query 'DBSubnetGroups[?contains(DBSubnetGroupName,\`healthcare\`) || contains(DBSubnetGroupName,\`stage3\`)].[DBSubnetGroupName,VpcId,join(\`,\`, Subnets[].SubnetIdentifier)]' --output table"
+
 # CloudFormation Stacks
 run_aws_command "cloudformation" "CloudFormation Stacks" \
     "aws cloudformation list-stacks --region '$REGION' --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --query 'StackSummaries[?contains(StackName,\`healthcare\`) || contains(StackName,\`stage3\`) || contains(StackName,\`eks\`)].[StackName,StackStatus,CreationTime]' --output table"
