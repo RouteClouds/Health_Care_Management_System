@@ -672,6 +672,45 @@ jobs:
           # Handle conflicts based on strategy
           handle_infrastructure_conflicts "$CONFLICT_STRATEGY"
 
+
+      - name: Terraform Plan (Post-Import)
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "📋 Re-planning infrastructure after imports/conflict handling..."
+          terraform plan -out=tfplan
+          echo "📋 Plan summary (post-import):"
+          terraform show -no-color tfplan | head -50
+
+      - name: Safety Guard - Validate Plan (Post-Import)
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "🛡️ Running safety guard (post-import) to prevent mass resource creation..."
+
+          CREATE_COUNT=$(terraform show -json tfplan | jq -r '.resource_changes[]? | select(.change.actions[]? == "create") | .address' | wc -l)
+          UPDATE_COUNT=$(terraform show -json tfplan | jq -r '.resource_changes[]? | select(.change.actions[]? == "update") | .address' | wc -l)
+          DELETE_COUNT=$(terraform show -json tfplan | jq -r '.resource_changes[]? | select(.change.actions[]? == "delete") | .address' | wc -l)
+
+          echo "📊 Terraform Plan Analysis (Post-Import):"
+          echo "   Resources to CREATE: $CREATE_COUNT"
+          echo "   Resources to UPDATE: $UPDATE_COUNT"
+          echo "   Resources to DELETE: $DELETE_COUNT"
+
+          SAFETY_THRESHOLD="${{ vars.TERRAFORM_CREATE_THRESHOLD || '5' }}"
+          FORCE_APPLY="${{ vars.FORCE_TERRAFORM_APPLY || 'false' }}"
+
+          echo "🎯 Safety threshold: $SAFETY_THRESHOLD creates"
+          echo "🔧 Force apply override: $FORCE_APPLY"
+
+          if [[ "$CREATE_COUNT" -gt "$SAFETY_THRESHOLD" ]] && [[ "$FORCE_APPLY" != "true" ]]; then
+            echo "🚨 SAFETY GUARD TRIGGERED (post-import)!"
+            echo "❌ Plan shows $CREATE_COUNT resources to be created, which exceeds threshold of $SAFETY_THRESHOLD"
+            echo "📋 Resources to be created:"
+            terraform show -json tfplan | jq -r '.resource_changes[]? | select(.change.actions[]? == "create") | .address'
+            exit 1
+          else
+            echo "✅ Safety guard passed (post-import) - proceeding to apply"
+          fi
+
       - name: Terraform Apply
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
@@ -1103,7 +1142,7 @@ jobs:
       - name: Install eksctl for AWS Load Balancer Controller
         run: |
           echo "🔧 Installing eksctl for AWS Load Balancer Controller..."
-          
+
           # Install eksctl
           curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
           sudo mv /tmp/eksctl /usr/local/bin

@@ -42,6 +42,31 @@ retry_with_backoff() {
         fi
     done
 }
+# Retry function that accepts command and args (avoids eval and quoting issues)
+retry_with_backoff_args() {
+    local max_attempts="$1"
+    local delay="$2"
+    shift 2
+    local attempt=1
+
+    while [[ $attempt -le $max_attempts ]]; do
+        log_info "Attempt $attempt/$max_attempts: $*"
+        if "$@"; then
+            log_success "Command succeeded on attempt $attempt"
+            return 0
+        else
+            if [[ $attempt -eq $max_attempts ]]; then
+                log_error "Command failed after $max_attempts attempts"
+                return 1
+            fi
+            log_warning "Command failed, retrying in ${delay}s..."
+            sleep "$delay"
+            delay=$((delay * 2))  # Exponential backoff
+            attempt=$((attempt + 1))
+        fi
+    done
+}
+
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -49,31 +74,31 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 # Check infrastructure health and limits
 check_infrastructure_health() {
     log_info "🏥 Running infrastructure health check..."
-    
+
     # Check EIP usage and limits
     local eip_limit eip_used
     eip_limit=$(aws ec2 describe-account-attributes --attribute-names max-elastic-ips --query 'AccountAttributes[0].AttributeValues[0].AttributeValue' --output text)
     eip_used=$(aws ec2 describe-addresses --query 'Addresses | length(@)')
-    
+
     log_info "📊 EIP Usage: $eip_used / $eip_limit"
-    
+
     if [[ $eip_used -ge $eip_limit ]]; then
         log_error "❌ EIP limit reached - NAT Gateway creation will fail"
         log_info "💡 Run emergency cleanup: ./scripts/cleanup/emergency-eip-cleanup.sh cleanup"
         return 1
     fi
-    
+
     # Check for duplicate VPCs
     local healthcare_vpcs
     healthcare_vpcs=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=healthcare-eks-stage3-dev-vpc" --query 'Vpcs[].VpcId' --output text)
     local vpc_count
     vpc_count=$(echo "$healthcare_vpcs" | wc -w)
-    
+
     if [[ $vpc_count -gt 1 ]]; then
         log_warning "⚠️ Found $vpc_count duplicate VPCs - this indicates previous duplicate creation"
         log_info "💡 Consider running comprehensive cleanup to remove duplicates"
     fi
-    
+
     # Check for available EIPs that can be reused
     local available_eips
     # Query unassociated VPC EIPs correctly (AssociationId == null)
@@ -106,11 +131,11 @@ check_infrastructure_health() {
 # Enhanced pre-import with conflict resolution
 enhanced_pre_import() {
     log_info "📥 Enhanced pre-import with conflict resolution..."
-    
+
     # Get current Terraform state resources
     local existing_resources
     existing_resources=$(terraform state list 2>/dev/null || echo "")
-    
+
     # KMS Alias with enhanced error handling
     if ! echo "$existing_resources" | grep -q "aws_kms_alias"; then
         log_info "🔍 Checking for existing KMS alias..."
@@ -126,7 +151,7 @@ enhanced_pre_import() {
             local imported=false
             for path in "${kms_paths[@]}"; do
                 log_info "Trying import path: $path"
-                if retry_with_backoff 2 1 "terraform import \"$path\" alias/eks/healthcare-eks-stage3-dev"; then
+                if retry_with_backoff_args 2 1 terraform import "$path" "alias/eks/healthcare-eks-stage3-dev"; then
                     log_success "✅ KMS alias imported via path: $path"
                     imported=true
                     break
@@ -144,7 +169,7 @@ enhanced_pre_import() {
     else
         log_info "✅ KMS alias already in Terraform state"
     fi
-    
+
     # CloudWatch Log Group with enhanced error handling
     if ! echo "$existing_resources" | grep -q "aws_cloudwatch_log_group"; then
         log_info "🔍 Checking for existing CloudWatch log group..."
@@ -160,7 +185,7 @@ enhanced_pre_import() {
             local imported=false
             for path in "${cw_paths[@]}"; do
                 log_info "Trying import path: $path"
-                if retry_with_backoff 2 1 "terraform import \"$path\" \"$log_group_name\""; then
+                if retry_with_backoff_args 2 1 terraform import "$path" "$log_group_name"; then
                     log_success "✅ CloudWatch log group imported via path: $path"
                     imported=true
                     break
@@ -178,14 +203,14 @@ enhanced_pre_import() {
     else
         log_info "✅ CloudWatch log group already in Terraform state"
     fi
-    
+
     # RDS Subnet Group with enhanced error handling
     if ! echo "$existing_resources" | grep -q "aws_db_subnet_group"; then
         log_info "🔍 Checking for existing RDS subnet group..."
         local subnet_group_name="healthcare-eks-stage3-dev-db-subnet-group"
         if retry_with_backoff 3 2 "aws rds describe-db-subnet-groups --db-subnet-group-name \"$subnet_group_name\" >/dev/null 2>&1"; then
             log_info "📥 Importing RDS subnet group with retry logic..."
-            if retry_with_backoff 2 1 "terraform import module.healthcare_infrastructure.aws_db_subnet_group.healthcare \"$subnet_group_name\""; then
+            if retry_with_backoff_args 2 1 terraform import module.healthcare_infrastructure.aws_db_subnet_group.healthcare "$subnet_group_name"; then
                 log_success "✅ RDS subnet group imported successfully"
             else
                 log_warning "⚠️ RDS subnet group import failed - may need manual intervention"
@@ -213,7 +238,7 @@ enhanced_pre_import() {
             local imported=false
             for path in "${s3_paths[@]}"; do
                 log_info "Trying import path: $path"
-                if retry_with_backoff 2 1 "terraform import \"$path\" \"$assets_bucket\""; then
+                if retry_with_backoff_args 2 1 terraform import "$path" "$assets_bucket"; then
                     log_success "✅ S3 assets bucket imported via path: $path"
                     imported=true
                     break
@@ -231,22 +256,22 @@ enhanced_pre_import() {
     else
         log_info "✅ S3 assets bucket already in Terraform state"
     fi
-    
+
     log_success "✅ Enhanced pre-import completed"
 }
 
 # Main execution function
 handle_infrastructure_conflicts() {
     local strategy="${1:-import}"
-    
+
     log_info "🔧 Handling infrastructure conflicts with strategy: $strategy"
-    
+
     # Always run health check first
     if ! check_infrastructure_health; then
         log_error "❌ Infrastructure health check failed"
         exit 1
     fi
-    
+
     case "$strategy" in
         "import")
             log_info "📥 Using enhanced import strategy..."
@@ -261,7 +286,7 @@ handle_infrastructure_conflicts() {
             exit 1
             ;;
     esac
-    
+
     log_success "✅ Infrastructure conflict handling completed"
 }
 
