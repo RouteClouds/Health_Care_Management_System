@@ -23,6 +23,10 @@ module "healthcare_infrastructure" {
   reuse_existing_eips = true
   existing_eip_ids = []  # Will be populated by pipeline discovery
 
+  # S3 assets bucket behavior
+  # Default: Create bucket if not exist (safe for first runs)
+  attempt_reuse_assets_bucket = false
+
   tags = {
     Environment = "dev"
     Stage = "stage-3"

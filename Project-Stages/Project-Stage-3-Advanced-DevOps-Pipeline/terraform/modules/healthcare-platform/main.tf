@@ -27,7 +27,8 @@ module "vpc" {
   enable_dns_support = true
 
   # EIP reuse configuration to prevent EIP limit issues
-  reuse_nat_ips = var.reuse_existing_eips
+  # Only reuse when EIP IDs are provided; otherwise let module allocate a new EIP
+  reuse_nat_ips       = var.reuse_existing_eips && length(var.existing_eip_ids) > 0
   external_nat_ip_ids = var.existing_eip_ids
 
   # EKS specific tags
@@ -215,15 +216,21 @@ resource "aws_ecr_lifecycle_policy" "backend" {
 }
 
 # S3 Bucket for Application Assets - Idempotent Pattern
-# Try to use existing bucket first
+# Try to use existing bucket first (optional)
 data "aws_s3_bucket" "existing_assets" {
-  count  = var.reuse_existing_resources && !var.force_new_resources ? 1 : 0
+  # Only attempt data source lookup when explicitly enabled and reuse is desired
+  count  = var.attempt_reuse_assets_bucket && var.reuse_existing_resources && !var.force_new_resources ? 1 : 0
   bucket = local.assets_bucket_name
+}
+
+# Determine if existing bucket is discoverable
+locals {
+  assets_bucket_exists = var.reuse_existing_resources && !var.force_new_resources && try(length(data.aws_s3_bucket.existing_assets) > 0, false)
 }
 
 # Create bucket only if existing one not found or reuse is disabled
 resource "aws_s3_bucket" "healthcare_assets" {
-  count  = var.reuse_existing_resources && !var.force_new_resources && length(data.aws_s3_bucket.existing_assets) > 0 ? 0 : 1
+  count  = local.assets_bucket_exists ? 0 : 1
   bucket = local.assets_bucket_name
 
   lifecycle {
@@ -239,8 +246,8 @@ resource "aws_s3_bucket" "healthcare_assets" {
 
 # Use existing or new bucket
 locals {
-  assets_bucket_id = var.reuse_existing_resources && !var.force_new_resources && length(data.aws_s3_bucket.existing_assets) > 0 ? data.aws_s3_bucket.existing_assets[0].id : aws_s3_bucket.healthcare_assets[0].id
-  assets_bucket_arn = var.reuse_existing_resources && !var.force_new_resources && length(data.aws_s3_bucket.existing_assets) > 0 ? data.aws_s3_bucket.existing_assets[0].arn : aws_s3_bucket.healthcare_assets[0].arn
+  assets_bucket_id  = local.assets_bucket_exists ? data.aws_s3_bucket.existing_assets[0].id  : aws_s3_bucket.healthcare_assets[0].id
+  assets_bucket_arn = local.assets_bucket_exists ? data.aws_s3_bucket.existing_assets[0].arn : aws_s3_bucket.healthcare_assets[0].arn
 }
 
 # Bucket versioning (apply to existing or new bucket)

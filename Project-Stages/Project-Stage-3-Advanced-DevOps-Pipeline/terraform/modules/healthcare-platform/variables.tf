@@ -159,3 +159,10 @@ variable "existing_eip_ids" {
   type        = list(string)
   default     = []
 }
+
+# S3 Assets bucket reuse control (prevents failing data source on first run)
+variable "attempt_reuse_assets_bucket" {
+  description = "Attempt to reuse an existing S3 assets bucket by querying AWS. Enable only if the bucket is known to exist."
+  type        = bool
+  default     = false
+}
