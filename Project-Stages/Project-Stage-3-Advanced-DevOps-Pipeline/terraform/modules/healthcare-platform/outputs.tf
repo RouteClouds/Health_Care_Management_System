@@ -124,17 +124,17 @@ output "ecr_repository_backend_arn" {
 # S3 Outputs
 output "s3_bucket_healthcare_assets_id" {
   description = "Name of the healthcare assets S3 bucket"
-  value       = aws_s3_bucket.healthcare_assets.id
+  value       = local.assets_bucket_id
 }
 
 output "s3_bucket_healthcare_assets_arn" {
   description = "ARN of the healthcare assets S3 bucket"
-  value       = aws_s3_bucket.healthcare_assets.arn
+  value       = local.assets_bucket_arn
 }
 
 output "s3_bucket_healthcare_assets_domain_name" {
   description = "Domain name of the healthcare assets S3 bucket"
-  value       = aws_s3_bucket.healthcare_assets.bucket_domain_name
+  value       = "${local.assets_bucket_name}.s3.amazonaws.com"
 }
 
 # General Outputs
