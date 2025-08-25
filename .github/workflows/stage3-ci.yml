@@ -1125,7 +1125,7 @@ jobs:
   deploy-application:
     name: Deploy Application with Automated Database Setup
     runs-on: ubuntu-latest
-    needs: [deploy-infrastructure]
+    needs: [deploy-infrastructure, setup-terraform-backend]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
@@ -1197,6 +1197,10 @@ jobs:
         run: |
           echo "🔍 Validating Terraform state and outputs before database setup..."
 
+          # Always ensure Terraform is initialized in this job context (idempotent)
+          echo "🔧 Initializing Terraform (safe, idempotent)..."
+          terraform init -input=false -no-color -reconfigure || true
+
           # Check if terraform state exists and is accessible
           if terraform state list >/dev/null 2>&1; then
             echo "✅ Terraform state is accessible"
@@ -1219,6 +1223,8 @@ jobs:
             fi
           else
             echo "⚠️ Terraform state is not accessible or not initialized"
+            echo "🔧 Running 'terraform init' before refresh attempt..."
+            terraform init -input=false -no-color -reconfigure || true
             echo "🔄 Attempting to refresh state (apply -refresh-only)..."
             terraform apply -refresh-only -auto-approve || echo "State refresh failed - will use AWS CLI fallback"
           fi
@@ -1229,39 +1235,8 @@ jobs:
           echo "🚀 Deploying application with automated database setup..."
           echo "Using GitOps manifests with image tag: ${{ github.sha }}"
 
-          # Use dedicated script for database configuration update
-          echo "🔧 Running automated database configuration update..."
-          cd ../../../
-
-          # Make script executable and run it
-          chmod +x scripts/deployment/update-database-config.sh
-          # Provide RDS endpoint override if Terraform outputs are missing
-          # Try to derive via AWS CLI as a pre-step to avoid sed failures
-          export AWS_REGION=${{ env.AWS_REGION }}
-          export RDS_ENDPOINT_OVERRIDE=$(aws rds describe-db-instances \
-            --db-instance-identifier healthcare-eks-stage3-dev-db \
-            --region $AWS_REGION \
-            --query 'DBInstances[0].Endpoint.Address' \
-            --output text 2>/dev/null || echo "")
-          if [[ -n "$RDS_ENDPOINT_OVERRIDE" && "$RDS_ENDPOINT_OVERRIDE" == *".rds.amazonaws.com" ]]; then
-            echo "✅ Using RDS endpoint override: $RDS_ENDPOINT_OVERRIDE"
-          else
-            echo "ℹ️ No RDS endpoint override available; script will fall back internally"
-            unset RDS_ENDPOINT_OVERRIDE || true
-          fi
-          ./scripts/deployment/update-database-config.sh
-          # Restart backend to pick up updated Secret
-          echo "🔄 Restarting backend deployment to pick up updated DATABASE_URL..."
-          kubectl rollout restart deployment/healthcare-backend-stage3 -n healthcare-stage3-dev || echo "Backend deployment not found yet"
-          echo "⏳ Waiting for backend rollout to complete..."
-          kubectl rollout status deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --timeout=300s || echo "Rollout timeout, continuing..."
-
-          # Return to GitOps directory
-          cd gitops/environments/dev
-
-          # Create namespace if it doesn't exist
+          # Ensure namespace exists BEFORE updating secret
           echo "🏗️ Ensuring namespace exists..."
-
           # Method 1: Try declarative approach
           if kubectl create namespace healthcare-stage3-dev --dry-run=client -o yaml | kubectl apply -f -; then
             echo "✅ Namespace created/verified using declarative approach"
@@ -1274,7 +1249,6 @@ jobs:
               echo "ℹ️ Namespace might already exist, checking..."
             fi
           fi
-
           # Verify namespace exists
           if kubectl get namespace healthcare-stage3-dev >/dev/null 2>&1; then
             echo "✅ Namespace healthcare-stage3-dev is ready"
@@ -1285,6 +1259,33 @@ jobs:
             kubectl get namespaces
             exit 1
           fi
+
+          # Use dedicated script for database configuration update (cluster mode)
+          echo "🔧 Running automated database configuration update (cluster mode)..."
+          cd ../../../
+          chmod +x scripts/deployment/update-database-config.sh
+          export AWS_REGION=${{ env.AWS_REGION }}
+          export RDS_ENDPOINT_OVERRIDE=$(aws rds describe-db-instances \
+            --db-instance-identifier healthcare-eks-stage3-dev-db \
+            --region $AWS_REGION \
+            --query 'DBInstances[0].Endpoint.Address' \
+            --output text 2>/dev/null || echo "")
+          if [[ -n "$RDS_ENDPOINT_OVERRIDE" && "$RDS_ENDPOINT_OVERRIDE" == *".rds.amazonaws.com" ]]; then
+            echo "✅ Using RDS endpoint override: $RDS_ENDPOINT_OVERRIDE"
+          else
+            echo "ℹ️ No RDS endpoint override available; script will fall back internally"
+            unset RDS_ENDPOINT_OVERRIDE || true
+          fi
+          ./scripts/deployment/update-database-config.sh cluster
+
+          # Restart backend to pick up updated Secret
+          echo "🔄 Restarting backend deployment to pick up updated DATABASE_URL..."
+          kubectl rollout restart deployment/healthcare-backend-stage3 -n healthcare-stage3-dev || echo "Backend deployment not found yet"
+          echo "⏳ Waiting for backend rollout to complete..."
+          kubectl rollout status deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --timeout=600s || echo "Rollout timeout, continuing..."
+
+          # Return to GitOps directory
+          cd gitops/environments/dev
 
           # Apply all manifests with error handling
           echo "📦 Deploying backend application..."
@@ -1352,11 +1353,25 @@ jobs:
           echo "🗄️ Running database migrations and seeding..."
 
           # Wait for backend pods to be ready
-          echo "⏳ Waiting for backend pods to be ready..."
-          kubectl wait --for=condition=ready pod -l app=healthcare-backend-stage3 -n healthcare-stage3-dev --timeout=300s
+          echo "⏳ Waiting for backend pods to be ready (up to 10 minutes)..."
+          if ! kubectl wait --for=condition=ready pod -l app=healthcare-backend-stage3 -n healthcare-stage3-dev --timeout=600s; then
+            echo "⚠️ Backend pods did not become Ready within timeout. Collecting diagnostics..."
+            kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o wide || true
+            echo "🔍 Describing one backend pod for details..."
+            ONE_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[0].metadata.name}' || echo "")
+            if [[ -n "$ONE_POD" ]]; then
+              kubectl describe pod "$ONE_POD" -n healthcare-stage3-dev || true
+              echo "🧾 Last 100 lines of pod logs (if available):"
+              kubectl logs "$ONE_POD" -n healthcare-stage3-dev --tail=100 || true
+            fi
+            echo "Continuing to attempt migrations anyway..."
+          fi
 
-          # Get a backend pod name
-          BACKEND_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[0].metadata.name}')
+          # Get a backend pod name (prefer Ready pod if possible)
+          BACKEND_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[?(@.status.containerStatuses[0].ready==true)].metadata.name}' | awk '{print $1}')
+          if [[ -z "$BACKEND_POD" ]]; then
+            BACKEND_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[0].metadata.name}')
+          fi
           echo "📦 Using backend pod: $BACKEND_POD"
 
           # Verify database connection first
