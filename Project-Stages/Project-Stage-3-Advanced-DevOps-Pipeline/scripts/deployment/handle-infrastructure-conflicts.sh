@@ -225,16 +225,13 @@ enhanced_pre_import() {
             log_info "📥 Importing RDS subnet group with retry logic..."
             # Only import if not already in state
             if ! (terraform state list 2>/dev/null || true) | grep -q "module\.healthcare_infrastructure\.aws_db_subnet_group\.healthcare"; then
-              if retry_with_backoff_args 2 1 terraform import module.healthcare_infrastructure.aws_db_subnet_group.healthcare "$subnet_group_name"; then
-              else
-                log_warning "⚠️ RDS subnet group import failed - may need manual intervention"
-              fi
+                if retry_with_backoff_args 2 1 terraform import module.healthcare_infrastructure.aws_db_subnet_group.healthcare "$subnet_group_name"; then
+                    log_success "✅ RDS subnet group imported successfully"
+                else
+                    log_warning "⚠️ RDS subnet group import failed - may need manual intervention"
+                fi
             else
-              log_info "ℹ️ RDS subnet group already in Terraform state; skipping import"
-            fi
-                log_success "✅ RDS subnet group imported successfully"
-            else
-                log_warning "⚠️ RDS subnet group import failed - may need manual intervention"
+                log_info "ℹ️ RDS subnet group already in Terraform state; skipping import"
             fi
         else
             log_info "ℹ️ No existing RDS subnet group found - will be created"
