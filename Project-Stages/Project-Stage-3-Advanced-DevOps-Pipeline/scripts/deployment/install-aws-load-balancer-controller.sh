@@ -119,17 +119,29 @@ eksctl utils associate-iam-oidc-provider --cluster="$CLUSTER_NAME" --region="$RE
 
 # Force recreate service account with IAM role to pick up updated policy
 log_info "🔐 Ensuring service account with updated IAM role..."
+
 # Delete existing service account and role to force refresh
+log_info "🗑️ Deleting existing service account..."
 eksctl delete iamserviceaccount \
   --cluster="$CLUSTER_NAME" \
   --namespace="$NAMESPACE" \
   --name=aws-load-balancer-controller \
   --region="$REGION" || true
 
-# Wait a moment for cleanup
-sleep 5
+# Wait for complete cleanup and verify service account is gone
+log_info "⏳ Waiting for service account cleanup..."
+sleep 10
+for i in {1..30}; do
+  if ! kubectl get serviceaccount aws-load-balancer-controller -n "$NAMESPACE" >/dev/null 2>&1; then
+    log_info "✅ Service account cleanup complete"
+    break
+  fi
+  log_info "⏳ Waiting for service account deletion... (attempt $i/30)"
+  sleep 2
+done
 
-# Create fresh service account with updated policy
+# Create fresh service account with updated policy and override flag
+log_info "🔧 Creating fresh service account with updated IAM policy..."
 eksctl create iamserviceaccount \
   --cluster="$CLUSTER_NAME" \
   --namespace="$NAMESPACE" \
@@ -137,10 +149,15 @@ eksctl create iamserviceaccount \
   --role-name AmazonEKSLoadBalancerControllerRole \
   --attach-policy-arn="$POLICY_ARN" \
   --approve \
-  --region="$REGION" || {
+  --region="$REGION" \
+  --override-existing-serviceaccounts || {
     log_error "Service account creation failed"
     exit 1
 }
+
+# Verify service account is ready
+log_info "🔍 Verifying service account is ready..."
+kubectl wait --for=condition=ready serviceaccount/aws-load-balancer-controller -n "$NAMESPACE" --timeout=60s || true
 
 # Add EKS Helm repository
 log_info "📦 Adding EKS Helm repository..."
@@ -153,14 +170,33 @@ log_info "🚀 Installing AWS Load Balancer Controller (force restart)..."
 kubectl delete deployment aws-load-balancer-controller -n $NAMESPACE || true
 sleep 5
 
-helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+# Install with extended timeout and retry logic
+log_info "📦 Installing Helm chart with extended timeout..."
+if ! helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n $NAMESPACE \
   --set clusterName="$CLUSTER_NAME" \
   --set serviceAccount.create=false \
   --set serviceAccount.name=aws-load-balancer-controller \
   --set region="$REGION" \
   --set vpcId=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" --query "cluster.resourcesVpcConfig.vpcId" --output text) \
-  --wait
+  --wait \
+  --timeout=600s; then
+
+  log_warning "⚠️ Helm install failed, attempting retry..."
+  sleep 10
+  helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+    -n $NAMESPACE \
+    --set clusterName="$CLUSTER_NAME" \
+    --set serviceAccount.create=false \
+    --set serviceAccount.name=aws-load-balancer-controller \
+    --set region="$REGION" \
+    --set vpcId=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" --query "cluster.resourcesVpcConfig.vpcId" --output text) \
+    --wait \
+    --timeout=600s || {
+      log_error "❌ Helm install failed after retry"
+      exit 1
+    }
+fi
 
 # Verify installation
 log_info "🔍 Verifying AWS Load Balancer Controller installation..."
