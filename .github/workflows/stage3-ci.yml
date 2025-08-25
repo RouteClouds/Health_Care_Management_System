@@ -39,6 +39,10 @@ env:
   AWS_REGION: 'us-east-1'
   # ECR Registry will be dynamically detected from AWS Account ID: 867344452513
 
+concurrency:
+  group: stage3-dev
+  cancel-in-progress: true
+
 jobs:
   terraform-validate:
     name: Terraform Validate
@@ -547,7 +551,7 @@ jobs:
           # Initialize with dynamic backend configuration (idempotent)
           terraform init \
             -backend-config="bucket=${{ needs.setup-terraform-backend.outputs.backend-bucket }}" \
-            -backend-config="key=dev/terraform.tfstate" \
+            -backend-config="key=stage3/dev/terraform.tfstate" \
             -backend-config="region=${{ env.AWS_REGION }}" \
             -backend-config="dynamodb_table=${{ needs.setup-terraform-backend.outputs.backend-table }}" \
             -backend-config="encrypt=true"
@@ -599,6 +603,17 @@ jobs:
           echo "   EKS Cluster: $CLUSTER_EXISTS"
           echo "   RDS Instance: $RDS_EXISTS"
           echo "   VPC: $VPC_EXISTS"
+
+      - name: Preflight Collision Detection
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AUTO_IMPORT: ${{ vars.AUTO_IMPORT || 'false' }}
+          FAIL_FAST: ${{ vars.FAIL_FAST || 'true' }}
+          CLUSTER_NAME: healthcare-eks-stage3-dev
+        run: |
+          echo "🔍 Running preflight collision checks (FAIL_FAST=${FAIL_FAST}, AUTO_IMPORT=${AUTO_IMPORT})..."
+          bash ../../../scripts/preflight/check-collisions.sh
 
       - name: Terraform Plan
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
@@ -873,7 +888,7 @@ jobs:
     name: Ansible Configuration Management
     runs-on: ubuntu-latest
     needs: [deploy-infrastructure]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (vars.ENABLE_ANSIBLE == 'true')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -1092,7 +1107,7 @@ jobs:
   deploy-application:
     name: Deploy Application with Automated Database Setup
     runs-on: ubuntu-latest
-    needs: [deploy-infrastructure, ansible-configuration]
+    needs: [deploy-infrastructure]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
@@ -1621,6 +1636,31 @@ jobs:
 
           echo "❌ Recovery validation failed"
           exit 1
+
+  duplicate-cleanup-dryrun:
+    name: Diagnose Duplicates (Dry-Run Cleanup)
+    runs-on: ubuntu-latest
+    if: always() && github.ref == 'refs/heads/main'
+    needs: [deploy-infrastructure]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Dry-run duplicate cleanup (visibility only)
+        if: failure()
+        working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+        run: |
+          echo "🧪 Running enhanced duplicate cleanup in DRY-RUN mode for diagnostics..."
+          chmod +x scripts/cleanup/enhanced-duplicate-cleanup.sh
+          ./scripts/cleanup/enhanced-duplicate-cleanup.sh true
+
 
       - name: Notify Recovery Status
         if: always()

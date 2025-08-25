@@ -1,8 +1,23 @@
+terraform {
+  backend "s3" {}
+}
+
+
 module "healthcare_infrastructure" {
   source = "../../modules/healthcare-platform"
 
   environment  = "dev"
   cluster_name = "healthcare-eks-stage3-dev"
+
+  # First-time creation: do NOT preserve existing control plane (no cluster yet)
+  # After successful creation, set preserve_existing_cluster=true and wire ARNs/SGs below
+  preserve_existing_cluster = false
+
+  # Existing cluster bindings (only needed when preserve_existing_cluster=true)
+  # eks_cluster_role_arn          = "<EKS cluster role ARN>"
+  # eks_cluster_kms_key_arn       = "<KMS key ARN for control plane encryption>"
+  # eks_cluster_security_group_id = "<EKS cluster security group ID>"
+  # eks_cluster_additional_sg_ids = ["<additional SG IDs>"]
 
   # Dev-specific configurations
   node_instance_types = ["t3.medium"]

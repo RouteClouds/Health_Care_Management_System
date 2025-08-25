@@ -14,6 +14,12 @@ variable "cluster_name" {
   type        = string
 }
 
+variable "preserve_existing_cluster" {
+  description = "If true, do not create/replace the EKS control plane; assume an existing cluster and skip EKS cluster creation."
+  type        = bool
+  default     = false
+}
+
 variable "kubernetes_version" {
   description = "Kubernetes version"
   type        = string
@@ -30,6 +36,43 @@ variable "private_subnets" {
   description = "Private subnet CIDR blocks"
   type        = list(string)
   default     = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+}
+
+# Preserve existing cluster inputs
+variable "eks_preserve" {
+  description = "Preserve existing EKS control plane instead of replacing"
+  type        = bool
+  default     = true
+}
+
+variable "eks_cluster_role_arn" {
+  description = "Existing cluster IAM role ARN when preserving"
+  type        = string
+  default     = ""
+}
+
+variable "eks_cluster_security_group_id" {
+  description = "Existing cluster security group id when preserving"
+  type        = string
+  default     = ""
+}
+
+variable "eks_cluster_additional_sg_ids" {
+  description = "Existing additional security group ids for control plane when preserving"
+  type        = list(string)
+  default     = []
+}
+
+variable "eks_cluster_kms_key_arn" {
+  description = "Existing cluster encryption KMS key ARN when preserving"
+  type        = string
+  default     = ""
+}
+
+variable "eks_cluster_enabled_log_types" {
+  description = "Control plane log types"
+  type        = list(string)
+  default     = ["api", "audit", "authenticator"]
 }
 
 variable "public_subnets" {

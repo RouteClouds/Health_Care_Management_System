@@ -46,21 +46,27 @@ kubectl apply -f gitops/applications/
 
 ## 📚 Documentation
 
-### **📋 Core Guides**
-- **[Master Setup Guide](MASTER-SETUP-GUIDE.md)** - Complete step-by-step deployment
-- **[Architecture Guide](ARCHITECTURE-guide.md)** - Visual system architecture
-- **[Operations Manual](OPERATIONS.md)** - Day-to-day operational procedures
-- **[Troubleshooting Guide](TROUBLESHOOTING.md)** - Issue resolution and debugging
+### Core Guides
+- Master Setup Guide: MASTER-SETUP-GUIDE.md
+- Architecture Guide: ARCHITECTURE-guide.md
+- Operations Manual: OPERATIONS.md
+- Troubleshooting Guide: TROUBLESHOOTING.md
 
-### **🔧 Specialized Documentation**
-- **[Migration Guide](docs/MIGRATION-GUIDE.md)** - Stage-2 to Stage-3 transition
-- **[Security Guide](docs/SECURITY-GUIDE.md)** - Security best practices
-- **[Performance Tuning](docs/PERFORMANCE-TUNING.md)** - Optimization strategies
-- **[FAQ](docs/FAQ.md)** - Frequently asked questions
+### Consolidated Enhancement & RCA
+- Stage-3 Enhancement Summary & Roadmap: "Stage-3 Enhancement Summary & Roadmap.md"
+- RCA - Duplicate Infra & State Drift: "RCA - Duplicate Infra & State Drift.md"
 
-### **📊 Project Management**
-- **[Project Tracker](Project-Tracker.md)** - Current progress and status
-- **[Roadmap](RoadMap-For-Stage-3.md)** - Strategic implementation plan
+### Archive
+- docs/archive/ contains superseded docs and drafts preserved for reference
+
+### Specialized Documentation
+- Migration Guide: docs/MIGRATION-GUIDE.md
+- Security Guide: docs/SECURITY-GUIDE.md
+- Performance Tuning: docs/PERFORMANCE-TUNING.md
+- FAQ: docs/FAQ.md
+
+### Project Management
+- Project Tracker: Project-Tracker.md
 
 ## 🔧 Key Features & Capabilities
 

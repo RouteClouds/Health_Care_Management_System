@@ -52,12 +52,32 @@ module "eks" {
   source = "terraform-aws-modules/eks/aws"
   version = "~> 19.0"
 
+  # If preserving existing control plane, do not create cluster; only manage node groups and data lookups
+  create = var.preserve_existing_cluster ? false : true
+
   cluster_name    = var.cluster_name
   cluster_version = var.kubernetes_version
 
+  # Preserve existing cluster by referencing its exact settings when not creating
+  create_iam_role              = var.preserve_existing_cluster ? false : true
+  iam_role_arn                 = var.preserve_existing_cluster ? var.eks_cluster_role_arn : null
+  cluster_enabled_log_types    = ["api", "audit", "authenticator"]
+  create_cloudwatch_log_group  = var.preserve_existing_cluster ? false : true
+  cluster_encryption_config = {
+    resources        = ["secrets"]
+    provider_key_arn = var.preserve_existing_cluster ? var.eks_cluster_kms_key_arn : null
+  }
+  create_kms_key               = var.preserve_existing_cluster ? false : true
+
+  # VPC and networking must match existing cluster
   vpc_id                         = module.vpc.vpc_id
   subnet_ids                     = module.vpc.private_subnets
   cluster_endpoint_public_access = true
+
+  # If the cluster already exists, attach its existing SGs rather than creating new ones
+  create_cluster_security_group = var.preserve_existing_cluster ? false : true
+  cluster_security_group_id     = var.preserve_existing_cluster ? var.eks_cluster_security_group_id : null
+  cluster_additional_security_group_ids = var.preserve_existing_cluster ? var.eks_cluster_additional_sg_ids : []
 
   # EKS Managed Node Groups
   eks_managed_node_groups = {
