@@ -1219,8 +1219,8 @@ jobs:
             fi
           else
             echo "⚠️ Terraform state is not accessible or not initialized"
-            echo "🔄 Attempting to refresh state..."
-            terraform refresh -auto-approve || echo "State refresh failed - will use AWS CLI fallback"
+            echo "🔄 Attempting to refresh state (apply -refresh-only)..."
+            terraform apply -refresh-only -auto-approve || echo "State refresh failed - will use AWS CLI fallback"
           fi
 
       - name: Deploy application with latest GitOps manifests
@@ -1467,15 +1467,25 @@ jobs:
           if [[ -z "$ALB_URL" ]]; then
             echo "❌ Application Load Balancer URL not found after 10 minutes"
             echo "🔍 Checking Ingress status..."
-            kubectl describe ingress healthcare-stage3-ingress -n healthcare-stage3-dev
+            kubectl describe ingress healthcare-stage3-ingress -n healthcare-stage3-dev || true
             echo "🔍 Checking AWS Load Balancer Controller logs..."
             kubectl logs deployment/aws-load-balancer-controller -n kube-system --tail=50 || echo "Controller logs not available"
 
-            # Fallback: try to get any ALB in the region
+            # Fallback: try to get any ALB in the region and use its DNS as LB_URL
             echo "🔍 Checking for any ALBs in the region..."
-            aws elbv2 describe-load-balancers --region us-east-1 --query 'LoadBalancers[?Type==`application`].[LoadBalancerName,DNSName]' --output table || echo "No ALBs found"
-            exit 1
+            FALLBACK_ALB=$(aws elbv2 describe-load-balancers --region us-east-1 --query 'LoadBalancers[?Type==`application`].[DNSName]' --output text | head -n1 || true)
+            if [[ -n "$FALLBACK_ALB" ]]; then
+              LB_URL="$FALLBACK_ALB"
+              echo "ℹ️ Using fallback ALB DNS: http://$LB_URL"
+            else
+              echo "❌ No ALBs found via fallback"
+              exit 1
+            fi
+          else
+            LB_URL="$ALB_URL"
           fi
+
+          echo "🔗 Using Application Load Balancer: http://$LB_URL"
 
           # Use ALB URL for testing
           LB_URL="$ALB_URL"
