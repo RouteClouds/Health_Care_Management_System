@@ -608,12 +608,30 @@ jobs:
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         env:
           AWS_REGION: ${{ env.AWS_REGION }}
-          AUTO_IMPORT: ${{ vars.AUTO_IMPORT || 'false' }}
           FAIL_FAST: ${{ vars.FAIL_FAST || 'true' }}
           CLUSTER_NAME: healthcare-eks-stage3-dev
         run: |
-          echo "🔍 Running preflight collision checks (FAIL_FAST=${FAIL_FAST}, AUTO_IMPORT=${AUTO_IMPORT})..."
-          bash ../../../scripts/preflight/check-collisions.sh
+          echo "🔍 Running preflight collision checks with adaptive AUTO_IMPORT..."
+          # Detect preserve_existing_cluster from env/dev main.tf (defaults to true if not found)
+          PRESERVE=$(grep -E 'preserve_existing_cluster\s*=\s*' main.tf | awk '{print $3}' | tr -d '"' || echo "")
+          [[ -z "$PRESERVE" ]] && PRESERVE="true"
+          echo "PRESERVE flag detected: ${PRESERVE}"
+
+          # Start with repository default
+          AUTO_IMPORT_REPO_DEFAULT='${{ vars.AUTO_IMPORT || 'false' }}'
+          AUTO_IMPORT="$AUTO_IMPORT_REPO_DEFAULT"
+
+          # If cluster exists while PRESERVE=false (first-time path expected creation), auto-import to avoid hard fail
+          if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+            echo "📌 Cluster exists: $CLUSTER_NAME"
+            if [[ "$PRESERVE" == "false" ]]; then
+              echo "⚙️  PRESERVE=false but cluster exists. Enabling AUTO_IMPORT=true to reconcile state."
+              AUTO_IMPORT="true"
+            fi
+          fi
+
+          echo "Using AUTO_IMPORT=${AUTO_IMPORT}, FAIL_FAST=${FAIL_FAST}"
+          AUTO_IMPORT="$AUTO_IMPORT" FAIL_FAST="$FAIL_FAST" CLUSTER_NAME="$CLUSTER_NAME" AWS_REGION="$AWS_REGION" bash ../../../scripts/preflight/check-collisions.sh
 
       - name: Terraform Plan
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev

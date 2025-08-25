@@ -6958,6 +6958,45 @@ curl -I http://$GRAFANA_ALB
 # ALB 2: $0.0225/hour × 24 × 30 = ~$16/month
 # Total: ~$32/month
 
+
+---
+
+### Issue: ALB Controller AccessDenied on DescribeListenerAttributes
+
+Summary
+- The AWS Load Balancer Controller could not reconcile Ingress due to missing IAM permission.
+
+Root cause
+- The controller’s IAM policy was missing elasticloadbalancing:DescribeListenerAttributes.
+
+Symptoms
+- Ingress never receives an Address; kubectl describe shows warnings like:
+  - Failed deploy model due to operation error Elastic Load Balancing v2: DescribeListenerAttributes, StatusCode: 403, AccessDenied
+- Controller logs show the same AccessDenied error for DescribeListenerAttributes.
+- Example from 25-Aug-Failed-Pipeline-log.md:
+  - User: arn:aws:sts::...:assumed-role/AmazonEKSLoadBalancerControllerRole/... is not authorized to perform: elasticloadbalancing:DescribeListenerAttributes
+
+Solution
+- Updated scripts/deployment/install-aws-load-balancer-controller.sh to:
+  - Download the latest upstream iam_policy.json
+  - If policy exists, prune non-default versions when at version limit and create a new default policy version with the latest document
+  - Ensure EKS OIDC provider association (IRSA)
+  - Recreate/ensure iamserviceaccount with the updated policy
+
+Verification
+- Re-run the install script (CI step or locally):
+  - kubectl get deployment aws-load-balancer-controller -n kube-system
+  - kubectl logs -n kube-system deployment/aws-load-balancer-controller | grep -i error  # Should show none
+- Re-apply ingress and check address:
+  - kubectl apply -f gitops/environments/dev/ingress.yaml
+  - kubectl get ingress healthcare-stage3-ingress -n healthcare-stage3-dev -o wide
+  - Expect ADDRESS to be populated (k8s-…elb.amazonaws.com)
+- ALB listing:
+  - aws elbv2 describe-load-balancers --query 'LoadBalancers[?Type==`application`].[LoadBalancerName,DNSName]' --output table
+
+Notes
+- If AccessDenied persists, ensure the aws-load-balancer-controller service account is annotated for IRSA and the role trust policy references the cluster’s OIDC provider.
+
 # Monthly savings: ~$2/month + better features
 ```
 
