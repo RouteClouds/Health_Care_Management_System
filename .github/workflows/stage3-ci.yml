@@ -1465,6 +1465,15 @@ jobs:
           echo "✅ Database migrations and seeding completed!"
           echo "✅ Deployments completed successfully"
 
+      - name: Force refresh AWS Load Balancer Controller
+        working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+        run: |
+          echo "🔄 Force refreshing AWS Load Balancer Controller to fix IAM permissions..."
+
+          # Run the ALB controller installation script to force refresh
+          chmod +x scripts/deployment/install-aws-load-balancer-controller.sh
+          ./scripts/deployment/install-aws-load-balancer-controller.sh healthcare-eks-stage3-dev
+
       - name: Validate automated database setup
         run: |
           echo "🔍 Validating automated database setup..."

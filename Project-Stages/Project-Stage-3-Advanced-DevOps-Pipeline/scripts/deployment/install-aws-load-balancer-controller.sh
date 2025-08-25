@@ -117,58 +117,81 @@ rm -f iam_policy.json
 log_info "🔐 Ensuring OIDC provider is associated with the EKS cluster..."
 eksctl utils associate-iam-oidc-provider --cluster="$CLUSTER_NAME" --region="$REGION" --approve || true
 
-# Force recreate service account with IAM role to pick up updated policy
-log_info "🔐 Ensuring service account with updated IAM role..."
+# Complete IAM cleanup and recreation to fix persistent AccessDenied errors
+log_info "🔐 Performing complete IAM cleanup and recreation..."
 
-# Delete existing service account and role to force refresh
-log_info "🗑️ Deleting existing service account..."
+# Step 1: Delete existing controller deployment to stop using old credentials
+log_info "🗑️ Deleting existing controller deployment..."
+kubectl delete deployment aws-load-balancer-controller -n "$NAMESPACE" || true
+
+# Step 2: Delete existing service account and wait for complete cleanup
+log_info "🗑️ Deleting existing service account and IAM role..."
 eksctl delete iamserviceaccount \
   --cluster="$CLUSTER_NAME" \
   --namespace="$NAMESPACE" \
   --name=aws-load-balancer-controller \
-  --region="$REGION" || true
+  --region="$REGION" \
+  --wait || true
 
-# Wait for complete cleanup and verify service account is gone
-log_info "⏳ Waiting for service account cleanup..."
-sleep 10
+# Step 3: Manually delete IAM role if it still exists (force cleanup)
+log_info "🧹 Ensuring IAM role is completely removed..."
+ROLE_NAME="AmazonEKSLoadBalancerControllerRole"
+if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+  log_info "🗑️ Manually deleting IAM role: $ROLE_NAME"
+  # Detach policies first
+  aws iam list-attached-role-policies --role-name "$ROLE_NAME" --query 'AttachedPolicies[].PolicyArn' --output text | \
+    xargs -I {} aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn {} || true
+  # Delete role
+  aws iam delete-role --role-name "$ROLE_NAME" || true
+fi
+
+# Step 4: Wait for AWS IAM propagation
+log_info "⏳ Waiting for AWS IAM propagation (60 seconds)..."
+sleep 60
+
+# Step 5: Verify complete cleanup
+log_info "🔍 Verifying complete cleanup..."
 for i in {1..30}; do
-  if ! kubectl get serviceaccount aws-load-balancer-controller -n "$NAMESPACE" >/dev/null 2>&1; then
-    log_info "✅ Service account cleanup complete"
+  if ! kubectl get serviceaccount aws-load-balancer-controller -n "$NAMESPACE" >/dev/null 2>&1 && \
+     ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+    log_success "✅ Complete cleanup verified"
     break
   fi
-  log_info "⏳ Waiting for service account deletion... (attempt $i/30)"
+  log_info "⏳ Waiting for complete cleanup... (attempt $i/30)"
   sleep 2
 done
 
-# Create fresh service account with updated policy and override flag
+# Step 6: Create fresh service account with updated IAM policy
 log_info "🔧 Creating fresh service account with updated IAM policy..."
 eksctl create iamserviceaccount \
   --cluster="$CLUSTER_NAME" \
   --namespace="$NAMESPACE" \
   --name=aws-load-balancer-controller \
-  --role-name AmazonEKSLoadBalancerControllerRole \
+  --role-name="$ROLE_NAME" \
   --attach-policy-arn="$POLICY_ARN" \
   --approve \
-  --region="$REGION" \
-  --override-existing-serviceaccounts || {
+  --region="$REGION" || {
     log_error "Service account creation failed"
     exit 1
 }
 
-# Verify service account is ready
-log_info "🔍 Verifying service account is ready..."
+# Step 7: Verify service account and IAM role are ready
+log_info "🔍 Verifying service account and IAM role are ready..."
 kubectl wait --for=condition=ready serviceaccount/aws-load-balancer-controller -n "$NAMESPACE" --timeout=60s || true
+if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+  log_success "✅ IAM role created successfully"
+else
+  log_error "❌ IAM role creation failed"
+  exit 1
+fi
 
 # Add EKS Helm repository
 log_info "📦 Adding EKS Helm repository..."
 helm repo add eks https://aws.github.io/eks-charts
 helm repo update
 
-# Install AWS Load Balancer Controller (force restart to pick up new IRSA)
-log_info "🚀 Installing AWS Load Balancer Controller (force restart)..."
-# Delete existing deployment to force restart with new service account
-kubectl delete deployment aws-load-balancer-controller -n $NAMESPACE || true
-sleep 5
+# Install AWS Load Balancer Controller with fresh IAM credentials
+log_info "🚀 Installing AWS Load Balancer Controller with fresh IAM credentials..."
 
 # Install with extended timeout and retry logic
 log_info "📦 Installing Helm chart with extended timeout..."
@@ -213,17 +236,29 @@ else
     exit 1
 fi
 
-# Verify controller permissions by calling DescribeListenerAttributes on a dummy ARN to ensure policy in effect
-log_info "🔐 Verifying controller IAM permissions (DescribeListenerAttributes)..."
-TEST_ALB_ARN=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[?Type==`application`][0].LoadBalancerArn' --output text 2>/dev/null || echo "")
-if [[ -n "$TEST_ALB_ARN" ]]; then
-  if aws elbv2 describe-listener-attributes --listener-arn "$TEST_ALB_ARN" >/dev/null 2>&1; then
-    log_success "IAM permissions for DescribeListenerAttributes appear valid"
-  else
-    log_warning "Controller IAM may still be missing DescribeListenerAttributes permission"
-  fi
+# Verify controller permissions and wait for it to be fully operational
+log_info "🔐 Verifying controller IAM permissions and functionality..."
+
+# Wait for controller pods to be fully ready
+log_info "⏳ Waiting for controller pods to be fully ready..."
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=aws-load-balancer-controller -n "$NAMESPACE" --timeout=300s
+
+# Test IAM permissions by checking if we can describe load balancers
+log_info "🧪 Testing IAM permissions..."
+if aws elbv2 describe-load-balancers --region "$REGION" >/dev/null 2>&1; then
+  log_success "✅ Basic ELB permissions working"
 else
-  log_info "No existing ALBs found to test permissions; proceeding"
+  log_warning "⚠️ Basic ELB permissions may be missing"
+fi
+
+# Check controller logs for any immediate errors
+log_info "📋 Checking controller logs for errors..."
+CONTROLLER_POD=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=aws-load-balancer-controller -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [[ -n "$CONTROLLER_POD" ]]; then
+  log_info "📋 Recent controller logs:"
+  kubectl logs "$CONTROLLER_POD" -n "$NAMESPACE" --tail=10 | grep -E "(error|Error|ERROR)" || log_success "No errors found in recent logs"
+else
+  log_warning "⚠️ Could not find controller pod for log checking"
 fi
 
 log_success "🎉 AWS Load Balancer Controller installation completed!"
