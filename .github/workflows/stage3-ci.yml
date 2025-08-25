@@ -1198,8 +1198,13 @@ jobs:
           echo "🔍 Validating Terraform state and outputs before database setup..."
 
           # Always ensure Terraform is initialized in this job context (idempotent)
-          echo "🔧 Initializing Terraform (safe, idempotent)..."
-          terraform init -input=false -no-color -reconfigure || true
+          echo "🔧 Initializing Terraform with S3 backend (safe, idempotent)..."
+          terraform init -reconfigure -input=false -no-color \
+            -backend-config="bucket=${{ needs.setup-terraform-backend.outputs.backend-bucket }}" \
+            -backend-config="key=stage3/dev/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ needs.setup-terraform-backend.outputs.backend-table }}" \
+            -backend-config="encrypt=true" || true
 
           # Check if terraform state exists and is accessible
           if terraform state list >/dev/null 2>&1; then
@@ -1502,9 +1507,8 @@ jobs:
 
           echo "🔗 Using Application Load Balancer: http://$LB_URL"
 
-          # Use ALB URL for testing
-          LB_URL="$ALB_URL"
-          echo "🔗 Using Application Load Balancer: http://$LB_URL"
+          # Ensure LB_URL is set only once
+          :
 
           # Check pod status first
           echo "🔍 Checking pod status..."

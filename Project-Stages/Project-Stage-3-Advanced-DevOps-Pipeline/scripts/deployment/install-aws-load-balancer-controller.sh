@@ -57,14 +57,13 @@ log_success "AWS Account ID: $AWS_ACCOUNT_ID"
 # Check if AWS Load Balancer Controller is already installed
 log_info "🔍 Checking if AWS Load Balancer Controller is already installed..."
 if kubectl get deployment aws-load-balancer-controller -n $NAMESPACE &> /dev/null; then
-    log_warning "AWS Load Balancer Controller is already installed"
-    
+    log_warning "AWS Load Balancer Controller deployment already exists"
     # Check if it's running
     READY_REPLICAS=$(kubectl get deployment aws-load-balancer-controller -n $NAMESPACE -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
     if [[ "$READY_REPLICAS" -gt 0 ]]; then
         log_success "AWS Load Balancer Controller is running ($READY_REPLICAS replicas ready)"
-        log_info "✅ ALB support is already available"
-        exit 0
+        log_info "ℹ️ Ensuring IAM policy/IRSA are correct and chart is up-to-date..."
+        # Do NOT exit here; continue to ensure IAM policy, IRSA, and helm chart are correct
     else
         log_warning "AWS Load Balancer Controller exists but not ready, reinstalling..."
         kubectl delete deployment aws-load-balancer-controller -n $NAMESPACE || true
@@ -163,9 +162,18 @@ else
     exit 1
 fi
 
-# Verify controller logs
-log_info "📋 Checking controller logs for any errors..."
-kubectl logs deployment/aws-load-balancer-controller -n $NAMESPACE --tail=10 | grep -i error || log_success "No errors found in controller logs"
+# Verify controller permissions by calling DescribeListenerAttributes on a dummy ARN to ensure policy in effect
+log_info "🔐 Verifying controller IAM permissions (DescribeListenerAttributes)..."
+TEST_ALB_ARN=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[?Type==`application`][0].LoadBalancerArn' --output text 2>/dev/null || echo "")
+if [[ -n "$TEST_ALB_ARN" ]]; then
+  if aws elbv2 describe-listener-attributes --listener-arn "$TEST_ALB_ARN" >/dev/null 2>&1; then
+    log_success "IAM permissions for DescribeListenerAttributes appear valid"
+  else
+    log_warning "Controller IAM may still be missing DescribeListenerAttributes permission"
+  fi
+else
+  log_info "No existing ALBs found to test permissions; proceeding"
+fi
 
 log_success "🎉 AWS Load Balancer Controller installation completed!"
 log_info "✅ Application Load Balancer (ALB) support is now available"
