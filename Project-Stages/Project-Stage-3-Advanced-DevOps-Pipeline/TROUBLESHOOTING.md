@@ -6998,6 +6998,65 @@ Notes
 - If AccessDenied persists, ensure the aws-load-balancer-controller service account is annotated for IRSA and the role trust policy references the cluster’s OIDC provider.
 
 # Monthly savings: ~$2/month + better features
+
+---
+
+### Issue: Deploy Infrastructure fails due to bash syntax error and Terraform import conflicts
+
+Overview
+- The Deploy Infrastructure stage failed with:
+  - `syntax error near unexpected token else` in scripts/deployment/handle-infrastructure-conflicts.sh
+  - Terraform `Resource already managed by Terraform` when attempting to import EKS
+  - Bad JMESPath quoting in preflight DB subnet group detection
+
+Root causes
+- Malformed nested if/else in conflict handler around RDS subnet group import block
+- Import attempted even when EKS resource already present in state
+- JMESPath query used backticks and incorrect escaping, plus variables not initialized
+
+Resolutions
+- Fix conflict handler syntax and ensure variables defined before use
+- Guard terraform import by checking state list first and skipping import when present
+- Use safe JMESPath contains() with proper quoting; suppress stderr noise
+
+Problematic vs Corrected code
+- Conflict handler (incorrect):
+  - else branch without a preceding if closure; unbound variable usage
+- Conflict handler (fixed):
+  - Properly nested blocks and explicit expected_subnet_group_name
+- Preflight EKS import (fixed):
+  - Check state with `terraform state list || true | grep -q 'aws_eks_cluster.this[0]'` before import
+- Preflight DB subnet detection (fixed):
+  - `DBSubnetGroups[?contains(DBSubnetGroupName, '<prefix>')]`
+
+Verification steps
+```bash
+# Validate conflict handler loads without syntax errors
+bash -n scripts/deployment/handle-infrastructure-conflicts.sh
+
+# Check preflight
+AWS_REGION=us-east-1 CLUSTER_NAME=healthcare-eks-stage3-dev AUTO_IMPORT=true \
+  bash scripts/preflight/check-collisions.sh || true
+
+# Terraform state checks (from terraform/environments/dev)
+terraform init -backend=false
+terraform state list || true
+
+# EKS presence
+aws eks describe-cluster --name healthcare-eks-stage3-dev --region us-east-1 >/dev/null && echo "EKS exists"
+
+# RDS subnet groups query
+aws rds describe-db-subnet-groups \
+  --region us-east-1 \
+  --query "DBSubnetGroups[?contains(DBSubnetGroupName, 'healthcare-eks-stage3-dev-db-subnet-group')].[DBSubnetGroupName,VpcId]" \
+  --output table
+```
+
+Expected outcomes
+- No bash syntax errors; conflict handler runs cleanly
+- No duplicate Terraform import attempts for EKS
+- DB subnet group detection works without JMESPath or quoting errors
+
 ```
 
 ---
