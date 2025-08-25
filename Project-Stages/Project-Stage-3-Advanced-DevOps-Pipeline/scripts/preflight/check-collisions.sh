@@ -14,8 +14,13 @@ check_eks() {
   if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" >/dev/null 2>&1; then
     log "EKS cluster exists: $CLUSTER_NAME"
     if [[ "$AUTO_IMPORT" == "true" ]]; then
-      log "Attempting terraform import for EKS cluster..."
-      terraform import "module.healthcare_infrastructure.module.eks.aws_eks_cluster.this[0]" "$CLUSTER_NAME" || true
+      log "Attempting terraform import for EKS cluster (skip if already in state)..."
+      # Only import if no EKS cluster resource is in state under any address
+      if ! (terraform state list 2>/dev/null || true) | grep -q "aws_eks_cluster\.this\[0\]"; then
+        terraform import "module.healthcare_infrastructure.module.eks.aws_eks_cluster.this[0]" "$CLUSTER_NAME" || true
+      else
+        log "EKS cluster already in Terraform state; skipping import"
+      fi
     elif [[ "$FAIL_FAST" == "true" ]]; then
       log "Conflict: EKS cluster exists. Set AUTO_IMPORT=true to import or delete the cluster."
       return 2
@@ -29,7 +34,10 @@ check_eks() {
 check_db_subnet_groups() {
   local name_prefix="${CLUSTER_NAME}-db-subnet-group"
   local names
-  names=$(aws rds describe-db-subnet-groups --region "$REGION" --query "DBSubnetGroups[?starts_with(DBSubnetGroupName, '\\`${name_prefix}\\`')].[DBSubnetGroupName,VpcId]" --output text || true)
+  names=$(aws rds describe-db-subnet-groups \
+    --region "$REGION" \
+    --query "DBSubnetGroups[?contains(DBSubnetGroupName, '${name_prefix}')].[DBSubnetGroupName,VpcId]" \
+    --output text 2>/dev/null || true)
   if [[ -n "$names" ]]; then
     log "Found DB subnet groups:\n$names"
   else

@@ -206,11 +206,13 @@ enhanced_pre_import() {
         log_info "✅ CloudWatch log group already in Terraform state"
     fi
 
-        # If resource is already in state but name differs from expected, remove it to avoid modifying wrong VPC
+        # If resource is already in state but name differs from expected, remove it to avoid modifying wrong DB subnet group
+        # Ensure subnet_group_name is set before comparing
+        local expected_subnet_group_name="healthcare-eks-stage3-dev-db-subnet-group-${ACCOUNT_ID}"
         if terraform state show module.healthcare_infrastructure.aws_db_subnet_group.healthcare >/dev/null 2>&1; then
             current_name=$(terraform state show module.healthcare_infrastructure.aws_db_subnet_group.healthcare | awk -F' = ' '/^\s*name\s*=/{print $2}' | tr -d '"')
-            if [[ "$current_name" != "$subnet_group_name" ]]; then
-                log_warning "⚠️ Terraform state has DB subnet group '$current_name' but expected '$subnet_group_name' - removing from state to allow correct creation"
+            if [[ -n "$current_name" && "$current_name" != "$expected_subnet_group_name" ]]; then
+                log_warning "⚠️ Terraform state has DB subnet group '$current_name' but expected '$expected_subnet_group_name' - removing from state to allow correct creation"
                 terraform state rm module.healthcare_infrastructure.aws_db_subnet_group.healthcare || true
             fi
         fi
@@ -221,7 +223,15 @@ enhanced_pre_import() {
         local subnet_group_name="healthcare-eks-stage3-dev-db-subnet-group-${ACCOUNT_ID}"
         if retry_with_backoff 3 2 "aws rds describe-db-subnet-groups --db-subnet-group-name \"$subnet_group_name\" >/dev/null 2>&1"; then
             log_info "📥 Importing RDS subnet group with retry logic..."
-            if retry_with_backoff_args 2 1 terraform import module.healthcare_infrastructure.aws_db_subnet_group.healthcare "$subnet_group_name"; then
+            # Only import if not already in state
+            if ! (terraform state list 2>/dev/null || true) | grep -q "module\.healthcare_infrastructure\.aws_db_subnet_group\.healthcare"; then
+              if retry_with_backoff_args 2 1 terraform import module.healthcare_infrastructure.aws_db_subnet_group.healthcare "$subnet_group_name"; then
+              else
+                log_warning "⚠️ RDS subnet group import failed - may need manual intervention"
+              fi
+            else
+              log_info "ℹ️ RDS subnet group already in Terraform state; skipping import"
+            fi
                 log_success "✅ RDS subnet group imported successfully"
             else
                 log_warning "⚠️ RDS subnet group import failed - may need manual intervention"
