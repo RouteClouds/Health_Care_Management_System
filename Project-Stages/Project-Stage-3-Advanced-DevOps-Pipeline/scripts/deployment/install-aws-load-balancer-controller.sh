@@ -117,8 +117,19 @@ rm -f iam_policy.json
 log_info "🔐 Ensuring OIDC provider is associated with the EKS cluster..."
 eksctl utils associate-iam-oidc-provider --cluster="$CLUSTER_NAME" --region="$REGION" --approve || true
 
-# Create service account with IAM role
-log_info "🔐 Creating service account with IAM role..."
+# Force recreate service account with IAM role to pick up updated policy
+log_info "🔐 Ensuring service account with updated IAM role..."
+# Delete existing service account and role to force refresh
+eksctl delete iamserviceaccount \
+  --cluster="$CLUSTER_NAME" \
+  --namespace="$NAMESPACE" \
+  --name=aws-load-balancer-controller \
+  --region="$REGION" || true
+
+# Wait a moment for cleanup
+sleep 5
+
+# Create fresh service account with updated policy
 eksctl create iamserviceaccount \
   --cluster="$CLUSTER_NAME" \
   --namespace="$NAMESPACE" \
@@ -126,9 +137,9 @@ eksctl create iamserviceaccount \
   --role-name AmazonEKSLoadBalancerControllerRole \
   --attach-policy-arn="$POLICY_ARN" \
   --approve \
-  --region="$REGION" \
-  --override-existing-serviceaccounts || {
-    log_warning "Service account creation failed or already exists, continuing..."
+  --region="$REGION" || {
+    log_error "Service account creation failed"
+    exit 1
 }
 
 # Add EKS Helm repository
@@ -136,8 +147,12 @@ log_info "📦 Adding EKS Helm repository..."
 helm repo add eks https://aws.github.io/eks-charts
 helm repo update
 
-# Install AWS Load Balancer Controller
-log_info "🚀 Installing AWS Load Balancer Controller..."
+# Install AWS Load Balancer Controller (force restart to pick up new IRSA)
+log_info "🚀 Installing AWS Load Balancer Controller (force restart)..."
+# Delete existing deployment to force restart with new service account
+kubectl delete deployment aws-load-balancer-controller -n $NAMESPACE || true
+sleep 5
+
 helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n $NAMESPACE \
   --set clusterName="$CLUSTER_NAME" \
