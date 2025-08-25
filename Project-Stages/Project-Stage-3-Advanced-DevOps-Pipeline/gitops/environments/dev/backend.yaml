@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
       - name: backend
-        image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-backend-stage3:4bcf277cf78760f91892ae492aa2d2a66f07989d
+        image: 867344452513.dkr.ecr.us-east-1.amazonaws.com/healthcare-backend-stage3:f027d5a121c7b4731f1daaca12d715e0a6e95fbb
         imagePullPolicy: Always
         ports:
         - containerPort: 3001
