@@ -78,14 +78,33 @@ log_info "🔐 Creating IAM service account for AWS Load Balancer Controller..."
 log_info "📥 Downloading AWS Load Balancer Controller IAM policy..."
 curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.7.2/docs/install/iam_policy.json
 
-# Create IAM policy
-log_info "🔐 Creating IAM policy..."
+# Create or update IAM policy
+log_info "🔐 Ensuring IAM policy is up-to-date..."
 POLICY_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy"
 
-# Check if policy already exists
 if aws iam get-policy --policy-arn "$POLICY_ARN" &> /dev/null; then
     log_warning "IAM policy already exists: $POLICY_ARN"
+    log_info "🔄 Updating IAM policy document to latest upstream (setting new default version)"
+
+    # Prune non-default versions if at version limit
+    VERSION_COUNT=$(aws iam list-policy-versions --policy-arn "$POLICY_ARN" --query 'Versions | length(@)' --output text)
+    if [[ "$VERSION_COUNT" -ge 5 ]]; then
+      log_info "🧹 Pruning non-default policy versions to allow update..."
+      NON_DEFAULT_VERSIONS=$(aws iam list-policy-versions --policy-arn "$POLICY_ARN" --query 'Versions[?IsDefaultVersion==`false`].VersionId' --output text | tr '\t' '\n')
+      for VID in $NON_DEFAULT_VERSIONS; do
+        aws iam delete-policy-version --policy-arn "$POLICY_ARN" --version-id "$VID" || true
+        VERSION_COUNT=$(aws iam list-policy-versions --policy-arn "$POLICY_ARN" --query 'Versions | length(@)' --output text)
+        [[ "$VERSION_COUNT" -lt 5 ]] && break || true
+      done
+    fi
+
+    aws iam create-policy-version \
+      --policy-arn "$POLICY_ARN" \
+      --policy-document file://iam_policy.json \
+      --set-as-default
+    log_success "✅ IAM policy updated to latest and set as default"
 else
+    log_info "🆕 Creating IAM policy..."
     aws iam create-policy \
         --policy-name AWSLoadBalancerControllerIAMPolicy \
         --policy-document file://iam_policy.json
@@ -94,6 +113,10 @@ fi
 
 # Clean up downloaded file
 rm -f iam_policy.json
+
+# Associate OIDC provider for IRSA (idempotent)
+log_info "🔐 Ensuring OIDC provider is associated with the EKS cluster..."
+eksctl utils associate-iam-oidc-provider --cluster="$CLUSTER_NAME" --region="$REGION" --approve || true
 
 # Create service account with IAM role
 log_info "🔐 Creating service account with IAM role..."

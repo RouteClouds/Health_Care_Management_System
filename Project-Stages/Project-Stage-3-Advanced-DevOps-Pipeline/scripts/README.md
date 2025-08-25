@@ -1197,6 +1197,27 @@ cd ../src-code && ./setup-environment.sh
 ```bash
 cd ../src-code
 ./setup-environment.sh
+
+---
+
+## 🧩 Consolidated Stage-3 Scripts (New)
+
+### scripts/lib/common.sh
+Shared utilities (logging, retry, guards) sourced by other scripts.
+
+### scripts/validation/validate-stage3-setup.sh
+Stage-3 environment validator consolidating previous scattered checks.
+
+### scripts/deploy.sh
+Unified entrypoint with subcommands:
+- build: wraps deployment/build-and-push-images.sh with --no-push
+- push: wraps deployment/build-and-push-images.sh
+- deploy: wraps deploy-healthcare.sh if present
+- verify: runs connectivity checks if available
+
+### scripts/archive/
+Legacy Stage-2-only scripts preserved here (e.g., validate-stage2-setup.sh) with annotations.
+
 ```
 **What it does**:
 - ✅ Validates Node.js and npm versions

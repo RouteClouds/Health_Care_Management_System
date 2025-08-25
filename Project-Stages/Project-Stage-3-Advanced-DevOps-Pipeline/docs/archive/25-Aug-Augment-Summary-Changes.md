@@ -59,7 +59,7 @@ Documentation (proposed consolidation):
 - Keep as primary:
   - README.md, MASTER-SETUP-GUIDE.md, ARCHITECTURE-guide.md, OPERATIONS.md, TROUBLESHOOTING.md, Project-Tracker.md
 - Merge into "Stage-3 Enhancement Summary & Roadmap.md":
-  - Augment-23-Aug-Summary.md
+  - docs/archive/Augment-23-Aug-Summary.md
   - 25-Aug-Augment-Summary-Changes.md
   - Augment-Pipeline-Enhancement-Recommendations.md
 - Merge into "RCA - Duplicate Infra & State Drift.md":
