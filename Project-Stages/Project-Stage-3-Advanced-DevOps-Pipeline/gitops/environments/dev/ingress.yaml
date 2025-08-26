@@ -21,4 +21,11 @@ spec:
             name: frontend-stage3-svc
             port:
               number: 80
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-stage3-svc
+            port:
+              number: 3001
 

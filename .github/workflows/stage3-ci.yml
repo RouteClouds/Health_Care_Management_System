@@ -1551,7 +1551,10 @@ jobs:
           else
             echo "❌ Database connection failed or health endpoint not working"
             echo "🔍 Debugging backend issues..."
-            kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=100
+            echo "📋 Checking backend logs..."
+            BACKEND_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[0].metadata.name}')
+            echo "Found 1 pod, using pod/$BACKEND_POD"
+            kubectl logs "$BACKEND_POD" -n healthcare-stage3-dev --tail=200 || true
             exit 1
           fi
 

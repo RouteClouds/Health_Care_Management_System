@@ -180,6 +180,27 @@ log_info "🔍 Verifying service account and IAM role are ready..."
 kubectl wait --for=condition=ready serviceaccount/aws-load-balancer-controller -n "$NAMESPACE" --timeout=60s || true
 if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
   log_success "✅ IAM role created successfully"
+  log_info "🔐 Attaching inline policy for missing DescribeListenerAttributes permissions..."
+  cat > /tmp/alb_extra_policy.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DescribeListenerAttributes",
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeLoadBalancerAttributes"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+  aws iam put-role-policy \
+    --role-name "$ROLE_NAME" \
+    --policy-name "ALBControllerExtraPermissions" \
+    --policy-document file:///tmp/alb_extra_policy.json || true
 else
   log_error "❌ IAM role creation failed"
   exit 1
