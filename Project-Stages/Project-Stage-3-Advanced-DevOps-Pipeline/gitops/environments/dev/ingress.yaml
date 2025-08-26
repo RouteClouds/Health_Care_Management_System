@@ -11,6 +11,7 @@ metadata:
     alb.ingress.kubernetes.io/group.name: healthcare-stage3
     alb.ingress.kubernetes.io/healthcheck-path: /
 spec:
+  ingressClassName: alb
   rules:
   - http:
       paths:

@@ -1667,6 +1667,13 @@ jobs:
 
           echo "✅ GitOps recovery completed"
 
+      - name: Force refresh AWS Load Balancer Controller (pre-recovery-validate)
+        working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+        run: |
+          echo "🔄 Force refreshing AWS Load Balancer Controller before recovery validation..."
+          chmod +x scripts/deployment/install-aws-load-balancer-controller.sh
+          ./scripts/deployment/install-aws-load-balancer-controller.sh healthcare-eks-stage3-dev
+
       - name: Validate Recovery Success
         run: |
           echo "🔍 Validating recovery success..."
