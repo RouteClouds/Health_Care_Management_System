@@ -1465,7 +1465,7 @@ jobs:
           echo "✅ Database migrations and seeding completed!"
           echo "✅ Deployments completed successfully"
 
-      - name: Guard: Skip rebuild if infra healthy
+      - name: "Guard: Skip rebuild if infra healthy"
         id: guard
         run: |
           echo "🔍 Guard check: verifying infra health..."
