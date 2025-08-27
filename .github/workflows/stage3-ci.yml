@@ -1517,6 +1517,71 @@ jobs:
 
 
 
+
+      - name: Automated database migration and seeding (idempotent)
+        run: |
+          echo "🌱 Ensuring database is migrated and seeded (idempotent)..."
+
+          # Ensure backend is ready
+          kubectl rollout status deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --timeout=600s
+
+          # Pick a backend pod
+          BACKEND_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[0].metadata.name}')
+          echo "Using pod: $BACKEND_POD"
+
+          echo "🔍 Checking current doctors count..."
+          DOCTOR_COUNT=$(kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- node -e '
+            const { PrismaClient } = require("@prisma/client");
+            const prisma = new PrismaClient();
+            (async () => {
+              const count = await prisma.doctor.count();
+              console.log(count);
+              await prisma.$disconnect();
+            })().catch(e => { console.error(e.message || e); process.exit(2); });
+          ' 2>/dev/null | tail -n1)
+
+          echo "Current doctors count: ${DOCTOR_COUNT:-unknown}"
+
+          if [[ -z "$DOCTOR_COUNT" || "$DOCTOR_COUNT" == "0" ]]; then
+            echo "🌱 Seeding sample doctors..."
+            kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- node -e '
+              const { PrismaClient } = require("@prisma/client");
+              const prisma = new PrismaClient();
+              (async () => {
+                await prisma.doctor.createMany({
+                  data: [
+                    { name: "Dr. John Smith", specialization: "Cardiology", email: "john.smith@healthcare.com", phone: "+1-555-0101" },
+                    { name: "Dr. Sarah Johnson", specialization: "Pediatrics", email: "sarah.johnson@healthcare.com", phone: "+1-555-0102" },
+                    { name: "Dr. Michael Brown", specialization: "Orthopedics", email: "michael.brown@healthcare.com", phone: "+1-555-0103" }
+                  ],
+                  skipDuplicates: true
+                });
+                const count = await prisma.doctor.count();
+                console.log("Seeded doctors count:", count);
+                await prisma.$disconnect();
+              })().catch(e => { console.error(e.message || e); process.exit(2); });
+            '
+
+            echo "🔍 Verifying doctors count after seeding..."
+            DOCTOR_COUNT=$(kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- node -e '
+              const { PrismaClient } = require("@prisma/client");
+              const prisma = new PrismaClient();
+              (async () => {
+                const count = await prisma.doctor.count();
+                console.log(count);
+                await prisma.$disconnect();
+              })().catch(e => { console.error(e.message || e); process.exit(2); });
+            ' 2>/dev/null | tail -n1)
+            echo "Doctors count after seeding: ${DOCTOR_COUNT:-unknown}"
+
+            if [[ -z "$DOCTOR_COUNT" || "$DOCTOR_COUNT" == "0" ]]; then
+              echo "❌ Seeding did not produce sample data"
+              exit 1
+            fi
+          else
+            echo "✅ Sample data already present; skipping seeding"
+          fi
+
       - name: Validate automated database setup
         run: |
           echo "🔍 Validating automated database setup..."
