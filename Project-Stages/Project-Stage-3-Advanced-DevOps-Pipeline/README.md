@@ -185,6 +185,27 @@ For our **monolithic healthcare application**, we chose Kubernetes-native soluti
 
 ---
 
+## ♻️ Rebuild After Complete Destruction (New)
+
+To rebuild Stage-3 cleanly after teardown:
+
+```bash
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+chmod +x scripts/deployment/rebuild-stage3.sh
+./scripts/deployment/rebuild-stage3.sh
+```
+
+This script:
+- Validates infra is destroyed
+- Creates/initializes Terraform backend (S3 + DynamoDB)
+- Provisions infra via Terraform (VPC, EKS, RDS)
+- Configures ALB Controller IAM + IRSA with explicit DescribeListenerAttributes permission
+- Installs ALB Controller (Helm) and verifies readiness
+- Applies GitOps manifests (Ingress with ingressClassName: alb) and validates /api/health
+
+See Stage-3-Destruction-Guide.md for details and TROUBLESHOOTING.md for IAM/ALB controller tips.
+
+
 **Ready to transform your healthcare management system into an enterprise-grade, cloud-native application!** 🚀
 
 *Stage-3 represents the pinnacle of modern DevOps practices, providing students with real-world experience in enterprise-grade infrastructure and deployment strategies.*

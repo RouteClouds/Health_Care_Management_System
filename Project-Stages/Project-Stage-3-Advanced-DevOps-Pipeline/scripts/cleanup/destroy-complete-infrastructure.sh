@@ -26,7 +26,7 @@ log_phase() { echo -e "${PURPLE}[PHASE]${NC} 🚀 $1"; }
 execute_command() {
     local cmd="$1"
     local description="$2"
-    
+
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "[DRY-RUN] $description"
         log_info "[DRY-RUN] Command: $cmd"
@@ -43,34 +43,34 @@ execute_command() {
 # Phase 1: Kubernetes Applications Cleanup
 cleanup_kubernetes_applications() {
     log_phase "Phase 1: Kubernetes Applications Cleanup"
-    
+
     # Check if kubectl is available and cluster is accessible
     if ! command -v kubectl >/dev/null 2>&1; then
         log_warning "kubectl not found, skipping Kubernetes cleanup"
         return 0
     fi
-    
+
     if ! kubectl cluster-info >/dev/null 2>&1; then
         log_warning "Cannot connect to Kubernetes cluster, skipping application cleanup"
         return 0
     fi
-    
+
     # Delete healthcare applications
     execute_command "kubectl delete namespace healthcare-stage3-dev --ignore-not-found=true" \
         "Delete healthcare namespace"
-    
+
     # Delete ArgoCD applications
     execute_command "kubectl delete namespace argocd --ignore-not-found=true" \
         "Delete ArgoCD namespace"
-    
+
     # Delete monitoring stack
     execute_command "kubectl delete namespace monitoring --ignore-not-found=true" \
         "Delete monitoring namespace"
-    
+
     # Delete logging stack
     execute_command "kubectl delete namespace logging --ignore-not-found=true" \
         "Delete logging namespace"
-    
+
     # Wait for namespace deletion
     if [[ "$DRY_RUN" == "false" ]]; then
         log_info "⏳ Waiting for namespaces to be fully deleted..."
@@ -81,11 +81,11 @@ cleanup_kubernetes_applications() {
 # Phase 2: Load Balancers Cleanup
 cleanup_load_balancers() {
     log_phase "Phase 2: Load Balancers Cleanup"
-    
+
     # Get all Application Load Balancers
     local albs
     albs=$(aws elbv2 describe-load-balancers --region "$REGION" --query 'LoadBalancers[?contains(LoadBalancerName, `healthcare`) || contains(LoadBalancerName, `stage3`)].LoadBalancerArn' --output text 2>/dev/null || echo "")
-    
+
     if [[ -n "$albs" ]]; then
         for alb in $albs; do
             execute_command "aws elbv2 delete-load-balancer --load-balancer-arn '$alb' --region '$REGION'" \
@@ -94,11 +94,11 @@ cleanup_load_balancers() {
     else
         log_info "No Application Load Balancers found"
     fi
-    
+
     # Get all Classic Load Balancers
     local clbs
     clbs=$(aws elb describe-load-balancers --region "$REGION" --query 'LoadBalancerDescriptions[?contains(LoadBalancerName, `healthcare`) || contains(LoadBalancerName, `stage3`)].LoadBalancerName' --output text 2>/dev/null || echo "")
-    
+
     if [[ -n "$clbs" ]]; then
         for clb in $clbs; do
             execute_command "aws elb delete-load-balancer --load-balancer-name '$clb' --region '$REGION'" \
@@ -107,7 +107,7 @@ cleanup_load_balancers() {
     else
         log_info "No Classic Load Balancers found"
     fi
-    
+
     # Wait for load balancers to be deleted
     if [[ "$DRY_RUN" == "false" ]]; then
         log_info "⏳ Waiting for load balancers to be deleted..."
@@ -115,39 +115,60 @@ cleanup_load_balancers() {
     fi
 }
 
+# Phase 2.1: ELB Target Groups and Listeners Cleanup (post-ALB delete)
+cleanup_elbv2_target_groups() {
+    log_phase "Phase 2.1: Target Groups and Listeners Cleanup"
+
+    # Delete orphan target groups created by the controller
+    local tgs
+    tgs=$(aws elbv2 describe-target-groups --region "$REGION" \
+      --query 'TargetGroups[?contains(TargetGroupName, `k8s`) || contains(TargetGroupName, `healthcare`) || contains(TargetGroupName, `stage3`)].TargetGroupArn' \
+      --output text 2>/dev/null || echo "")
+
+    if [[ -n "$tgs" ]]; then
+        for tg in $tgs; do
+            execute_command "aws elbv2 delete-target-group --target-group-arn '$tg' --region '$REGION'" \
+                "Delete ELBv2 target group $tg"
+        done
+    else
+        log_info "No ELBv2 target groups found"
+    fi
+}
+
+
 # Phase 3: EKS Cluster Cleanup
 cleanup_eks_cluster() {
     log_phase "Phase 3: EKS Cluster Cleanup"
-    
+
     local cluster_name="healthcare-eks-stage3-dev"
-    
+
     # Check if cluster exists
     if ! aws eks describe-cluster --name "$cluster_name" --region "$REGION" >/dev/null 2>&1; then
         log_info "EKS cluster $cluster_name not found"
         return 0
     fi
-    
+
     # Delete node groups first
     local node_groups
     node_groups=$(aws eks list-nodegroups --cluster-name "$cluster_name" --region "$REGION" --query 'nodegroups' --output text 2>/dev/null || echo "")
-    
+
     if [[ -n "$node_groups" ]]; then
         for ng in $node_groups; do
             execute_command "aws eks delete-nodegroup --cluster-name '$cluster_name' --nodegroup-name '$ng' --region '$REGION'" \
                 "Delete EKS node group $ng"
         done
-        
+
         # Wait for node groups to be deleted
         if [[ "$DRY_RUN" == "false" ]]; then
             log_info "⏳ Waiting for node groups to be deleted..."
             sleep 300  # Node groups take longer to delete
         fi
     fi
-    
+
     # Delete the cluster
     execute_command "aws eks delete-cluster --name '$cluster_name' --region '$REGION'" \
         "Delete EKS cluster $cluster_name"
-    
+
     # Wait for cluster deletion
     if [[ "$DRY_RUN" == "false" ]]; then
         log_info "⏳ Waiting for EKS cluster to be deleted..."
@@ -158,29 +179,29 @@ cleanup_eks_cluster() {
 # Phase 4: RDS Database Cleanup
 cleanup_rds_database() {
     log_phase "Phase 4: RDS Database Cleanup"
-    
+
     local db_instance="healthcare-eks-stage3-dev-db"
-    
+
     # Check if RDS instance exists
     if ! aws rds describe-db-instances --db-instance-identifier "$db_instance" --region "$REGION" >/dev/null 2>&1; then
         log_info "RDS instance $db_instance not found"
         return 0
     fi
-    
+
     # Delete RDS instance (skip final snapshot for complete destruction)
     execute_command "aws rds delete-db-instance --db-instance-identifier '$db_instance' --skip-final-snapshot --region '$REGION'" \
         "Delete RDS instance $db_instance"
-    
+
     # Wait for RDS deletion
     if [[ "$DRY_RUN" == "false" ]]; then
         log_info "⏳ Waiting for RDS instance to be deleted..."
         sleep 600
     fi
-    
+
     # Delete DB subnet groups
     local subnet_groups
     subnet_groups=$(aws rds describe-db-subnet-groups --region "$REGION" --query 'DBSubnetGroups[?contains(DBSubnetGroupName, `healthcare`) || contains(DBSubnetGroupName, `stage3`)].DBSubnetGroupName' --output text 2>/dev/null || echo "")
-    
+
     if [[ -n "$subnet_groups" ]]; then
         for sg in $subnet_groups; do
             execute_command "aws rds delete-db-subnet-group --db-subnet-group-name '$sg' --region '$REGION'" \
@@ -227,17 +248,17 @@ cleanup_ecr_repositories() {
 # Phase 6: S3 Buckets Cleanup
 cleanup_s3_buckets() {
     log_phase "Phase 6: S3 Buckets Cleanup"
-    
+
     # Get all S3 buckets for healthcare/stage3
     local buckets
     buckets=$(aws s3api list-buckets --query 'Buckets[?contains(Name, `healthcare`) || contains(Name, `stage3`)].Name' --output text 2>/dev/null || echo "")
-    
+
     if [[ -n "$buckets" ]]; then
         for bucket in $buckets; do
             # Empty bucket first
             execute_command "aws s3 rm s3://'$bucket' --recursive --region '$REGION'" \
                 "Empty S3 bucket $bucket"
-            
+
             # Delete the bucket
             execute_command "aws s3api delete-bucket --bucket '$bucket' --region '$REGION'" \
                 "Delete S3 bucket $bucket"
@@ -247,20 +268,86 @@ cleanup_s3_buckets() {
     fi
 }
 
+
+# Phase 8.5: IAM Resources Cleanup (ALB Controller, Stage-3 roles/policies)
+cleanup_iam_resources() {
+    log_phase "Phase 8.5: IAM Resources Cleanup"
+
+    # Delete ALB Controller role and its inline/attached policies
+    local role_name="AmazonEKSLoadBalancerControllerRole"
+    if aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
+        log_info "🧹 Cleaning IAM role $role_name"
+        # Detach attached policies
+        local attached
+        attached=$(aws iam list-attached-role-policies --role-name "$role_name" --query 'AttachedPolicies[].PolicyArn' --output text 2>/dev/null || echo "")
+        if [[ -n "$attached" ]]; then
+            for p in $attached; do
+                execute_command "aws iam detach-role-policy --role-name '$role_name' --policy-arn '$p'" \
+                    "Detach policy $p from role $role_name"
+            done
+        fi
+        # Delete inline policies
+        local inline
+        inline=$(aws iam list-role-policies --role-name "$role_name" --query 'PolicyNames[]' --output text 2>/dev/null || echo "")
+        if [[ -n "$inline" ]]; then
+            for ip in $inline; do
+                execute_command "aws iam delete-role-policy --role-name '$role_name' --policy-name '$ip'" \
+                    "Delete inline policy $ip from role $role_name"
+            done
+        fi
+        # Delete the role
+        execute_command "aws iam delete-role --role-name '$role_name'" \
+            "Delete IAM role $role_name"
+    else
+        log_info "IAM role $role_name not found"
+    fi
+
+    # Delete customer-managed policies we may have created
+    for pol in "ALBControllerExtraPermissions" "AWSLoadBalancerControllerIAMPolicy"; do
+        local arn
+        arn=$(aws iam list-policies --scope Local --query "Policies[?PolicyName=='$pol'].Arn" --output text 2>/dev/null || echo "")
+        if [[ -n "$arn" ]]; then
+            # Delete non-default versions first
+            local versions
+            versions=$(aws iam list-policy-versions --policy-arn "$arn" --query 'Versions[?IsDefaultVersion==`false`].VersionId' --output text 2>/dev/null || echo "")
+            if [[ -n "$versions" ]]; then
+                for v in $versions; do
+                    execute_command "aws iam delete-policy-version --policy-arn '$arn' --version-id '$v'" \
+                        "Delete policy version $v for $pol"
+                done
+            fi
+            execute_command "aws iam delete-policy --policy-arn '$arn'" \
+                "Delete customer managed policy $pol"
+        fi
+    done
+
+    # Delete EKS OIDC providers for this region
+    local providers
+    providers=$(aws iam list-open-id-connect-providers --query 'OpenIDConnectProviderList[].Arn' --output text 2>/dev/null || echo "")
+    if [[ -n "$providers" ]]; then
+        for prov in $providers; do
+            if [[ "$prov" == *"oidc.eks.$REGION.amazonaws.com"* ]]; then
+                execute_command "aws iam delete-open-id-connect-provider --open-id-connect-provider-arn '$prov'" \
+                    "Delete OIDC provider $prov"
+            fi
+        done
+    fi
+}
+
 # Phase 7: CloudFormation Stacks Cleanup
 cleanup_cloudformation_stacks() {
     log_phase "Phase 7: CloudFormation Stacks Cleanup"
-    
+
     # Get all CloudFormation stacks for healthcare/stage3/eksctl
     local stacks
     stacks=$(aws cloudformation list-stacks --region "$REGION" --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --query 'StackSummaries[?contains(StackName, `healthcare`) || contains(StackName, `stage3`) || contains(StackName, `eksctl`)].StackName' --output text 2>/dev/null || echo "")
-    
+
     if [[ -n "$stacks" ]]; then
         for stack in $stacks; do
             execute_command "aws cloudformation delete-stack --stack-name '$stack' --region '$REGION'" \
                 "Delete CloudFormation stack $stack"
         done
-        
+
         # Wait for stacks to be deleted
         if [[ "$DRY_RUN" == "false" && -n "$stacks" ]]; then
             log_info "⏳ Waiting for CloudFormation stacks to be deleted..."
@@ -274,20 +361,20 @@ cleanup_cloudformation_stacks() {
 # Phase 8: Terraform Infrastructure Destruction
 cleanup_terraform_infrastructure() {
     log_phase "Phase 8: Terraform Infrastructure Destruction"
-    
+
     local terraform_dir="$SCRIPT_DIR/../../terraform/environments/dev"
-    
+
     if [[ ! -d "$terraform_dir" ]]; then
         log_warning "Terraform directory not found: $terraform_dir"
         return 0
     fi
-    
+
     cd "$terraform_dir"
-    
+
     # Initialize Terraform
     execute_command "terraform init" \
         "Initialize Terraform"
-    
+
     # Run Terraform destroy
     if [[ "$DRY_RUN" == "true" ]]; then
         execute_command "terraform plan -destroy" \
@@ -296,7 +383,7 @@ cleanup_terraform_infrastructure() {
         execute_command "terraform destroy -auto-approve" \
             "Terraform infrastructure destruction"
     fi
-    
+
     cd - >/dev/null
 }
 
@@ -306,6 +393,17 @@ cleanup_nat_gateways_and_eips() {
 
     # Delete NAT Gateways from audit findings
     local nat_gateways=("nat-0bd2cb827f3788132" "nat-02feafd3ad2c2dfd1" "nat-05a5f982db8d10308")
+
+    # Delete VPC link endpoints and NACLs rules if any
+    local vpc_endpoints
+    vpc_endpoints=$(aws ec2 describe-vpc-endpoints --region "$REGION" --filters "Name=vpc-id,Values=$vpc_id" --query 'VpcEndpoints[].VpcEndpointId' --output text 2>/dev/null || echo "")
+    if [[ -n "$vpc_endpoints" ]]; then
+        for vpe in $vpc_endpoints; do
+            execute_command "aws ec2 delete-vpc-endpoints --vpc-endpoint-ids '$vpe' --region '$REGION'" \
+                "Delete VPC endpoint $vpe"
+        done
+    fi
+
 
     for nat_gw in "${nat_gateways[@]}"; do
         execute_command "aws ec2 delete-nat-gateway --nat-gateway-id '$nat_gw' --region '$REGION'" \
@@ -360,6 +458,27 @@ cleanup_vpcs_and_networking() {
         fi
 
         # Detach and delete internet gateways
+
+        # Delete network ACLs (except default)
+        local nacls
+        nacls=$(aws ec2 describe-network-acls --region "$REGION" --filters "Name=vpc-id,Values=$vpc_id" --query 'NetworkAcls[?IsDefault==`false`].NetworkAclId' --output text 2>/dev/null || echo "")
+        if [[ -n "$nacls" ]]; then
+            for nacl in $nacls; do
+                execute_command "aws ec2 delete-network-acl --network-acl-id '$nacl' --region '$REGION'" \
+                    "Delete network ACL $nacl"
+            done
+        fi
+
+        # Delete NAT Gateways still attached to this VPC (catch-all)
+        local vpc_nats
+        vpc_nats=$(aws ec2 describe-nat-gateways --region "$REGION" --filter "Name=vpc-id,Values=$vpc_id" --query 'NatGateways[].NatGatewayId' --output text 2>/dev/null || echo "")
+        if [[ -n "$vpc_nats" ]]; then
+            for nat in $vpc_nats; do
+                execute_command "aws ec2 delete-nat-gateway --nat-gateway-id '$nat' --region '$REGION'" \
+                    "Delete NAT Gateway $nat (VPC catch-all)"
+            done
+        fi
+
         local igws
         igws=$(aws ec2 describe-internet-gateways --region "$REGION" --filters "Name=attachment.vpc-id,Values=$vpc_id" --query 'InternetGateways[].InternetGatewayId' --output text 2>/dev/null || echo "")
 
@@ -470,12 +589,14 @@ main() {
     # Execute destruction phases in dependency order
     cleanup_kubernetes_applications
     cleanup_load_balancers
+    cleanup_elbv2_target_groups
     cleanup_eks_cluster
     cleanup_rds_database
     cleanup_ecr_repositories
     cleanup_s3_buckets
     cleanup_cloudformation_stacks
     cleanup_terraform_infrastructure
+    cleanup_iam_resources
     cleanup_nat_gateways_and_eips
     cleanup_vpcs_and_networking
 

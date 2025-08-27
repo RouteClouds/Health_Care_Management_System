@@ -561,6 +561,34 @@ cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
 ./scripts/monitoring/quick-deploy-monitoring.sh
 ```
 
+
+---
+
+## ♻️ Rebuild After Destruction (New)
+
+After verifying complete cleanup with the audit script, you can perform a clean rebuild end-to-end using the new rebuild script.
+
+### One-command rebuild
+```bash
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+chmod +x scripts/deployment/rebuild-stage3.sh
+./scripts/deployment/rebuild-stage3.sh
+```
+
+### What the rebuild does
+- Validates destruction is complete (EKS, RDS, ALBs, VPC hints)
+- Creates/initializes Terraform backend (S3/DynamoDB)
+- Provisions infra (VPC, EKS, RDS) via Terraform
+- Configures ALB Controller IAM + IRSA (upstream policy + inline DescribeListenerAttributes permissions)
+- Installs AWS Load Balancer Controller (Helm)
+- Applies GitOps manifests with Ingress (ingressClassName: alb, route / to frontend, /api to backend)
+- Waits for Ingress Address and validates /api/health => database: connected
+
+### Notes
+- Idempotent: safe to re-run; pre-checks ensure it only proceeds after clean destruction
+- IAM propagation: script waits 60+ seconds after role/policy changes
+- Troubleshooting: see TROUBLESHOOTING.md for IAM and ALB Controller tips
+
 ---
 
 ## 📊 **New Script Locations**

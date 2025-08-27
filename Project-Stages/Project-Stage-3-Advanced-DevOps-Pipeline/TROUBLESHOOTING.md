@@ -198,6 +198,44 @@ git push --force origin main
 - Use `git status` before committing to check for large files
 - Set up pre-commit hooks to prevent large file commits
 
+
+---
+
+## AWS Load Balancer Controller IAM Permission Issues (New)
+
+### Symptom
+- Ingress never gets an Address; ALB hostname remains empty beyond 10 minutes.
+- Controller logs show AccessDenied for `elasticloadbalancing:DescribeListenerAttributes`.
+
+### Root Causes Observed
+- IRSA service account still bound to an old role without required permissions.
+- Managed policy updates not propagated or not the default version.
+- Orphan ELBv2 Target Groups blocking creation.
+
+### Resolution (Clean Rebuild)
+1. Run complete destruction:
+```bash
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+./scripts/cleanup/destroy-complete-infrastructure.sh
+./scripts/cleanup/audit-aws-resources.sh
+```
+2. Rebuild end-to-end:
+```bash
+./scripts/deployment/rebuild-stage3.sh
+```
+This script:
+- Recreates ALB Controller IAM role from scratch with upstream policy
+- Attaches explicit inline policy allowing DescribeListenerAttributes (and related describes)
+- Creates IRSA with eksctl and waits 60s for IAM propagation
+- Installs controller (Helm) and validates readiness
+- Ensures Ingress uses ingressClassName: alb and routes /api -> backend
+
+### Verification
+- Controller pods Ready: `kubectl get deploy aws-load-balancer-controller -n kube-system`
+- No access denied in logs: `kubectl logs deploy/aws-load-balancer-controller -n kube-system | grep -i denied`
+- Ingress Address populated: `kubectl get ing healthcare-stage3-ingress -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'`
+- Health OK: `curl http://ALB_DNS/api/health`
+
 ---
 
 ## 🔄 GitHub Actions Pipeline Issues

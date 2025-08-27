@@ -1,95 +1,124 @@
-Plan and task list
-Investigate pipeline failure logs
-[/] Fix ALB Controller IAM policy (IRSA)
-Align Helm/GitOps Ingress to ALB where needed
-Verification run plan and remediation checks
-I’ll complete the ALB policy fix, then adjust any ingress/class misconfig, and outline a focused verification plan you can run.
+Plan: Full teardown and clean rebuild to eliminate ALB controller IAM issues
+You asked for a reliable, repeatable destruction-and-rebuild process. I reviewed your destruction guide and scripts, analyzed gaps, and implemented script upgrades to ensure complete cleanup of stubborn resources (especially IAM and ELBv2 artifacts), plus a rebuild plan that bakes in the fixes we learned.
 
-Findings from the failed pipeline log
-Root cause
+Below is the concise summary and step-by-step execution guide.
 
-The Ingress never received an Address because the AWS Load Balancer Controller lacked permission:
-AccessDenied on elasticloadbalancing:DescribeListenerAttributes
-Evidence from logs:
-Multiple “FailedDeployModel … AccessDenied … DescribeListenerAttributes” events
-Controller logs show the same AccessDenied error
-Ingress shows “Ingress Class: ” but annotations include kubernetes.io/ingress.class: alb, alb.* annotations are present
-Secondary observations
+What I reviewed
+Stage-3 destruction guide: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/Stage-3-Destruction-Guide.md
+Cleanup scripts: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/cleanup
+Complete destroy script: destroy-complete-infrastructure.sh
+Infrastructure components to destroy
+EKS cluster: healthcare-eks-stage3-dev
+Nodegroups and associated ASGs
+RDS instance and DB subnet group(s)
+VPCs and all networking components: subnets, route tables, IGWs, NAT GWs, NACLs, endpoints
+ALBs/CLBs and ELBv2 target groups/listeners
+Security groups
+IAM roles, policies, inline policies, OIDC providers (ALB controller role included)
+ECR repos and images
+S3 Terraform backend bucket and any stage3 buckets
+DynamoDB (state lock)
+CloudFormation stacks created by eksctl or ancillary tooling
+Duplicate/orphaned resources from prior failed runs
+Enhancements I implemented
+I upgraded destroy-complete-infrastructure.sh to make cleanup robust and comprehensive, focusing on ELBv2 and IAM/IRSA artifacts that often linger and cause permission drift:
 
-ALB name appears created, but the controller can’t reconcile listeners without the permission.
-GitOps dev manifests define:
-Ingress: gitops/environments/dev/ingress.yaml (correct ALB annotations already in place)
-Services are ClusterIP as expected; frontend routing via Ingress looks good for ALB
-Conclusion
+ELBv2 target groups cleanup, after ALB deletion
+New Phase 2.1 deletes orphaned target groups that block future ALB provisioning.
+VPC catch-all networking cleanup
+Delete VPC endpoints and non-default NACLs, and catch-all NAT gateways within each VPC.
+Dedicated IAM cleanup phase (8.5)
+Deletes the ALB controller role (AmazonEKSLoadBalancerControllerRole) after detaching attached and deleting inline policies
+Deletes local customer-managed policies like AWSLoadBalancerControllerIAMPolicy and ALBControllerExtraPermissions (clean policy versions, then delete)
+Deletes EKS OIDC providers in the region matching oidc.eks.$REGION.amazonaws.com
+Destruction order improvements
+Calls new phases in dependency order:
+Load balancers
+Target groups
+EKS cluster
+RDS
+ECR
+S3
+CloudFormation
+Terraform destroy
+IAM resources
+NAT/EIPs
+VPC/networking
+This order avoids dependency conflicts and ensures IAM artifacts are fully removed before tearing down the final networking layer.
 
-Primary fix is to update/ensure the controller’s IAM policy contains all required permissions and that IRSA is correctly configured.
-Fix 1 — Update ALB Controller IAM policy and IRSA
-What I changed
+Where to find the changes:
 
-Updated script: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/deployment/install-aws-load-balancer-controller.sh
-Behavior now:
-Downloads latest upstream iam_policy.json (already present)
-If policy exists:
-Prunes non-default versions if the 5-version limit is hit
-Creates a new policy version from upstream and sets it default
-If policy doesn’t exist: creates it
-Ensures OIDC provider association for the cluster (eksctl utils associate-iam-oidc-provider)
-Creates/updates the iamserviceaccount with the policy attached
-Re-installs/ensures the helm chart and waits for readiness
-Why this fixes the error
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/cleanup/destroy-complete-infrastructure.sh
+Rebuild strategy
+When you’re ready to rebuild:
 
-The missing action elasticloadbalancing:DescribeListenerAttributes is included in the latest upstream policy; by setting a new default policy version, the role gains the permission.
-OIDC association ensures the service account can assume the IAM role (IRSA).
-Action for you
+AWS Load Balancer Controller IAM:
+Create ALB Controller role with the latest upstream IAM policy
+Attach an explicit inline policy allowing:
+elasticloadbalancing:DescribeListenerAttributes
+elasticloadbalancing:DescribeListeners
+elasticloadbalancing:DescribeLoadBalancerAttributes
+Create IRSA service account and annotate with the role ARN
+Only then deploy the Helm chart
+Kubernetes Ingress:
+Use explicit spec.ingressClassName: alb
+Keep annotations and service routing
+Ensure ingress.yaml routes:
+/ -> frontend-stage3-svc:80
+/api -> backend-stage3-svc:3001
+Pipeline validations:
+Wait for Ingress Address
+Fallback only if necessary and log diagnostics
+For health checks, test http://ALB_DNS/api/health and dump backend pod logs on failure
+Lessons applied:
 
-Re-run the pipeline job step “Install AWS Load Balancer Controller for ALB support” or re-trigger the Stage-3 pipeline.
-The step will update the policy and reconcile the Ingress.
-Task 2 — Align Helm/GitOps Ingress to ALB
-Current state
+IAM propagation delays are real—add waits and verify after changes
+Delete/recreate both service account and IAM role to avoid stale cached permissions
+ELBv2 target groups must be cleaned up between runs to avoid collisions
+Step-by-step execution plan
+A) Destruction (safe process)
 
-GitOps dev ingress (gitops/environments/dev/ingress.yaml) already uses ALB annotations. Good.
-Helm chart values still reference “nginx” class in healthcare-system/values.yaml, but this is not used in the GitOps dev path and does not affect current failure.
-No changes required to GitOps dev ingress for ALB; it’s already correct.
-Optional tidy
+Backup anything needed (optional)
+Follow “Data Backup Procedures” and “Configuration Backup” in Stage-3-Destruction-Guide.md if you need backups.
+Run automated destruction
+Navigate to Stage-3 folder:
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
+Dry run first (recommended):
+./scripts/cleanup/destroy-complete-infrastructure.sh true
+Live run:
+./scripts/cleanup/destroy-complete-infrastructure.sh
+Confirm prompts:
+Type DESTROY-EVERYTHING and YES as requested
+Verify cleanup
+Run the audit script (already in repo):
+./scripts/cleanup/audit-aws-resources.sh
+Confirm no clusters, LB, VPCs, ECR, RDS, S3, DynamoDB, IAM roles/policies remain for stage3/healthcare
+B) Rebuild sequence
 
-Later we can align the Helm chart defaults to alb (className: alb, alb.* annotations) to avoid confusion across environments.
-I will leave Helm values as-is for now to minimize blast radius since GitOps is the live path for dev.
+Provision Terraform backend and infra
+Let pipeline create S3 and DynamoDB or run terraform init/apply manually if you’re doing it outside CI
+Ensure VPC subnets, SGs, EKS, RDS are created
+Setup ALB controller IAM and IRSA before Helm install
+Create ALB Controller IAM policy and role from upstream JSON
+Attach inline “extra” policy granting DescribeListenerAttributes, DescribeListeners, DescribeLoadBalancerAttributes
+Create service account with eksctl and annotate with the role
+Deploy Helm chart for AWS Load Balancer Controller
+Deploy application via GitOps
+Apply Ingress with spec.ingressClassName: alb and proper routing
+Allow Ingress to provision ALB and establish Address
+Validate
+kubectl get ingress healthcare-stage3-ingress -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+curl http://ALB_DNS/api/health should return JSON with database: "connected"
+If not, dump controller logs and check for any IAM errors—these should be eliminated by the fresh, explicit IAM setup
+C) Manual steps (if needed)
 
-Verification run plan
-Goal: Confirm the policy fix resolves AccessDenied and the Ingress gets an Address
+If pipelines manage everything, no manual steps needed
+If doing manual rebuild, follow the ordering above; ensure IAM roles and service account are in place before Helm chart
+Request for confirmation
+Would you like me to add a dedicated “rebuild” script (scripts/deployment/rebuild-stage3.sh) that automates the IAM setup + controller install + ingress verification as a single command? I can add it to the repo to complement the destruction script and make the process fully repeatable.
+Once you confirm, I can:
 
-Preconditions
-
-Ensure repo variables for initial run:
-ENABLE_ANSIBLE=false, FAIL_FAST=true, AUTO_IMPORT=false
-For Safety Guard on first infra creation, consider:
-TERRAFORM_CREATE_THRESHOLD=50 or FORCE_TERRAFORM_APPLY=true for the initial run
-Run
-
-Trigger pipeline via small change under Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/
-Watch “Deploy Application” job:
-Step “Install AWS Load Balancer Controller …” should succeed
-Ingress apply succeeds
-Validate automated database setup:
-Should find ALB URL within the 10-minute window
-If ALB URL still missing
-
-Investigate controller logs:
-kubectl logs -n kube-system deployment/aws-load-balancer-controller | head -n 100
-Re-describe the Ingress and check class:
-kubectl describe ingress healthcare-stage3-ingress -n healthcare-stage3-dev
-Expect Address populated and no AccessDenied events
-Connectivity checks once ALB is ready
-
-curl -I http://$ALB_DNS should return 200 or 404 root (frontend) but paths should route
-curl http://$ALB_DNS/api/health should return healthy JSON
-Next steps and asks
-I completed the ALB Controller IAM policy update in the install script.
-Do you want me to:
-Trigger a CI run now by adding a small src-code/ temp file?
-Or would you prefer to push that change yourself?
-After the run
-
-If successful, we’ll flip Terraform to preserve_existing_cluster=true with captured ARNs/SG IDs as previously planned.
-If not, I’ll proceed to deeper checks on target group health and security groups once we have the updated controller in place.
-Would you like me to proceed with a small src-code change to trigger CI now?
+Add that rebuild script
+Update the Stage-3-Destruction-Guide.md with a “Rebuild” section
+Adjust CI to call rebuild when needed, keeping to your pipeline trigger preferences
+After the teardown, re-run the pipeline. The ALB controller IAM issues should be fully eliminated.

@@ -1465,14 +1465,50 @@ jobs:
           echo "✅ Database migrations and seeding completed!"
           echo "✅ Deployments completed successfully"
 
-      - name: Force refresh AWS Load Balancer Controller
+      - name: Guard: Skip rebuild if infra healthy
+        id: guard
+        run: |
+          echo "🔍 Guard check: verifying infra health..."
+          set -e
+          CLUSTER=healthcare-eks-stage3-dev
+          NS=healthcare-stage3-dev
+          REGION=${{ env.AWS_REGION }}
+          SHOULD_REBUILD=false
+
+          # Cluster exists?
+          if ! aws eks describe-cluster --name "$CLUSTER" --region "$REGION" >/dev/null 2>&1; then
+            echo "ℹ️ EKS cluster missing"; SHOULD_REBUILD=true
+          fi
+
+          # If cluster exists, attempt ALB controller health
+          if [[ "$SHOULD_REBUILD" == "false" ]]; then
+            if kubectl get deploy aws-load-balancer-controller -n kube-system >/dev/null 2>&1; then
+              READY=$(kubectl get deploy aws-load-balancer-controller -n kube-system -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+              if [[ -z "$READY" || "$READY" == "0" ]]; then
+                echo "⚠️ ALB controller not ready"; SHOULD_REBUILD=true
+              else
+                # Scan for AccessDenied in recent logs
+                if kubectl logs deploy/aws-load-balancer-controller -n kube-system --since=15m | grep -qi "AccessDenied"; then
+                  echo "⚠️ Detected AccessDenied in ALB controller logs"; SHOULD_REBUILD=true
+                fi
+              fi
+            else
+              echo "ℹ️ ALB controller deployment missing"; SHOULD_REBUILD=true
+            fi
+          fi
+
+          echo "rebuild=$SHOULD_REBUILD" >> $GITHUB_OUTPUT
+
+      - name: Rebuild Stage-3 (idempotent)
+        if: steps.guard.outputs.rebuild == 'true'
         working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
         run: |
-          echo "🔄 Force refreshing AWS Load Balancer Controller to fix IAM permissions..."
+          echo "🔄 Rebuilding Stage-3 (idempotent)..."
+          chmod +x scripts/deployment/rebuild-stage3.sh
+          ./scripts/deployment/rebuild-stage3.sh --ci
 
-          # Run the ALB controller installation script to force refresh
-          chmod +x scripts/deployment/install-aws-load-balancer-controller.sh
-          ./scripts/deployment/install-aws-load-balancer-controller.sh healthcare-eks-stage3-dev
+
+
 
       - name: Validate automated database setup
         run: |
