@@ -1548,14 +1548,32 @@ jobs:
               const { PrismaClient } = require("@prisma/client");
               const prisma = new PrismaClient();
               (async () => {
+                // Ensure base departments exist
+                const departments = [
+                  { name: "Cardiology", code: "CARD", description: "Heart and cardiovascular system" },
+                  { name: "Pulmonology", code: "PULM", description: "Respiratory system" },
+                  { name: "Orthopedics", code: "ORTH", description: "Bones, joints, and muscles" }
+                ];
+                const deptMap = {};
+                for (const d of departments) {
+                  const dep = await prisma.department.upsert({
+                    where: { code: d.code },
+                    update: {},
+                    create: d
+                  });
+                  deptMap[d.code] = dep.id;
+                }
+
+                // Seed doctors aligned with schema (firstName/lastName/departmentId)
                 await prisma.doctor.createMany({
                   data: [
-                    { name: "Dr. John Smith", specialization: "Cardiology", email: "john.smith@healthcare.com", phone: "+1-555-0101" },
-                    { name: "Dr. Sarah Johnson", specialization: "Pediatrics", email: "sarah.johnson@healthcare.com", phone: "+1-555-0102" },
-                    { name: "Dr. Michael Brown", specialization: "Orthopedics", email: "michael.brown@healthcare.com", phone: "+1-555-0103" }
+                    { firstName: "John", lastName: "Smith", email: "john.smith@hospital.com", specialization: "Cardiology", departmentId: deptMap["CARD"], qualifications: ["MD", "FACC"], experienceYears: 10, consultationFee: 200.0 },
+                    { firstName: "Sarah", lastName: "Johnson", email: "sarah.johnson@hospital.com", specialization: "Pulmonology", departmentId: deptMap["PULM"], qualifications: ["MD", "FCCP"], experienceYears: 8, consultationFee: 180.0 },
+                    { firstName: "Michael", lastName: "Brown", email: "michael.brown@hospital.com", specialization: "Orthopedics", departmentId: deptMap["ORTH"], qualifications: ["MD"], experienceYears: 12, consultationFee: 220.0 }
                   ],
                   skipDuplicates: true
                 });
+
                 const count = await prisma.doctor.count();
                 console.log("Seeded doctors count:", count);
                 await prisma.$disconnect();
