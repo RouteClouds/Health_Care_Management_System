@@ -1186,6 +1186,13 @@ jobs:
           echo "🔧 Installing AWS Load Balancer Controller for Application Load Balancer support..."
           cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline
 
+
+          # Ensure eksctl is available for IRSA creation
+          echo "🔧 Installing eksctl..."
+          curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+          sudo mv /tmp/eksctl /usr/local/bin
+          eksctl version
+
           # Install AWS Load Balancer Controller
           chmod +x scripts/deployment/install-aws-load-balancer-controller.sh
           ./scripts/deployment/install-aws-load-balancer-controller.sh healthcare-eks-stage3-dev
@@ -1697,6 +1704,14 @@ jobs:
             kubectl apply -f gitops/environments/dev/frontend.yaml
 
             # Wait for rollout
+
+      - name: Install eksctl (recovery)
+        run: |
+          echo "🔧 Installing eksctl for recovery steps..."
+          curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+          sudo mv /tmp/eksctl /usr/local/bin
+          eksctl version
+
             kubectl rollout status deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --timeout=600s
             kubectl rollout status deployment/healthcare-frontend-stage3 -n healthcare-stage3-dev --timeout=600s
           fi
