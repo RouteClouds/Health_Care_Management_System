@@ -238,6 +238,131 @@ This script:
 
 ---
 
+---
+
+## Pipeline Failures RCA (27-Aug) – Root Causes and Full Fixes
+
+This section documents the issues encountered on 27-Aug, their root causes, and the exact fixes (with commands/snippets). See also: Outputs-Augment-Save.md (Latest Changes Summary, Pipeline Failure Analysis, Proposed Solution Steps).
+
+### 1) GitHub Actions YAML syntax error
+- Symptom: “Invalid workflow file … error in your yaml syntax” near a step name containing a colon
+- Root cause: Unquoted colon in a step name: `- name: Guard: Skip rebuild if infra healthy`
+- Fix: Quote the name
+```bash
+# Locate the step
+grep -n "Guard: Skip rebuild" .github/workflows/stage3-ci.yml
+# Edit the file and change to:
+# - name: "Guard: Skip rebuild if infra healthy"
+```
+
+### 2) eksctl not found in runner (ALB controller refresh step)
+- Symptom: `install-aws-load-balancer-controller.sh: line XX: eksctl: command not found`
+- Root cause: Recovery/refresh step assumes eksctl is installed
+- Fix: Install eksctl before ALB controller steps
+```yaml
+# Add before invoking install-aws-load-balancer-controller.sh
+- name: Install eksctl
+  run: |
+    curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+    sudo mv /tmp/eksctl /usr/local/bin
+    eksctl version
+```
+
+### 3) ALB Controller IAM AccessDenied (historical; resolved)
+- Symptom: Ingress Address empty; controller logs show AccessDenied (e.g., DescribeListenerAttributes)
+- Root cause: IRSA bound to role lacking certain ELBv2 describe permissions; stale roles/policies
+- Fix: Clean rebuild and explicit IAM policy
+```bash
+# Upstream policy
+curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json -o /tmp/iam_policy.json
+aws iam create-policy --policy-name AWSLoadBalancerControllerIAMPolicy --policy-document file:///tmp/iam_policy.json || true
+# IRSA (via eksctl)
+eksctl create iamserviceaccount \
+  --cluster=healthcare-eks-stage3-dev \
+  --namespace=kube-system \
+  --name=aws-load-balancer-controller \
+  --role-name AmazonEKSLoadBalancerControllerRole \
+  --attach-policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/AWSLoadBalancerControllerIAMPolicy \
+  --approve --region us-east-1 --override-existing-serviceaccounts
+# Extra inline permissions
+cat >/tmp/alb_extra_policy.json <<'EOF'
+{ "Version":"2012-10-17", "Statement":[{ "Effect":"Allow", "Action":[
+  "elasticloadbalancing:DescribeListenerAttributes",
+  "elasticloadbalancing:DescribeListeners",
+  "elasticloadbalancing:DescribeLoadBalancerAttributes"
+], "Resource":"*" }]}
+EOF
+aws iam put-role-policy --role-name AmazonEKSLoadBalancerControllerRole \
+  --policy-name ALBControllerExtraPermissions --policy-document file:///tmp/alb_extra_policy.json
+```
+
+### 4) DB seeding failed due to Prisma schema mismatch
+- Symptom: `Invalid prisma.doctor.createMany() … Argument firstName is missing.`
+- Root cause: Doctor model requires firstName/lastName/departmentId, but seeding used name/phone
+- Fix: Ensure departments exist; seed doctors with schema-aligned fields (idempotent)
+```bash
+# Get a backend pod
+BACKEND_POD=$(kubectl get pods -n healthcare-stage3-dev -l app=healthcare-backend-stage3 -o jsonpath='{.items[0].metadata.name}')
+# Seed via Prisma inside the pod (schema-aligned)
+kubectl exec -n healthcare-stage3-dev "$BACKEND_POD" -- node -e '
+  const { PrismaClient } = require("@prisma/client");
+  const prisma = new PrismaClient();
+  (async () => {
+    const departments = [
+      { name: "Cardiology", code: "CARD", description: "Heart" },
+      { name: "Pulmonology", code: "PULM", description: "Lungs" },
+      { name: "Orthopedics", code: "ORTH", description: "Bones" }
+    ];
+    const map = {};
+    for (const d of departments) {
+      const dep = await prisma.department.upsert({ where: { code: d.code }, update: {}, create: d });
+      map[d.code] = dep.id;
+    }
+    await prisma.doctor.createMany({
+      data: [
+        { firstName: "John", lastName: "Smith", email: "john.smith@hospital.com", specialization: "Cardiology", departmentId: map.CARD, qualifications:["MD","FACC"], experienceYears:10, consultationFee:200.0 },
+        { firstName: "Sarah", lastName: "Johnson", email: "sarah.johnson@hospital.com", specialization: "Pulmonology", departmentId: map.PULM, qualifications:["MD","FCCP"], experienceYears:8, consultationFee:180.0 },
+        { firstName: "Michael", lastName: "Brown", email: "michael.brown@hospital.com", specialization: "Orthopedics", departmentId: map.ORTH, qualifications:["MD"], experienceYears:12, consultationFee:220.0 }
+      ],
+      skipDuplicates: true
+    });
+    const count = await prisma.doctor.count();
+    console.log("Seeded doctors:", count);
+    await prisma.$disconnect();
+  })().catch(e => { console.error(e); process.exit(2); });
+'
+```
+
+Verification
+```bash
+# Health via ALB
+echo http://$ALB_DNS/api/health | xargs curl -s | jq
+# Doctors count via API
+curl -s http://$ALB_DNS/api/doctors | jq '.data.doctors | length'
+```
+
+### Notes
+- The above fixes are implemented in CI: eksctl install, seed step (idempotent), IAM rebuild flow. Refer to Outputs-Augment-Save.md for rationale and deeper context.
+
+### Next Steps (since Ansible and automated GitOps recovery are skipped)
+- Adopt GitOps proper with ArgoCD (if not already):
+```bash
+# Install ArgoCD
+kubectl create ns argocd || true
+helm repo add argo https://argoproj.github.io/argo-helm
+helm upgrade --install argo-cd argo/argo-cd -n argocd --set global.image.repository=quay.io/argoproj/argocd --wait
+# Bootstrap app-of-apps or environment app files under gitops/environments/dev/
+```
+- Move DB migration/seed into Kubernetes Job for full automation (instead of CI exec)
+  - Create a Job manifest that runs `npx prisma migrate deploy && node prisma/seed.js` using the backend image and secrets
+  - Trigger Job in pipeline or via ArgoCD sync waves
+- Monitoring next: deploy Prometheus/Grafana stack and add SLO alerts
+- Harden pipeline:
+  - Keep guard + rebuild; remove destructive “force refresh” in favor of idempotent rebuild
+  - Add workflow_dispatch to rebuild infra without code changes
+- Cost/cleanup: ensure duplicate resources cleanup scripts are run regularly; keep ALB as preferred LB per design
+
+
 ## 🔄 GitHub Actions Pipeline Issues
 
 ### **Issue: Multiple Pipelines Triggering Simultaneously**
