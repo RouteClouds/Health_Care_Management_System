@@ -3030,6 +3030,26 @@ argocd repo get https://github.com/RouteClouds/Health_Care_Management_System.git
 
 ---
 
+### Quickstart: Verify MVP Observability Stack
+```bash
+# Check ArgoCD applications
+kubectl get applications -n argocd | egrep 'kube-prometheus-stack|efk|kibana|fluent-bit'
+
+# Prometheus targets
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090 &
+curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets | length'
+
+# Grafana access (login with grafana-admin secret values)
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80 &
+
+# Kibana access
+kubectl port-forward -n logging svc/kibana-kibana 5601:5601 &
+
+# Elasticsearch indices
+kubectl exec -n logging statefulset/elasticsearch-master -- curl -s localhost:9200/_cat/indices
+```
+
+
 ## 📊 Monitoring & Observability Issues
 
 ### **Issue 1: Prometheus Not Scraping Targets**

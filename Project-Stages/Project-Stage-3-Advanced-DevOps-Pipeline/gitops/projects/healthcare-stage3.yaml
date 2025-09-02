@@ -15,6 +15,8 @@ spec:
     - 'https://charts.bitnami.com/bitnami'
     - 'https://prometheus-community.github.io/helm-charts'
     - 'https://grafana.github.io/helm-charts'
+    - 'https://helm.elastic.co'
+    - 'https://jaegertracing.github.io/helm-charts'
   
   # Destination clusters and namespaces
   destinations:
@@ -23,6 +25,8 @@ spec:
     - namespace: 'monitoring'
       server: https://kubernetes.default.svc
     - namespace: 'logging'
+      server: https://kubernetes.default.svc
+    - namespace: 'tracing'
       server: https://kubernetes.default.svc
     - namespace: 'argocd'
       server: https://kubernetes.default.svc

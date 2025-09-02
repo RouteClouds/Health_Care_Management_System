@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-tracing
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: healthcare-stage3
+spec:
+  project: healthcare-stage3
+  source:
+    repoURL: https://github.com/RouteClouds/Health_Care_Management_System.git
+    targetRevision: main
+    path: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/observability/tracing
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+

@@ -94,7 +94,7 @@ repositories:
   - name: healthcare-frontend-stage3
     image_scanning: enabled
     lifecycle_policy: 30_days
-    
+
   - name: healthcare-backend-stage3
     image_scanning: enabled
     lifecycle_policy: 30_days
@@ -140,16 +140,16 @@ terraform/
 # Development Environment
 module "healthcare_dev" {
   source = "../../modules/healthcare-platform"
-  
+
   environment = "dev"
   cluster_name = "healthcare-eks-stage3-dev"
-  
+
   # Development-specific settings
   node_instance_types = ["t3.medium"]
   min_nodes = 1
   max_nodes = 3
   desired_nodes = 2
-  
+
   # Monitoring enabled
   enable_prometheus = true
   enable_grafana = true
@@ -218,6 +218,14 @@ spec:
 ---
 
 ## 📊 Monitoring Architecture
+
+### MVP Deployment Profile (Educational)
+- Metrics: kube-prometheus-stack via ArgoCD; Prometheus retention 15d, 10Gi PV; Alertmanager email via Secret
+- Logging: EFK (Elasticsearch 10Gi single-node, Fluent Bit, Kibana) with 7d retention
+- Tracing: Jaeger all-in-one (post-MVP, enable via separate ArgoCD Application)
+- Access: Port-forward defaults for students; Ingress optional
+- Security: RBAC roles for viewer/admin; NetworkPolicies restrict UIs as needed
+
 
 ![Monitoring Architecture](Images/stage3-architecture-diagrams/04_monitoring_observability.png)
 

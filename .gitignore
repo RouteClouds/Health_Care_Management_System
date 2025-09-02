@@ -67,3 +67,7 @@ logs/
 # Package files
 **/*.tgz
 **/*.tar.gz
+
+
+# Examples and local secrets (do not commit)
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/docs/examples-not-for-commit/

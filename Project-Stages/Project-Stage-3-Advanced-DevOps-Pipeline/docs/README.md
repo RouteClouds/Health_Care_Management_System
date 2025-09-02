@@ -74,6 +74,13 @@ Documentation structure snapshot:
 - Core: MASTER-SETUP-GUIDE.md, ARCHITECTURE-guide.md, OPERATIONS.md, TROUBLESHOOTING.md, CONTRIBUTING.md
 - Reference: RoadMap-For-Stage-3.md, Naming-Convention-For-Stage-3.md, ALB-Configuration-Guide.md
 - Training: STUDENT-LEARNING-GUIDE.md, My-Understanding.md
+
+### Observability (New – MVP via GitOps)
+- Prometheus + Alertmanager + Grafana (kube-prometheus-stack) with dev-friendly storage
+- EFK logging (Elasticsearch single-node, Fluent Bit, Kibana) with 7d retention
+- Tracing (Jaeger) is post-MVP and can be enabled later
+- See 2-sept-Observability-stack.md for the full plan and OPERATIONS.md for credential setup
+
 - Archive: docs/archive/ contains superseded docs, raw logs, and detailed RCA history
 
 ### Specialized Documentation

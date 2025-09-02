@@ -2213,6 +2213,46 @@ kubectl apply -f gitops/environments/dev/
 
 ---
 
+---
+
+## 🧭 Observability (GitOps) – Student‑Friendly Walkthrough (MVP)
+
+This project deploys observability via ArgoCD Applications (GitOps). No secrets are committed.
+
+1) Prepare Secrets locally (Monitoring namespace)
+- Grafana admin: see OPERATIONS.md → Credential Handling
+- Alertmanager email: see OPERATIONS.md → Credential Handling
+
+2) Apply parent Applications (ArgoCD will sync child apps)
+```bash
+# Ensure ArgoCD is running and has access to this repo
+kubectl get pods -n argocd
+
+# Apply observation Applications (if not already applied by pipeline)
+kubectl apply -f Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/applications/observability-monitoring.yaml
+kubectl apply -f Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/applications/observability-logging.yaml
+# Tracing is post‑MVP; you can also apply:
+# kubectl apply -f Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/applications/observability-tracing.yaml
+```
+
+3) Verify sync in ArgoCD UI
+- Applications: kube-prometheus-stack, efk-logging, kibana, fluent-bit (and jaeger if enabled)
+- Sync/Healthy status should appear after a few minutes
+
+4) Access UIs (port‑forward for students)
+```bash
+# Grafana
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80 &
+# Kibana
+kubectl port-forward -n logging svc/kibana-kibana 5601:5601 &
+```
+
+5) Confirm alerts
+- The built‑in Watchdog alert should send a test email (assuming SMTP Secret configured)
+
+Note: Storage defaults (dev‑friendly) – Prometheus 15d/10Gi, Elasticsearch 7d/10Gi.
+
+
 ## 📊 Monitoring Setup
 
 ### **Phase 1: Deploy Prometheus Stack**

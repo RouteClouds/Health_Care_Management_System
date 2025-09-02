@@ -271,6 +271,71 @@ kubectl patch service frontend-stage3-svc -n healthcare-stage3-dev -p '{"spec":{
 
 ---
 
+---
+
+## 🔐 Credential Handling for Observability (Student‑Friendly)
+
+To keep the repository safe and easy for new users, we never commit real passwords. Use one of the following options:
+
+- Option A (Recommended): Gmail App Password
+  - Enable 2‑Step Verification on your Google account
+  - Create an App Password for “Mail”→“Other” and copy the 16‑character value
+  - Use this value in the Alertmanager Secret (smtp_auth_password)
+- Option B: Alternative SMTP provider (SendGrid, Mailgun, SES)
+  - Create an SMTP user and password, note the host:port
+  - Use those values in the Secret
+- Option C: Local‑only (no outbound email)
+  - Keep Alertmanager configured but without credentials; use UI/Slack later
+
+Create Secrets locally (do not commit):
+
+1) Grafana admin Secret
+```bash
+cat > grafana-admin-secret.yaml <<'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-admin
+  namespace: monitoring
+stringData:
+  admin-user: admin
+  admin-password: <choose-strong-password>
+EOF
+kubectl apply -f grafana-admin-secret.yaml
+```
+
+2) Alertmanager email Secret
+```bash
+cat > alertmanager-secret.yaml <<'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+stringData:
+  alertmanager.yaml: |
+    global:
+      smtp_smarthost: 'smtp.gmail.com:587'
+      smtp_from: '<your-email@example.com>'
+      smtp_auth_username: '<your-email@example.com>'
+      smtp_auth_password: '<APP_PASSWORD>'
+      smtp_require_tls: true
+    route:
+      receiver: 'email'
+    receivers:
+    - name: 'email'
+      email_configs:
+      - to: '<your-email@example.com>'
+        send_resolved: true
+EOF
+kubectl apply -f alertmanager-secret.yaml
+```
+
+Test email delivery:
+- Wait 2–5 minutes; the built‑in “Watchdog” alert should deliver a test email
+- Or temporarily create a test alert rule with a low threshold
+
+
 ## 📊 Monitoring Operations
 
 ### **Grafana Dashboard Management**
