@@ -68,6 +68,33 @@ kubectl apply -f Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/
 - If you want to log into Grafana, create a local Secret first (see Credential Management below)
 
 3) Verify sync in ArgoCD UI
+
+5) Access UIs (additional: Prometheus, Alertmanager, ArgoCD)
+```bash
+# Prometheus
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090 &
+# Alertmanager
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-alertmanager 9093:9093 &
+# ArgoCD UI
+kubectl port-forward -n argocd svc/argocd-server 8080:443 &
+```
+
+Default credentials and access
+- Grafana: username admin; password from Secret grafana-admin in monitoring (created by pipeline if missing)
+- ArgoCD: initial admin password
+  ```bash
+  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+  ```
+  Then open https://localhost:8080 and login with admin/<password>
+- Alertmanager: no auth by default (dev mode). Open http://localhost:9093
+- Prometheus: no auth by default (dev mode). Open http://localhost:9090
+
+Navigation tips
+- Grafana: Dashboards -> Browse -> “Healthcare Platform - Stage 3”
+- Prometheus: Status -> Targets; verify healthcare-backend and healthcare-frontend jobs
+- Alertmanager: Alerts -> check firing/silenced alerts
+- ArgoCD: Applications -> observability-monitoring/logging/jaeger (if enabled) -> Health/Synced
+
 - New apps should appear and get Healthy/Synced status
 
 4) Access UIs (student‑friendly via port‑forward)
@@ -169,6 +196,15 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: healthcare-backend-monitor
+
+Common access issues and fixes
+- ArgoCD UI 404 or connection refused: ensure argocd namespace exists and argocd-server is Ready; re-run port-forward
+- Grafana login fails: reset password by recreating grafana-admin Secret in monitoring; restart grafana pod
+- Prometheus targets empty: ensure Service annotations or ServiceMonitor exist and match labels/port name
+- Kibana not ready: check elasticsearch-master pod health in logging; increase resources or PVC size
+- Namespaces missing: pipeline should auto-create; if absent, check Stage-3 CI logs around "Install and Bootstrap ArgoCD and Observability"
+- CRDs missing (Application): ArgoCD not installed; wait for CRD or ensure install step ran
+
   namespace: monitoring
 spec:
   selector:

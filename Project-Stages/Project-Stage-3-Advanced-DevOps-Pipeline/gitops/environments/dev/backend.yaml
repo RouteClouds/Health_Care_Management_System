@@ -74,6 +74,10 @@ metadata:
     tier: backend
     environment: dev
     stage: stage-3
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3001"
+    prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
   ports:

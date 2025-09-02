@@ -1241,6 +1241,53 @@ jobs:
             terraform apply -refresh-only -auto-approve || echo "State refresh failed - will use AWS CLI fallback"
           fi
 
+
+      - name: Install and Bootstrap ArgoCD and Observability (idempotent)
+        run: |
+          set -e
+          echo "🔧 Ensuring ArgoCD installed..."
+          if ! kubectl get ns argocd >/dev/null 2>&1; then
+            kubectl create namespace argocd
+          fi
+          if ! kubectl get deploy argocd-server -n argocd >/dev/null 2>&1; then
+            kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+          fi
+          echo "⏳ Waiting for ArgoCD server..."
+          kubectl rollout status deploy/argocd-server -n argocd --timeout=600s || true
+
+          echo "📦 Applying ArgoCD Project and Observability Applications..."
+          # Apply AppProject
+          if [ -f Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/projects/healthcare-stage3.yaml ]; then
+            kubectl apply -f Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/projects/healthcare-stage3.yaml
+          fi
+
+          # Ensure monitoring and logging namespaces (needed for Secrets)
+          kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace logging --dry-run=client -o yaml | kubectl apply -f -
+
+          # Create Grafana admin secret if missing
+          if ! kubectl get secret grafana-admin -n monitoring >/dev/null 2>&1; then
+            kubectl apply -f - <<'EOF'
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: grafana-admin
+            namespace: monitoring
+          stringData:
+            admin-user: admin
+            admin-password: ${GRAFANA_ADMIN_PASSWORD:-admin123}
+          EOF
+          fi
+
+          # Apply parent Applications for observability
+          kubectl apply -f Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/applications/observability-monitoring.yaml
+          kubectl apply -f Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/applications/observability-logging.yaml
+
+          echo "⏳ Waiting for monitoring pods to start..."
+          kubectl get pods -n monitoring || true
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin123' }}
+
       - name: Deploy application with latest GitOps manifests
         working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
         run: |

@@ -8,7 +8,7 @@ metadata:
     stage: stage-3
     component: frontend
 spec:
-  project: default
+  project: healthcare-stage3
   source:
     repoURL: https://github.com/RouteClouds/Health_Care_Management_System.git
     targetRevision: main
@@ -17,7 +17,7 @@ spec:
       include: frontend.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: default
+    namespace: healthcare-stage3-dev
   syncPolicy:
     automated:
       prune: true
