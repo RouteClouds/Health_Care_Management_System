@@ -276,7 +276,100 @@ enhanced_pre_import() {
     fi
 
     log_success "✅ Enhanced pre-import completed"
+
+# Import existing VPC networking (VPC, public/private subnets, IGW)
+import_vpc_networking() {
+    log_info "🌐 Importing existing VPC networking if present..."
+
+    local vpc_name="${CLUSTER_NAME}-vpc"
+    local vpc_id
+    vpc_id=$(aws ec2 describe-vpcs \
+      --filters "Name=tag:Name,Values=${vpc_name}" \
+      --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "")
+
+    if [[ -z "$vpc_id" || "$vpc_id" == "None" ]]; then
+        log_info "ℹ️ No existing VPC found with Name ${vpc_name} — skipping VPC imports"
+        return 0
+    fi
+
+    log_info "📍 Found VPC: ${vpc_id} (${vpc_name})"
+
+    # Ensure the VPC resource is tracked in state
+    if ! (terraform state list 2>/dev/null || true) | grep -q "module\.healthcare_infrastructure\.module\.vpc\.aws_vpc\.this\[0\]\$"; then
+        retry_with_backoff_args 2 1 terraform import \
+          module.healthcare_infrastructure.module.vpc.aws_vpc.this[0] "$vpc_id" || true
+    else
+        log_info "✅ VPC already in Terraform state"
+    fi
+
+    # Determine first three AZs (module uses first 3 AZs)
+    local azs
+    azs=$(aws ec2 describe-availability-zones --all-availability-zones \
+      --query 'AvailabilityZones[?State==`available`].ZoneName' --output text | awk '{print $1, $2, $3}')
+    if [[ -z "$azs" ]]; then
+        # Fallback to standard us-east-1 subset
+        azs="us-east-1a us-east-1b us-east-1c"
+    fi
+    log_info "🗺️ Using AZ order: $azs"
+
+    # Import public/private subnets by Name convention: "${vpc_name}-public-<az>" and "${vpc_name}-private-<az>"
+    local idx=0
+    for az in $azs; do
+        if [[ $idx -ge 3 ]]; then break; fi
+        local pub_name="${vpc_name}-public-${az}"
+        local prv_name="${vpc_name}-private-${az}"
+        local pub_id prv_id
+        pub_id=$(aws ec2 describe-subnets --filters \
+          "Name=vpc-id,Values=${vpc_id}" "Name=tag:Name,Values=${pub_name}" \
+          --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")
+        prv_id=$(aws ec2 describe-subnets --filters \
+          "Name=vpc-id,Values=${vpc_id}" "Name=tag:Name,Values=${prv_name}" \
+          --query 'Subnets[0].SubnetId' --output text 2>/dev/null || echo "")
+
+        if [[ -n "$pub_id" && "$pub_id" != "None" ]]; then
+            local pub_addr="module.healthcare_infrastructure.module.vpc.aws_subnet.public[${idx}]"
+            if ! (terraform state list 2>/dev/null || true) | grep -q "$pub_addr"; then
+                retry_with_backoff_args 2 1 terraform import "$pub_addr" "$pub_id" || true
+            else
+                log_info "✅ Public subnet index ${idx} already in state"
+            fi
+        else
+            log_info "ℹ️ No public subnet found with Name ${pub_name}"
+        fi
+
+        if [[ -n "$prv_id" && "$prv_id" != "None" ]]; then
+            local prv_addr="module.healthcare_infrastructure.module.vpc.aws_subnet.private[${idx}]"
+            if ! (terraform state list 2>/devnull || true) | grep -q "$prv_addr"; then
+                retry_with_backoff_args 2 1 terraform import "$prv_addr" "$prv_id" || true
+            else
+                log_info "✅ Private subnet index ${idx} already in state"
+            fi
+        else
+            log_info "ℹ️ No private subnet found with Name ${prv_name}"
+        fi
+
+        idx=$((idx+1))
+    done
+
+    # Import Internet Gateway attached to the VPC
+    local igw_id
+    igw_id=$(aws ec2 describe-internet-gateways --filters "Name=attachment.vpc-id,Values=${vpc_id}" \
+      --query 'InternetGateways[0].InternetGatewayId' --output text 2>/dev/null || echo "")
+    if [[ -n "$igw_id" && "$igw_id" != "None" ]]; then
+        local igw_addr="module.healthcare_infrastructure.module.vpc.aws_internet_gateway.this[0]"
+        if ! (terraform state list 2>/dev/null || true) | grep -q "$igw_addr"; then
+            retry_with_backoff_args 2 1 terraform import "$igw_addr" "$igw_id" || true
+        else
+            log_info "✅ Internet Gateway already in Terraform state"
+        fi
+    else
+        log_info "ℹ️ No Internet Gateway found attached to ${vpc_id}"
+    fi
+
+    log_success "✅ VPC networking import attempt completed"
 }
+
+
 
 # Main execution function
 handle_infrastructure_conflicts() {

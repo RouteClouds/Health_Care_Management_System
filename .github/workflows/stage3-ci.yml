@@ -633,6 +633,30 @@ jobs:
           echo "Using AUTO_IMPORT=${AUTO_IMPORT}, FAIL_FAST=${FAIL_FAST}"
           AUTO_IMPORT="$AUTO_IMPORT" FAIL_FAST="$FAIL_FAST" CLUSTER_NAME="$CLUSTER_NAME" AWS_REGION="$AWS_REGION" bash ../../../scripts/preflight/check-collisions.sh
 
+
+      - name: Guard: Detect duplicate VPCs (fail-fast)
+        run: |
+          echo "🔍 Checking for duplicate VPCs by Name tag..."
+          AWS_REGION="${{ env.AWS_REGION }}"
+          CLUSTER_NAME="healthcare-eks-stage3-dev"
+          VPCS=$(aws ec2 describe-vpcs --region "$AWS_REGION" \
+            --filters "Name=tag:Name,Values=${CLUSTER_NAME}-vpc" \
+            --query 'Vpcs[].VpcId' --output text || true)
+          COUNT=$(echo "$VPCS" | wc -w | tr -d ' ')
+          echo "Found $COUNT VPC(s) matching Name ${CLUSTER_NAME}-vpc: $VPCS"
+
+          if [ "$COUNT" -gt 1 ]; then
+            echo "🚨 Duplicate VPCs detected for ${CLUSTER_NAME}-vpc."
+            echo "❌ Failing fast to prevent further duplication. Please clean up the older VPC or import it into state."
+            exit 1
+          fi
+
+          if [ "$COUNT" -eq 1 ]; then
+            echo "ℹ️ One existing VPC found; conflict handler/import will reconcile state if needed."
+          else
+            echo "ℹ️ No existing VPC found; Terraform may create it."
+          fi
+
       - name: Terraform Plan
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
@@ -702,7 +726,10 @@ jobs:
           # Use import strategy by default (can be overridden with repository variable)
           CONFLICT_STRATEGY="${{ vars.INFRASTRUCTURE_CONFLICT_STRATEGY || 'import' }}"
 
-          # Handle conflicts based on strategy
+          # Import existing VPC networking into state before plan/apply
+          import_vpc_networking || true
+
+          # Handle conflicts based on strategy (includes enhanced pre-imports)
           handle_infrastructure_conflicts "$CONFLICT_STRATEGY"
 
 

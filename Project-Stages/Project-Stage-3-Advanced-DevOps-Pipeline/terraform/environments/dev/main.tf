@@ -9,15 +9,20 @@ module "healthcare_infrastructure" {
   environment  = "dev"
   cluster_name = "healthcare-eks-stage3-dev"
 
-  # First-time creation: do NOT preserve existing control plane (no cluster yet)
-  # After successful creation, set preserve_existing_cluster=true and wire ARNs/SGs below
-  preserve_existing_cluster = false
+  # Preserve existing control plane once created to avoid replacement/duplication
+  preserve_existing_cluster = true
 
   # Existing cluster bindings (only needed when preserve_existing_cluster=true)
   # eks_cluster_role_arn          = "<EKS cluster role ARN>"
   # eks_cluster_kms_key_arn       = "<KMS key ARN for control plane encryption>"
   # eks_cluster_security_group_id = "<EKS cluster security group ID>"
   # eks_cluster_additional_sg_ids = ["<additional SG IDs>"]
+
+  # Existing cluster bindings (safe defaults; can be overridden via tfvars if needed)
+  eks_cluster_role_arn          = ""
+  eks_cluster_kms_key_arn       = ""
+  eks_cluster_security_group_id = ""
+  eks_cluster_additional_sg_ids = []
 
   # Dev-specific configurations
   node_instance_types = ["t3.medium"]

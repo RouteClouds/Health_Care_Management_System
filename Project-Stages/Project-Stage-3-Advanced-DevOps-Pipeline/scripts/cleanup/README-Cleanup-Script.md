@@ -198,6 +198,25 @@ The script follows this dependency-aware cleanup order:
 | CloudWatch Logs | Immediate |
 | KMS Alias/Key | Immediate |
 
+
+## Guided removal of duplicate VPC (opt-in)
+
+A duplicate VPC may exist (e.g., `vpc-0bdb999074380c528` with Name `healthcare-eks-stage3-dev-vpc`). Use the guided script to safely remove a stale duplicate VPC.
+
+Prerequisites:
+- Ensure no resources depend on the VPC (ALBs, ENIs, DB subnet groups). The script will check and abort if dependencies exist.
+- Set AWS credentials and region in your environment.
+
+Commands:
+```bash
+cd Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/cleanup
+chmod +x guided-remove-duplicate-vpc.sh
+AWS_REGION=us-east-1 CLUSTER_NAME=healthcare-eks-stage3-dev \
+  ./guided-remove-duplicate-vpc.sh vpc-0bdb999074380c528
+```
+
+The script is opt-in and requires typing a confirmation phrase before deleting resources.
+
 **Total Time**: 20-35 minutes for complete infrastructure
 
 ## Error Handling
