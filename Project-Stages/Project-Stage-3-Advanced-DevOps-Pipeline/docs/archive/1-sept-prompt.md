@@ -1,5 +1,108 @@
 2-Sept-2025
+###########################################
+
+Important
+
+Status Overview
+Observability stack (MVP) is implemented in GitOps and documented
+A consolidated guide has been created: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/docs/Stage-3-observability-doc.md
+A temp src change to re-trigger Stage-3 pipeline was committed locally but the push was rejected because the remote branch is ahead. I’m ready to rebase and push.
+Below are the requested deliverables and the next steps to finish pipeline integration testing.
+
+1) Pipeline Re-trigger and Observability Integration Testing
+What I attempted
+
+Created a src-code temp file to trigger Stage-3 CI (per your trigger rules):
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/temp-test/obsv-trigger-2025-09-02.md
+Committed locally as: “ci(stage3): re-trigger pipeline for observability stack integration test [temp src change]”
+Push was rejected because remote main has new commits. A rebase/push is required.
+What I will do (needs your OK to proceed)
+
+Rebase main onto origin/main, resolve any conflicts if present, and push:
+git fetch origin main
+git pull --rebase origin main
+git push origin main
+This will push both the observability changes (bd6fa7556d00b10f722ecf20b2eae0ffe62dc85c) and the temp src trigger commit to origin/main, which re-triggers the CI pipeline.
+Alternate immediate trigger (no code push)
+
+You can trigger the Stage-3 CI with workflow_dispatch from GitHub’s Actions UI (select environment: dev). Let me know if you prefer that path and I’ll document the exact clicks.
+What to validate once pipeline runs
+
+ArgoCD auto-syncs the new Applications:
+observability-monitoring
+observability-logging
+observability-tracing (post-MVP; optional)
+End-to-end workflow:
+Code change → GitHub Actions builds and updates GitOps (commit SHA tags)
+ArgoCD detects repo changes → syncs deploys
+Observability:
+Prometheus scrapes app/cluster metrics
+Grafana dashboards show live data
+EFK captures logs for deployments and app pods
+Quick kubectl verification checklist (copy-paste)
+
+ArgoCD apps:
+kubectl get applications -n argocd | egrep 'kube-prometheus-stack|efk|kibana|fluent-bit'
+Prometheus targets:
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090 &
+curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets | length'
+Grafana:
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80 &
+open http://localhost:3000
+Kibana + Elasticsearch:
+kubectl port-forward -n logging svc/kibana-kibana 5601:5601 &
+kubectl exec -n logging statefulset/elasticsearch-master -- curl -s localhost:9200/_cat/indices
+Backend metrics (fast path for MVP):
+kubectl annotate svc backend-stage3-svc -n healthcare-stage3-dev prometheus.io/scrape=true prometheus.io/port=3001 --overwrite
+Note: We also have ServiceMonitor examples; for MVP speed, service annotations are fine. We can promote to ServiceMonitor via GitOps later.
+
+How observability monitors pipeline executions
+
+Prometheus continuously scrapes cluster/app metrics; after each pipeline-driven deploy, you’ll see changes in pod counts, readiness, and app latency/error metrics.
+Fluent Bit forwards container logs; Kibana will show new indices/entries as new pods roll out during deployments.
+ArgoCD’s Application health and sync statuses (visible in ArgoCD UI) track the GitOps deployment portion of the pipeline.
+2) Consolidated Observability Documentation (Completed)
+Created a single, student-friendly, end-to-end guide:
+
+Path: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/docs/Stage-3-observability-doc.md
+It consolidates:
+
+Architecture overview (MVP)
+Setup instructions (GitOps apply + port-forward access)
+Credential management (student-friendly, local-only by default)
+Pipeline integration flow
+Verification steps and troubleshooting pointers
+Next steps post-MVP
+Preview (first lines):
+
+
+Stage-3-observability-doc.md
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/docs
+Loading...
+Related docs updated previously for consistency:
+
+README.md: observability overview
+MASTER-SETUP-GUIDE.md: Observability (GitOps) – MVP walkthrough
+OPERATIONS.md: Credential Handling (templates and steps)
+TROUBLESHOOTING.md: Quickstart verification
+ARCHITECTURE-guide.md: MVP Deployment Profile (Educational)
+What I need from you
+Confirm I should:
+Rebase and push main to origin (resolve conflicts if any), which will also push the temp src trigger commit to re-run CI
+Or, do you prefer to trigger via Actions → “Run workflow” (workflow_dispatch) now?
+Once main is pushed
+
+I will confirm the CI run has started and provide a short validation report:
+ArgoCD Applications exist and are synced
+Prometheus target count > 0 and app endpoints reachable
+Logs visible in Kibana
+Clear notes on how the pipeline changes were observed in observability
+If you approve, I’ll proceed with the rebase + push and post a follow-up with the CI run link and ArgoCD sync checks.
+
+
+
 #############################################
+
 Important
 
 Commit, Secrets, Local-Only Alerting, and MVP Deployment
