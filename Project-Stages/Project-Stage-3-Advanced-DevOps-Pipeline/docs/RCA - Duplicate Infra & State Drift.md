@@ -33,17 +33,34 @@ Repeated pipeline runs created duplicate resources (VPCs, NAT GWs, LBs) and fail
 
 
 
+
+---
+
+## Incorporated Fixes and Findings
+
+This RCA now consolidates key fixes and evidence previously captured in:
+- Augment-EIP-Duplicate-Resources-Fix.md (EIP limit and NAT GW duplication mitigation)
+- Augment-RCA-Deploy-App-DB-Setup.md (DB setup deployment stage failures and sed/terraform-output fixes)
+
+Highlights:
+- Single NAT Gateway strategy to avoid EIP exhaustion and reduce cost
+- Preflight collision checks and import/preserve strategy for idempotency
+- Robust Terraform output parsing and manifest updates without brittle sed errors
+- Pipeline steps to detect and remediate duplicates before apply
+
+Full historical logs and step-by-step command transcripts are retained in docs/archive/ for reference.
+
 ---
 
 ## Appendix: Augment-RCA-Infra-Duplicate.md
 
 # 🔍 Root Cause Analysis: Infrastructure Duplication Issue
 
-**Document**: Augment-RCA-Infra-Duplicate.md  
-**Date**: August 20, 2025  
-**Issue**: Multiple pipeline runs create duplicate AWS resources instead of being idempotent  
-**Severity**: High - Cost Impact (~$450/month in duplicate resources)  
-**Status**: Analyzed & Fixed  
+**Document**: Augment-RCA-Infra-Duplicate.md
+**Date**: August 20, 2025
+**Issue**: Multiple pipeline runs create duplicate AWS resources instead of being idempotent
+**Severity**: High - Cost Impact (~$450/month in duplicate resources)
+**Status**: Analyzed & Fixed
 
 ---
 
@@ -162,7 +179,7 @@ EXPECTED_BUCKET="healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}-${RANDOM_SU
 
 ```bash
 # ❌ MISSING: Check if EKS cluster already exists
-# ❌ MISSING: Check if VPC already exists  
+# ❌ MISSING: Check if VPC already exists
 # ❌ MISSING: Check if RDS already exists
 terraform apply -auto-approve tfplan  # Blindly applies plan
 ```
@@ -331,7 +348,7 @@ fi
   working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
   run: |
     echo "🔍 Checking for existing infrastructure..."
-    
+
     # Check if EKS cluster exists
     if aws eks describe-cluster --name "healthcare-eks-stage3-dev" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
       echo "✅ EKS cluster already exists"
@@ -340,7 +357,7 @@ fi
       echo "📋 EKS cluster does not exist"
       CLUSTER_EXISTS=false
     fi
-    
+
     # Check if RDS instance exists
     if aws rds describe-db-instances --db-instance-identifier "healthcare-eks-stage3-dev-db" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
       echo "✅ RDS instance already exists"
@@ -349,7 +366,7 @@ fi
       echo "📋 RDS instance does not exist"
       RDS_EXISTS=false
     fi
-    
+
     # Set outputs for conditional deployment
     echo "cluster-exists=$CLUSTER_EXISTS" >> $GITHUB_OUTPUT
     echo "rds-exists=$RDS_EXISTS" >> $GITHUB_OUTPUT
@@ -388,7 +405,7 @@ terraform {
 grafana:
   service:
     type: ClusterIP  # Changed from LoadBalancer
-  
+
   ingress:
     enabled: true
     ingressClassName: alb
@@ -535,9 +552,9 @@ aws elbv2 describe-load-balancers --query 'LoadBalancers[].Type'
 
 ### **Issue Resolution Status**: ✅ **RESOLVED**
 
-**Root Cause**: Non-idempotent backend setup with random suffix generation  
-**Primary Fix**: Consistent backend detection and reuse logic  
-**Secondary Fixes**: Infrastructure existence checks, unified configurations, enhanced cleanup  
+**Root Cause**: Non-idempotent backend setup with random suffix generation
+**Primary Fix**: Consistent backend detection and reuse logic
+**Secondary Fixes**: Infrastructure existence checks, unified configurations, enhanced cleanup
 
 ### **Key Success Metrics**:
 - ✅ Pipeline now idempotent (reuses existing infrastructure)
@@ -777,12 +794,12 @@ Replace the random suffix approach with deterministic naming:
 # Use deterministic naming
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "healthcare-terraform-state-stage3-${data.aws_caller_identity.current.account_id}"
-  
+
   # Add lifecycle rule to prevent accidental deletion
   lifecycle {
     prevent_destroy = true
   }
-  
+
   tags = {
     Name        = "Healthcare Terraform State - Stage 3"
     Description = "Stores Terraform state files for Stage-3 infrastructure"
@@ -851,7 +868,7 @@ module "vpc" {
   # CRITICAL: Single NAT Gateway to prevent EIP limit issues
   enable_nat_gateway = true
   single_nat_gateway = true  # ✅ PREVENTS DUPLICATE NAT GATEWAYS
-  
+
   # Reuse existing EIPs if available
   reuse_nat_ips = var.reuse_existing_eips
   external_nat_ip_ids = var.existing_eip_ids
@@ -868,25 +885,25 @@ Replace the current backend setup with deterministic discovery:
   working-directory: ${{ env.TERRAFORM_PATH }}/backend-setup
   run: |
     echo "🔧 Setting up idempotent Terraform backend..."
-    
+
     AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
     DETERMINISTIC_BUCKET="healthcare-terraform-state-stage3-${AWS_ACCOUNT_ID}"
     EXPECTED_TABLE="healthcare-terraform-locks-stage3"
-    
+
     # Check if resources exist
     BUCKET_EXISTS="false"
     TABLE_EXISTS="false"
-    
+
     if aws s3api head-bucket --bucket "$DETERMINISTIC_BUCKET" 2>/dev/null; then
       BUCKET_EXISTS="true"
       echo "✅ Found existing S3 bucket: $DETERMINISTIC_BUCKET"
     fi
-    
+
     if aws dynamodb describe-table --table-name "$EXPECTED_TABLE" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
       TABLE_EXISTS="true"
       echo "✅ Found existing DynamoDB table: $EXPECTED_TABLE"
     fi
-    
+
     # Use existing resources or create new ones
     if [[ "$BUCKET_EXISTS" == "true" && "$TABLE_EXISTS" == "true" ]]; then
       echo "🎯 Using existing backend infrastructure (idempotent)"
@@ -894,14 +911,14 @@ Replace the current backend setup with deterministic discovery:
       echo "table-name=$EXPECTED_TABLE" >> $GITHUB_OUTPUT
     else
       echo "🚀 Creating missing backend resources..."
-      
+
       # Set deterministic bucket name in terraform.tfvars
       echo "bucket_name = \"$DETERMINISTIC_BUCKET\"" > terraform.tfvars
-      
+
       terraform init
       terraform plan -out=backend-plan
       terraform apply -auto-approve backend-plan
-      
+
       echo "bucket-name=$DETERMINISTIC_BUCKET" >> $GITHUB_OUTPUT
       echo "table-name=$EXPECTED_TABLE" >> $GITHUB_OUTPUT
     fi
@@ -943,30 +960,30 @@ Add comprehensive resource discovery step:
   working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
   run: |
     echo "🔍 Discovering existing AWS resources..."
-    
+
     AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-    
+
     # Discover existing resources
     EXISTING_CLUSTER=$(aws eks describe-cluster --name "healthcare-eks-stage3-dev" --region "${{ env.AWS_REGION }}" --query 'cluster.name' --output text 2>/dev/null || echo "")
     EXISTING_RDS=$(aws rds describe-db-instances --db-instance-identifier "healthcare-eks-stage3-dev-db" --region "${{ env.AWS_REGION }}" --query 'DBInstances[0].DBInstanceIdentifier' --output text 2>/dev/null || echo "")
     EXISTING_VPC=$(aws ec2 describe-vpcs --region "${{ env.AWS_REGION }}" --filters "Name=tag:Name,Values=healthcare-eks-stage3-dev-vpc" --query 'Vpcs[0].VpcId' --output text 2>/dev/null || echo "")
-    
+
     # Get existing EIPs
     EXISTING_EIPS=$(aws ec2 describe-addresses --region "${{ env.AWS_REGION }}" --query 'Addresses[?Tags[?Key==`Project` && Value==`healthcare-management`]].AllocationId' --output text | tr '\t' ',' || echo "")
-    
+
     # Set outputs for conditional deployment
     echo "cluster-exists=$([[ -n "$EXISTING_CLUSTER" ]] && echo "true" || echo "false")" >> $GITHUB_OUTPUT
     echo "rds-exists=$([[ -n "$EXISTING_RDS" ]] && echo "true" || echo "false")" >> $GITHUB_OUTPUT
     echo "vpc-exists=$([[ -n "$EXISTING_VPC" ]] && echo "true" || echo "false")" >> $GITHUB_OUTPUT
     echo "existing-eips=$EXISTING_EIPS" >> $GITHUB_OUTPUT
-    
+
     # Create terraform.tfvars with discovery results
     cat > terraform.tfvars << EOF
     reuse_existing_resources = true
     existing_eip_ids = [$(echo "$EXISTING_EIPS" | sed 's/,/","/g' | sed 's/^/"/' | sed 's/$/"/' | sed 's/""//g')]
     force_new_resources = false
     EOF
-    
+
     echo "📊 Resource Discovery Summary:"
     echo "   EKS Cluster: $([[ -n "$EXISTING_CLUSTER" ]] && echo "✅ Found" || echo "❌ Not found")"
     echo "   RDS Instance: $([[ -n "$EXISTING_RDS" ]] && echo "✅ Found" || echo "❌ Not found")"
@@ -981,14 +998,14 @@ Add state validation before apply:
   working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
   run: |
     echo "🔍 Validating Terraform state consistency..."
-    
+
     # Check for state drift
     terraform plan -detailed-exitcode -out=validation-plan || {
       EXIT_CODE=$?
       if [ $EXIT_CODE -eq 2 ]; then
         echo "⚠️ State drift detected - resources exist but not in state"
         echo "🔄 Running import operations..."
-        
+
         # Import existing resources
         ./../../scripts/deployment/handle-infrastructure-conflicts.sh
       elif [ $EXIT_CODE -eq 1 ]; then
@@ -996,7 +1013,7 @@ Add state validation before apply:
         exit 1
       fi
     }
-    
+
     echo "✅ State consistency validated"
 
 8. 🏷️ Enhanced Resource Tagging Strategy
@@ -1013,7 +1030,7 @@ locals {
     # Add unique identifier for resource grouping
     ResourceGroup = "healthcare-stage3-${var.environment}"
   })
-  
+
   # Deterministic naming convention
   resource_prefix = "healthcare-${var.environment}-stage3"
 }
@@ -1026,7 +1043,7 @@ Implement try-existing-first pattern:
 data "aws_s3_bucket" "existing_assets" {
   count  = var.reuse_existing_resources ? 1 : 0
   bucket = "healthcare-assets-stage3-dev-${data.aws_caller_identity.current.account_id}"
-  
+
   # Handle case where bucket doesn't exist
   lifecycle {
     postcondition {
@@ -1040,11 +1057,11 @@ data "aws_s3_bucket" "existing_assets" {
 resource "aws_s3_bucket" "healthcare_assets" {
   count  = var.reuse_existing_resources && length(data.aws_s3_bucket.existing_assets) > 0 ? 0 : 1
   bucket = "healthcare-assets-stage3-dev-${data.aws_caller_identity.current.account_id}"
-  
+
   lifecycle {
     prevent_destroy = true
   }
-  
+
   tags = local.common_tags
 }
 
@@ -1119,7 +1136,7 @@ Ansible Enhancement:
         priv: "{{ item.privileges }}"
         db: "{{ database_name }}"
       loop: "{{ database_users }}"
-      
+
     - name: Configure database parameters
       postgresql_set:
         name: "{{ item.parameter }}"
@@ -1128,7 +1145,7 @@ Ansible Enhancement:
         - { parameter: "shared_preload_libraries", value: "pg_stat_statements" }
         - { parameter: "max_connections", value: "200" }
         - { parameter: "work_mem", value: "4MB" }
-        
+
     - name: Setup database monitoring
       postgresql_ext:
         name: pg_stat_statements
@@ -1173,7 +1190,7 @@ Ansible Enhancement:
                   "log_level": "{{ log_level }}"
                 }
               }
-              
+
     - name: Update application secrets
       k8s:
         definition:
@@ -1201,7 +1218,7 @@ Ansible Enhancement:
             ports: [5432]
             group_id: "{{ eks_security_group_id }}"
             rule_desc: "PostgreSQL from EKS"
-            
+
     - name: Setup SSL certificates
       k8s:
         definition:
@@ -1243,7 +1260,7 @@ Ansible Enhancement:
                     - source_labels: [__meta_kubernetes_pod_label_app]
                       action: keep
                       regex: healthcare-backend-stage3
-                      
+
     - name: Configure Grafana dashboards
       uri:
         url: "http://grafana.monitoring.svc.cluster.local:3000/api/dashboards/db"
@@ -1263,14 +1280,14 @@ graph TB
     C --> D[Ansible Configuration]
     D --> E[Application Deployment]
     E --> F[Validation & Testing]
-    
+
     subgraph "Terraform Phase"
         C1[Create EKS Cluster]
         C2[Create RDS Instance]
         C3[Create VPC/Networking]
         C --> C1 --> C2 --> C3
     end
-    
+
     subgraph "Ansible Configuration Phase"
         D1[Database Configuration]
         D2[Security Hardening]
@@ -1278,14 +1295,14 @@ graph TB
         D4[Application Config]
         D --> D1 --> D2 --> D3 --> D4
     end
-    
+
     subgraph "Application Deployment"
         E1[ArgoCD Sync]
         E2[Helm Chart Deploy]
         E3[Health Checks]
         E --> E1 --> E2 --> E3
     end
-    
+
     subgraph "Validation"
         F1[Configuration Validation]
         F2[Security Scan]
@@ -1311,7 +1328,7 @@ jobs:
         run: |
           cd terraform/environments/dev
           terraform apply -auto-approve
-          
+
   configuration:
     needs: infrastructure
     runs-on: ubuntu-latest
@@ -1321,24 +1338,24 @@ jobs:
           pip install ansible kubernetes
           ansible-galaxy collection install kubernetes.core
           ansible-galaxy collection install community.postgresql
-          
+
       - name: Configure Infrastructure
         run: |
           # Database configuration
           ansible-playbook -i inventory/aws_ec2.yml \
             playbooks/database-config.yml \
             -e environment=dev
-            
+
           # Security hardening
           ansible-playbook -i inventory/kubernetes.yml \
             playbooks/security-hardening.yml \
             -e environment=dev
-            
+
           # Monitoring setup
           ansible-playbook -i inventory/kubernetes.yml \
             playbooks/monitoring-setup.yml \
             -e environment=dev
-            
+
   deployment:
     needs: configuration
     runs-on: ubuntu-latest
@@ -1348,7 +1365,7 @@ jobs:
           # ArgoCD sync with validated configuration
           argocd app sync healthcare-backend-stage3
           argocd app sync healthcare-frontend-stage3
-          
+
   validation:
     needs: deployment
     runs-on: ubuntu-latest
@@ -1537,6 +1554,13 @@ Multiple pipeline runs (while iterating on fixes) created duplicate AWS resource
   - `terraform/environments/dev/providers.tf` (no hardcoded backend; providers)
 - Cleanup/Audit:
   - `scripts/cleanup/audit-aws-resources.sh` and generated audit report (see Evidence)
+
+---
+
+Note: Detailed emergency cleanup scripts and raw logs have been moved to docs/archive/ for reference:
+- docs/archive/Augment-EIP-Duplicate-Resources-Fix.md
+- docs/archive/Augment-RCA-Deploy-App-DB-Setup.md
+
 
 ### Verification Plan
 1) Run pre-import step once; re-run `terraform plan` must show zero “to add” for imported resources.

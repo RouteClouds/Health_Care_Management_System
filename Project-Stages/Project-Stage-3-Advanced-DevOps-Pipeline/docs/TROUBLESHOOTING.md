@@ -7397,3 +7397,44 @@ metadata:
 ---
 
 *This comprehensive Load Balancer troubleshooting guide ensures cost-effective, feature-rich load balancing using only Application Load Balancers, preventing the creation of expensive Classic or Network Load Balancers.*
+
+
+---
+
+## 🧹 AWS Cleanup Procedures (Duplicate/Stray Resources)
+
+The following summarizes safe, systematic cleanup steps for duplicate or orphaned AWS resources observed during Stage-3 troubleshooting. Use with caution and confirm targets before deletion.
+
+- Order of operations (high-level):
+  1) Kubernetes/application cleanup (ingress, services, workloads)
+  2) Load balancers and target groups (prefer ALB; remove Classic/NLB)
+  3) EKS: delete node groups first, then clusters you no longer need
+  4) RDS: delete instances, then subnet groups/parameter groups if orphaned
+  5) ECR repositories (optional; keep if needed)
+  6) VPC networking: NAT GWs → route tables → subnets → IGW → VPC
+  7) CloudWatch log groups, KMS aliases/keys (if provisioned)
+
+- Discovery (read-only) examples:
+  - Enumerate VPCs and subnets by tag/name
+  - List ALB/NLB and Classic ELBs
+  - List EKS clusters and node groups
+  - List RDS instances and subnet groups
+
+See docs now archived for full command sets and examples:
+- docs/archive/Cursor-delete-Plan.md
+- docs/archive/Augment-delete-Plan.md
+
+---
+
+## 📝 Enhancements Summary (What changed in TROUBLESHOOTING)
+
+The Troubleshooting guide was enhanced based on real Stage-3 incidents to include:
+
+- New section: Git & Repository Issues
+  - Large files blocking git push (Terraform providers) with detection, .gitignore, history cleanup and prevention
+- New section: GitHub Actions Pipeline Issues
+  - Multiple pipelines triggering simultaneously; root cause and workflow path fixes; validation commands
+- Enhanced quick-reference commands and pipeline monitoring tips
+
+For historical context, the original summary notes are archived at:
+- docs/archive/TROUBLESHOOTING-ENHANCEMENTS-SUMMARY.md

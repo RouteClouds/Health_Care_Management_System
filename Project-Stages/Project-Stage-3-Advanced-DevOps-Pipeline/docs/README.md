@@ -59,11 +59,28 @@ kubectl apply -f gitops/applications/
 ### Archive
 - docs/archive/ contains superseded docs and drafts preserved for reference
 
+
+### How to Use This Documentation (Stage-3)
+
+- New to Stage-3? Start with MASTER-SETUP-GUIDE.md for the full deployment.
+- Want a quick orientation? Read this README’s Overview and Quick Start, then follow the links below.
+- Day-to-day operations: See OPERATIONS.md (Daily checks, deployments, monitoring ops).
+- Troubleshooting: See TROUBLESHOOTING.md (comprehensive, real outputs and fixes).
+- Architecture visuals: See ARCHITECTURE-guide.md.
+- Roadmap and current status: See RoadMap-For-Stage-3.md.
+- Naming conventions and ALB: See Naming-Convention-For-Stage-3.md and ALB-Configuration-Guide.md.
+
+Documentation structure snapshot:
+- Core: MASTER-SETUP-GUIDE.md, ARCHITECTURE-guide.md, OPERATIONS.md, TROUBLESHOOTING.md, CONTRIBUTING.md
+- Reference: RoadMap-For-Stage-3.md, Naming-Convention-For-Stage-3.md, ALB-Configuration-Guide.md
+- Training: STUDENT-LEARNING-GUIDE.md, My-Understanding.md
+- Archive: docs/archive/ contains superseded docs, raw logs, and detailed RCA history
+
 ### Specialized Documentation
-- Migration Guide: docs/MIGRATION-GUIDE.md
-- Security Guide: docs/SECURITY-GUIDE.md
-- Performance Tuning: docs/PERFORMANCE-TUNING.md
-- FAQ: docs/FAQ.md
+- Migration Guide: docs/MIGRATION-GUIDE.md (placeholder)
+- Security Guide: docs/SECURITY-GUIDE.md (placeholder)
+- Performance Tuning: docs/PERFORMANCE-TUNING.md (placeholder)
+- FAQ: docs/FAQ.md (placeholder)
 
 ### Project Management
 - Project Tracker: Project-Tracker.md

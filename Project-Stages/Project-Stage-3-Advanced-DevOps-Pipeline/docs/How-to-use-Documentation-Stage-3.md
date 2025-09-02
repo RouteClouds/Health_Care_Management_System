@@ -1,4 +1,6 @@
-# How to Use Stage-3 Documentation Guide
+# How to Use Stage-3 Documentation Guide (Merged into docs/README.md)
+
+This document has been merged into the main docs/README.md under "How to Use This Documentation". Please refer there for the live, maintained version.
 
 ## 📋 **Overview**
 
