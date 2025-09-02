@@ -618,7 +618,7 @@ jobs:
           echo "PRESERVE flag detected: ${PRESERVE}"
 
           # Start with repository default
-          AUTO_IMPORT_REPO_DEFAULT='${{ vars.AUTO_IMPORT || 'false' }}'
+          AUTO_IMPORT_REPO_DEFAULT="${{ vars.AUTO_IMPORT || 'false' }}"
           AUTO_IMPORT="$AUTO_IMPORT_REPO_DEFAULT"
 
           # If cluster exists while PRESERVE=false (first-time path expected creation), auto-import to avoid hard fail
@@ -634,7 +634,7 @@ jobs:
           AUTO_IMPORT="$AUTO_IMPORT" FAIL_FAST="$FAIL_FAST" CLUSTER_NAME="$CLUSTER_NAME" AWS_REGION="$AWS_REGION" bash ../../../scripts/preflight/check-collisions.sh
 
 
-      - name: Guard: Detect duplicate VPCs (fail-fast)
+      - name: "Guard: Detect duplicate VPCs (fail-fast)"
         run: |
           echo "🔍 Checking for duplicate VPCs by Name tag..."
           AWS_REGION="${{ env.AWS_REGION }}"
