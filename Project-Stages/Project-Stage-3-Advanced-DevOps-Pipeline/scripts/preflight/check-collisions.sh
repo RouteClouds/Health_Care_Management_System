@@ -54,6 +54,9 @@ check_vpc() {
   if [[ -n "$vpcs" ]]; then
     log "Found VPCs:\n$vpcs"
   else
+    log "No VPCs found with Name like *${CLUSTER_NAME}-vpc*"
+  fi
+}
 
 # Detect duplicate VPCs and decide exit code
 check_vpc_duplicates_and_decide() {
@@ -77,10 +80,6 @@ check_vpc_duplicates_and_decide() {
       log "FAIL_FAST=false — continuing, but duplicates exist (risky)."
       return 0
     fi
-  fi
-}
-
-    log "No VPCs found with Name like *${CLUSTER_NAME}-vpc*"
   fi
 }
 
