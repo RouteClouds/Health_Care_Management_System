@@ -277,6 +277,8 @@ enhanced_pre_import() {
 
     log_success "✅ Enhanced pre-import completed"
 
+    }
+
 # Import existing VPC networking (VPC, public/private subnets, IGW)
 import_vpc_networking() {
     log_info "🌐 Importing existing VPC networking if present..."
