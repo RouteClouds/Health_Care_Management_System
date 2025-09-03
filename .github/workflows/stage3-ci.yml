@@ -1433,7 +1433,7 @@ jobs:
             name: grafana-basic
             namespace: monitoring
             annotations:
-              kubernetes.io/ingress.class: nginx
+
               nginx.ingress.kubernetes.io/rewrite-target: /$2
               nginx.ingress.kubernetes.io/use-regex: "true"
               nginx.ingress.kubernetes.io/auth-type: basic
@@ -1459,7 +1459,7 @@ jobs:
             name: prometheus-basic
             namespace: monitoring
             annotations:
-              kubernetes.io/ingress.class: nginx
+
               nginx.ingress.kubernetes.io/rewrite-target: /$2
               nginx.ingress.kubernetes.io/use-regex: "true"
               nginx.ingress.kubernetes.io/auth-type: basic
@@ -1484,7 +1484,7 @@ jobs:
             name: alertmanager-basic
             namespace: monitoring
             annotations:
-              kubernetes.io/ingress.class: nginx
+
               nginx.ingress.kubernetes.io/rewrite-target: /$2
               nginx.ingress.kubernetes.io/use-regex: "true"
               nginx.ingress.kubernetes.io/auth-type: basic
@@ -1509,7 +1509,7 @@ jobs:
             name: argocd-basic
             namespace: argocd
             annotations:
-              kubernetes.io/ingress.class: nginx
+
               nginx.ingress.kubernetes.io/rewrite-target: /$2
               nginx.ingress.kubernetes.io/use-regex: "true"
               nginx.ingress.kubernetes.io/auth-type: basic
