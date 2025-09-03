@@ -1430,11 +1430,12 @@ jobs:
               nginx.ingress.kubernetes.io/configuration-snippet: |
                 proxy_set_header X-Forwarded-Prefix /grafana;
           spec:
+            ingressClassName: nginx
             rules:
             - http:
                 paths:
                 - path: /grafana(/|$)(.*)
-                  pathType: Prefix
+                  pathType: ImplementationSpecific
                   backend:
                     service:
                       name: kube-prometheus-stack-grafana
@@ -1454,11 +1455,12 @@ jobs:
               nginx.ingress.kubernetes.io/auth-secret: prometheus-basic-auth
               nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Prometheus'
           spec:
+            ingressClassName: nginx
             rules:
             - http:
                 paths:
                 - path: /prometheus(/|$)(.*)
-                  pathType: Prefix
+                  pathType: ImplementationSpecific
                   backend:
                     service:
                       name: kube-prometheus-stack-prometheus
@@ -1478,11 +1480,12 @@ jobs:
               nginx.ingress.kubernetes.io/auth-secret: alertmanager-basic-auth
               nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Alertmanager'
           spec:
+            ingressClassName: nginx
             rules:
             - http:
                 paths:
                 - path: /alertmanager(/|$)(.*)
-                  pathType: Prefix
+                  pathType: ImplementationSpecific
                   backend:
                     service:
                       name: kube-prometheus-stack-alertmanager
@@ -1502,11 +1505,12 @@ jobs:
               nginx.ingress.kubernetes.io/auth-secret: argocd-basic-auth
               nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - ArgoCD'
           spec:
+            ingressClassName: nginx
             rules:
             - http:
                 paths:
                 - path: /argocd(/|$)(.*)
-                  pathType: Prefix
+                  pathType: ImplementationSpecific
                   backend:
                     service:
                       name: argocd-server
