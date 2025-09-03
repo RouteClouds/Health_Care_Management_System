@@ -672,12 +672,18 @@ jobs:
             echo "TF_VAR_preserve_existing_cluster=false" >> $GITHUB_ENV
           fi
 
+
+      - name: Persist EKS decision to tfvars
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          echo "preserve_existing_cluster=${TF_VAR_preserve_existing_cluster}" > terraform.tfvars
+          echo "📄 terraform.tfvars contents:" && cat terraform.tfvars
+
       - name: Terraform Plan
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
           echo "📋 Planning infrastructure deployment..."
-          echo "Existing infrastructure will be preserved and managed by Terraform state"
-          terraform plan -out=tfplan
+          terraform plan -var="preserve_existing_cluster=${TF_VAR_preserve_existing_cluster}" -out=tfplan
 
           # Show plan summary
           terraform show -no-color tfplan | head -50
@@ -752,7 +758,7 @@ jobs:
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
           echo "📋 Re-planning infrastructure after imports/conflict handling..."
-          terraform plan -out=tfplan
+          terraform plan -var="preserve_existing_cluster=${TF_VAR_preserve_existing_cluster}" -out=tfplan
           echo "📋 Plan summary (post-import):"
           terraform show -no-color tfplan | head -50
 
@@ -852,7 +858,10 @@ jobs:
           # Resolve cluster name from Terraform outputs if available
           CLUSTER_NAME="healthcare-eks-stage3-dev"
           if terraform output cluster_id >/dev/null 2>&1; then
-            CLUSTER_NAME=$(terraform output -raw cluster_id 2>/dev/null || echo "healthcare-eks-stage3-dev")
+            CANDIDATE=$(terraform output -raw cluster_id 2>/dev/null || echo "")
+            if [ -n "$CANDIDATE" ] && [ "$CANDIDATE" != "null" ]; then
+              CLUSTER_NAME="$CANDIDATE"
+            fi
           fi
           echo "Using cluster name: $CLUSTER_NAME"
 
@@ -1206,7 +1215,10 @@ jobs:
           echo "🔧 Resolving cluster name from Terraform outputs..."
           CLUSTER_NAME="healthcare-eks-stage3-dev"
           if terraform output cluster_id >/dev/null 2>&1; then
-            CLUSTER_NAME=$(terraform output -raw cluster_id 2>/dev/null || echo "healthcare-eks-stage3-dev")
+            CANDIDATE=$(terraform output -raw cluster_id 2>/dev/null || echo "")
+            if [ -n "$CANDIDATE" ] && [ "$CANDIDATE" != "null" ]; then
+              CLUSTER_NAME="$CANDIDATE"
+            fi
           fi
           echo "Using cluster: $CLUSTER_NAME"
 
