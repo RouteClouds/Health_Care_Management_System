@@ -22,8 +22,10 @@ check_eks() {
         log "EKS cluster already in Terraform state; skipping import"
       fi
     elif [[ "$FAIL_FAST" == "true" ]]; then
-      log "Conflict: EKS cluster exists. Set AUTO_IMPORT=true to import or delete the cluster."
-      return 2
+      # EKS cluster existing is not a hard conflict when preservation is enabled in Terraform.
+      # We do not fail here; we only fail-fast on genuine duplicates (e.g., duplicate VPCs).
+      log "EKS exists and AUTO_IMPORT=false; continuing (cluster will be preserved/imported later if needed)."
+      return 0
     fi
   else
     log "EKS cluster not found: $CLUSTER_NAME"
@@ -52,6 +54,32 @@ check_vpc() {
   if [[ -n "$vpcs" ]]; then
     log "Found VPCs:\n$vpcs"
   else
+
+# Detect duplicate VPCs and decide exit code
+check_vpc_duplicates_and_decide() {
+  local vpc_count
+  vpc_count=$(aws ec2 describe-vpcs --region "$REGION" \
+    --filters "Name=tag:Name,Values=${CLUSTER_NAME}-vpc" \
+    --query 'length(Vpcs)' --output text 2>/dev/null || echo 0)
+
+  if [[ "$vpc_count" == "0" ]]; then
+    log "VPC count=0 for Name=${CLUSTER_NAME}-vpc — ok (Terraform may create it)."
+    return 0
+  elif [[ "$vpc_count" == "1" ]]; then
+    log "VPC count=1 for Name=${CLUSTER_NAME}-vpc — ok (expected normal state)."
+    return 0
+  else
+    log "Duplicate VPCs detected: count=$vpc_count for Name=${CLUSTER_NAME}-vpc"
+    if [[ "$FAIL_FAST" == "true" ]]; then
+      log "FAIL_FAST=true — failing preflight to prevent further duplication."
+      return 2
+    else
+      log "FAIL_FAST=false — continuing, but duplicates exist (risky)."
+      return 0
+    fi
+  fi
+}
+
     log "No VPCs found with Name like *${CLUSTER_NAME}-vpc*"
   fi
 }
@@ -60,6 +88,7 @@ main() {
   check_eks || exit $?
   check_db_subnet_groups || true
   check_vpc || true
+  check_vpc_duplicates_and_decide || exit $?
   log "Preflight checks completed."
 }
 
