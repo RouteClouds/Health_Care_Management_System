@@ -10,7 +10,7 @@ module "healthcare_infrastructure" {
   cluster_name = "healthcare-eks-stage3-dev"
 
   # Preserve existing control plane once created to avoid replacement/duplication
-  preserve_existing_cluster = true
+  preserve_existing_cluster = var.preserve_existing_cluster
 
   # Existing cluster bindings (only needed when preserve_existing_cluster=true)
   # eks_cluster_role_arn          = "<EKS cluster role ARN>"
