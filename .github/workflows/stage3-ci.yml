@@ -657,6 +657,21 @@ jobs:
             echo "ℹ️ No existing VPC found; Terraform may create it."
           fi
 
+      - name: Decide EKS Create/Preserve
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
+        run: |
+          set -e
+          CLUSTER_NAME="healthcare-eks-stage3-dev"
+          REGION="${AWS_REGION:-us-east-1}"
+          echo "🔎 Detecting EKS cluster existence to set preserve/create behavior..."
+          if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" >/dev/null 2>&1; then
+            echo "✅ EKS cluster exists; will PRESERVE"
+            echo "TF_VAR_preserve_existing_cluster=true" >> $GITHUB_ENV
+          else
+            echo "📋 EKS cluster missing; will CREATE"
+            echo "TF_VAR_preserve_existing_cluster=false" >> $GITHUB_ENV
+          fi
+
       - name: Terraform Plan
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
@@ -834,24 +849,36 @@ jobs:
             echo "⚠️ db_instance_endpoint output not found"
           fi
 
-          # Use hardcoded cluster name as fallback
+          # Resolve cluster name from Terraform outputs if available
           CLUSTER_NAME="healthcare-eks-stage3-dev"
+          if terraform output cluster_id >/dev/null 2>&1; then
+            CLUSTER_NAME=$(terraform output -raw cluster_id 2>/dev/null || echo "healthcare-eks-stage3-dev")
+          fi
           echo "Using cluster name: $CLUSTER_NAME"
 
-          # Validate EKS cluster
-          echo "🔍 Validating EKS cluster..."
-          if aws eks describe-cluster --name $CLUSTER_NAME --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
-            echo "✅ EKS cluster exists and is accessible"
+          echo "⏳ Waiting for EKS cluster ($CLUSTER_NAME) to be ACTIVE..."
+          ATTEMPTS=70
+          SLEEP_SECONDS=30
+          STATUS="UNKNOWN"
+          for i in $(seq 1 $ATTEMPTS); do
+            STATUS=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region ${{ env.AWS_REGION }} --query 'cluster.status' --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "Attempt $i/$ATTEMPTS - Cluster status: $STATUS"
+            if [[ "$STATUS" == "ACTIVE" ]]; then
+              echo "✅ EKS cluster exists and is ACTIVE"
+              break
+            fi
+            sleep $SLEEP_SECONDS
+          done
 
-            # Update kubeconfig
-            aws eks update-kubeconfig --name $CLUSTER_NAME --region ${{ env.AWS_REGION }}
-
-            # Test cluster connectivity
-            echo "🔍 Testing cluster connectivity..."
-            kubectl get nodes || echo "⚠️ Could not connect to cluster nodes"
-          else
-            echo "❌ EKS cluster not found or not accessible"
+          if [[ "$STATUS" != "ACTIVE" ]]; then
+            echo "❌ EKS cluster is not ACTIVE or not accessible"
+            exit 1
           fi
+
+          # Update kubeconfig and test connectivity
+          aws eks update-kubeconfig --name "$CLUSTER_NAME" --region ${{ env.AWS_REGION }}
+          echo "🔍 Testing cluster connectivity..."
+          kubectl get nodes || echo "⚠️ Could not connect to cluster nodes"
 
           # Validate ECR repositories
           echo "🔍 Validating ECR repositories..."
@@ -1174,9 +1201,35 @@ jobs:
           version: 'latest'
 
       - name: Configure kubectl for EKS
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
+          echo "🔧 Resolving cluster name from Terraform outputs..."
+          CLUSTER_NAME="healthcare-eks-stage3-dev"
+          if terraform output cluster_id >/dev/null 2>&1; then
+            CLUSTER_NAME=$(terraform output -raw cluster_id 2>/dev/null || echo "healthcare-eks-stage3-dev")
+          fi
+          echo "Using cluster: $CLUSTER_NAME"
+
+          echo "⏳ Waiting for EKS cluster ($CLUSTER_NAME) to be ACTIVE..."
+          ATTEMPTS=70
+          SLEEP_SECONDS=30
+          STATUS="UNKNOWN"
+          for i in $(seq 1 $ATTEMPTS); do
+            STATUS=$(aws eks describe-cluster --region ${{ env.AWS_REGION }} --name "$CLUSTER_NAME" --query 'cluster.status' --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "Attempt $i/$ATTEMPTS - Cluster status: $STATUS"
+            if [[ "$STATUS" == "ACTIVE" ]]; then
+              echo "✅ Cluster is ACTIVE"
+              break
+            fi
+            sleep $SLEEP_SECONDS
+          done
+          if [[ "$STATUS" != "ACTIVE" ]]; then
+            echo "❌ EKS cluster is not ACTIVE or not found"
+            exit 1
+          fi
+
           echo "🔧 Configuring kubectl for EKS cluster..."
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name healthcare-eks-stage3-dev
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$CLUSTER_NAME"
 
           # Verify cluster connectivity
           echo "🔍 Verifying cluster connectivity..."
@@ -1314,6 +1367,160 @@ jobs:
           kubectl get pods -n monitoring || true
         env:
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD || 'admin123' }}
+
+
+      - name: Install NGINX Ingress Controller (NLB)
+        run: |
+          set -e
+          echo "🔧 Installing ingress-nginx controller (Service type LoadBalancer using NLB)..."
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo update
+          kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
+          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            --namespace ingress-nginx \
+            --set controller.service.type=LoadBalancer \
+            --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+            --set controller.updateStrategy.type=RollingUpdate \
+            --wait --timeout 10m
+          echo "⏳ Waiting for NLB hostname..."
+          for i in {1..20}; do
+            LB=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            if [[ -n "$LB" ]]; then echo "✅ NLB: $LB"; echo "OBS_NLB=$LB" >> $GITHUB_ENV; break; fi
+            sleep 15
+          done
+          if [[ -z "$LB" ]]; then echo "❌ NLB hostname not ready"; exit 1; fi
+
+      - name: Create basic-auth secrets for observability
+        run: |
+          set -e
+          echo "🔐 Creating basic-auth secrets..."
+          USER="${OBS_USER:-admin}"
+          PASS="${OBS_PASS:-admin123}"
+          HASH=$(openssl passwd -apr1 "$PASS")
+          # Monitoring namespace secrets
+          kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n monitoring create secret generic grafana-basic-auth --from-literal=auth="${USER}:${HASH}" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n monitoring create secret generic prometheus-basic-auth --from-literal=auth="${USER}:${HASH}" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n monitoring create secret generic alertmanager-basic-auth --from-literal=auth="${USER}:${HASH}" --dry-run=client -o yaml | kubectl apply -f -
+          # ArgoCD namespace secret
+          kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n argocd create secret generic argocd-basic-auth --from-literal=auth="${USER}:${HASH}" --dry-run=client -o yaml | kubectl apply -f -
+        env:
+          OBS_USER: ${{ secrets.OBSERVABILITY_BASIC_AUTH_USER || 'admin' }}
+          OBS_PASS: ${{ secrets.OBSERVABILITY_BASIC_AUTH_PASS || 'admin123' }}
+
+      - name: Apply NGINX Ingresses for observability (path-based)
+        run: |
+          set -e
+          echo "🌐 Applying NGINX Ingresses for Grafana/Prometheus/Alertmanager/ArgoCD"
+          # Grafana - requires X-Forwarded-Prefix for sub-path
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: grafana-basic
+            namespace: monitoring
+            annotations:
+              kubernetes.io/ingress.class: nginx
+              nginx.ingress.kubernetes.io/rewrite-target: /$2
+              nginx.ingress.kubernetes.io/use-regex: "true"
+              nginx.ingress.kubernetes.io/auth-type: basic
+              nginx.ingress.kubernetes.io/auth-secret: grafana-basic-auth
+              nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Grafana'
+              nginx.ingress.kubernetes.io/configuration-snippet: |
+                proxy_set_header X-Forwarded-Prefix /grafana;
+          spec:
+            rules:
+            - http:
+                paths:
+                - path: /grafana(/|$)(.*)
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: kube-prometheus-stack-grafana
+                      port:
+                        number: 80
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: prometheus-basic
+            namespace: monitoring
+            annotations:
+              kubernetes.io/ingress.class: nginx
+              nginx.ingress.kubernetes.io/rewrite-target: /$2
+              nginx.ingress.kubernetes.io/use-regex: "true"
+              nginx.ingress.kubernetes.io/auth-type: basic
+              nginx.ingress.kubernetes.io/auth-secret: prometheus-basic-auth
+              nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Prometheus'
+          spec:
+            rules:
+            - http:
+                paths:
+                - path: /prometheus(/|$)(.*)
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: kube-prometheus-stack-prometheus
+                      port:
+                        number: 9090
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: alertmanager-basic
+            namespace: monitoring
+            annotations:
+              kubernetes.io/ingress.class: nginx
+              nginx.ingress.kubernetes.io/rewrite-target: /$2
+              nginx.ingress.kubernetes.io/use-regex: "true"
+              nginx.ingress.kubernetes.io/auth-type: basic
+              nginx.ingress.kubernetes.io/auth-secret: alertmanager-basic-auth
+              nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Alertmanager'
+          spec:
+            rules:
+            - http:
+                paths:
+                - path: /alertmanager(/|$)(.*)
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: kube-prometheus-stack-alertmanager
+                      port:
+                        number: 9093
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: argocd-basic
+            namespace: argocd
+            annotations:
+              kubernetes.io/ingress.class: nginx
+              nginx.ingress.kubernetes.io/rewrite-target: /$2
+              nginx.ingress.kubernetes.io/use-regex: "true"
+              nginx.ingress.kubernetes.io/auth-type: basic
+              nginx.ingress.kubernetes.io/auth-secret: argocd-basic-auth
+              nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - ArgoCD'
+          spec:
+            rules:
+            - http:
+                paths:
+                - path: /argocd(/|$)(.*)
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: argocd-server
+                      port:
+                        number: 80
+          EOF
+
+      - name: Print Observability access via NLB
+        run: |
+          echo "🔗 Access your tools via the NLB: http://$OBS_NLB"
+          echo "Grafana:     http://$OBS_NLB/grafana"
+          echo "Prometheus:  http://$OBS_NLB/prometheus"
+          echo "Alertmanager:http://$OBS_NLB/alertmanager"
+          echo "ArgoCD:      http://$OBS_NLB/argocd"
 
       - name: Deploy application with latest GitOps manifests
         working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
@@ -1832,8 +2039,34 @@ jobs:
           version: 'latest'
 
       - name: Configure kubectl for EKS
+        working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name healthcare-eks-stage3-dev
+          echo "🔧 Resolving cluster name from Terraform outputs..."
+          CLUSTER_NAME="healthcare-eks-stage3-dev"
+          if terraform output cluster_id >/dev/null 2>&1; then
+            CLUSTER_NAME=$(terraform output -raw cluster_id 2>/dev/null || echo "healthcare-eks-stage3-dev")
+          fi
+          echo "Using cluster: $CLUSTER_NAME"
+
+          echo "⏳ Waiting for EKS cluster ($CLUSTER_NAME) to be ACTIVE..."
+          ATTEMPTS=70
+          SLEEP_SECONDS=30
+          STATUS="UNKNOWN"
+          for i in $(seq 1 $ATTEMPTS); do
+            STATUS=$(aws eks describe-cluster --region ${{ env.AWS_REGION }} --name "$CLUSTER_NAME" --query 'cluster.status' --output text 2>/dev/null || echo "NOT_FOUND")
+            echo "Attempt $i/$ATTEMPTS - Cluster status: $STATUS"
+            if [[ "$STATUS" == "ACTIVE" ]]; then
+              echo "✅ Cluster is ACTIVE"
+              break
+            fi
+            sleep $SLEEP_SECONDS
+          done
+          if [[ "$STATUS" != "ACTIVE" ]]; then
+            echo "❌ EKS cluster is not ACTIVE or not found"
+            exit 1
+          fi
+
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$CLUSTER_NAME"
 
       - name: Run Automated GitOps Recovery
         working-directory: Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline

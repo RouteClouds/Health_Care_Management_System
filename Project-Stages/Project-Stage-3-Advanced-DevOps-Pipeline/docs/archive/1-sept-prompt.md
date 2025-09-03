@@ -1,4 +1,290 @@
+3-Sept-2025
+
+Summary of findings
+Root cause is most likely a workflow gap rather than a real absence of the cluster:
+
+The “Deploy Infrastructure” job does not fail the pipeline if the EKS cluster is missing. Its “Validate Infrastructure” step only echoes “EKS cluster not found” and continues. So the job can complete “successfully” even if the cluster does not exist or isn’t ACTIVE yet.
+The “Deploy Application with Automated Database Setup” and “Automated GitOps Recovery” jobs immediately run aws eks update-kubeconfig with a hardcoded cluster name (healthcare-eks-stage3-dev) and with no wait/retry. If the cluster is not present or not ACTIVE at that moment (or if Terraform is preserving an external cluster that isn’t there), kubectl configuration fails with ResourceNotFoundException.
+Supporting evidence from the repo:
+
+EKS cluster name is “healthcare-eks-stage3-dev” in Terraform dev environment:
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/environments/dev/main.tf sets cluster_name = "healthcare-eks-stage3-dev"
+The EKS module is configured not to create the cluster when preserve_existing_cluster = true:
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/terraform/modules/healthcare-platform/main.tf: create = var.preserve_existing_cluster ? false : true
+The “Validate Infrastructure” step in deploy-infrastructure only prints and does not exit on failure if EKS is not found:
+.github/workflows/stage3-ci.yml lines 841–854 echo “❌ EKS cluster not found or not accessible” but don’t exit 1
+Downstream jobs configure kubectl using a hardcoded cluster name and no wait/retry:
+Deploy Application job: .github/workflows/stage3-ci.yml lines 1176–1184
+Automated GitOps Recovery job: .github/workflows/stage3-ci.yml lines 1834–1837
+One job (ansible-configuration) has a “Wait for EKS cluster to be ACTIVE” loop, but deploy-application and recovery-gitops do not.
+Implications
+
+If preserve_existing_cluster = true and the cluster does not exist (or was removed), Terraform won’t create it, but the infra job still “succeeds”; downstream jobs then fail because the cluster really isn’t there.
+Even when the cluster exists, without a readiness wait loop, a transient not-ACTIVE state can cause ResourceNotFoundException errors.
+Primary fix (proposed changes)
+Goal: make the pipeline robust so that:
+
+Deploy Infrastructure fails if the cluster is absent or not ACTIVE after apply
+Downstream jobs use the same dynamically-resolved cluster name and wait until ACTIVE before configuring kubectl
+Make Deploy Infrastructure validation enforce existence and readiness
+After terraform apply, fetch cluster name via Terraform output cluster_id (fallback to “healthcare-eks-stage3-dev” if output unavailable).
+Add a “wait for ACTIVE” loop (like the one used in the ansible-configuration job).
+If the cluster is not found or not ACTIVE by timeout, exit 1 to fail the job (so downstream does not run on a broken state).
+Optionally, expose cluster_name as a job output for downstream jobs.
+Suggested snippet to replace the non-fatal check (illustrative; replace the echo-only block at ~lines 841–854):
+
+Path: .github/workflows/stage3-ci.yml (Deploy Infrastructure -> Validate Infrastructure step)
+Replace echo-only validation with:
+
+stage3-ci.yml
+.github/workflows
+Use the same cluster name and readiness wait in downstream jobs
+In deploy-application and recovery-gitops, avoid the hardcoded name. Prefer the same resolution used above:
+Try terraform output cluster_id (using the environments/dev working-directory), fallback to “healthcare-eks-stage3-dev”
+Add the same wait loop for ACTIVE before aws eks update-kubeconfig.
+Then call aws eks update-kubeconfig with the resolved CLUSTER_NAME.
+Deploy Application: replace lines 1176–1184 with:
+
+
+stage3-ci.yml
+.github/workflows
+Automated GitOps Recovery: replace lines 1834–1837 similarly (point working-directory to terraform env, resolve CLUSTER_NAME, wait, update-kubeconfig).
+
+Note: This makes downstream jobs resilient to timing and ensures they use the actual cluster name output when available.
+
+Optional: Detect misconfiguration early when preserve_existing_cluster = true
+If preserve_existing_cluster is set to true, ensure the cluster exists; otherwise, fail immediately with a helpful message in preflight or right after terraform apply.
+Secondary tasks
+A) ALB Ingress with TLS and authentication for observability
+
+Reality check:
+
+AWS Load Balancer Controller (ALB Ingress Controller) natively supports OIDC/Cognito auth via annotations; it does not support HTTP Basic Auth directly.
+If strict “basic-auth” is required, the common approach is to use NGINX Ingress with basic-auth (and expose via a Service of type LoadBalancer or its own Ingress). But that won’t be the AWS ALB controller-managed Ingress. Alternatively, place NGINX in front of the upstream and terminate auth there.
+Recommended: Use ALB + TLS + OIDC (Cognito or another OIDC provider) for Grafana/Prometheus/Alertmanager/ArgoCD.
+If OIDC is acceptable, here’s an example Ingress for Grafana with ALB TLS and OIDC:
+
+Prereqs: an ACM certificate in us-east-1 for your domain, and an OIDC provider (or Cognito user pool) configured.
+
+grafana-alb.yaml
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/observability/ingress
+For Prometheus/Alertmanager/ArgoCD you can replicate with different hosts. If you instead require Basic Auth specifically, I recommend:
+
+Install NGINX Ingress Controller and use NGINX basic-auth annotations; terminate TLS with an ACM-managed NLB/ELB or cert-manager in-cluster.
+Please confirm which auth method you prefer (OIDC vs Basic Auth via NGINX). I’ll then add the corresponding manifests and the pipeline steps to apply them.
+
+B) Optimize NAT/EIP reuse to avoid creates
+
+The VPC module already supports reusing NAT EIPs:
+reuse_nat_ips = var.reuse_existing_eips && length(var.existing_eip_ids) > 0
+external_nat_ip_ids = var.existing_eip_ids
+To force reuse and drive “0 creates” in networking:
+Set reuse_existing_eips = true
+Provide existing_eip_ids in your dev/environment variables (or via terraform.tfvars)
+The conflict handler has logic to detect unassociated EIPs and append to terraform.tfvars:
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/deployment/handle-infrastructure-conflicts.sh detects available EIPs and writes existing_eip_ids = ["eipalloc-..."]
+If you want deterministic reuse always, set reuse_existing_eips to true in environments/dev variable assignments. If you also want to reuse an existing NAT Gateway (instead of creating a new one), we can introduce optional inputs to the VPC module to hard-bind an existing NAT Gateway; but the current terraform-aws-modules/vpc design typically manages NAT for you. With single_nat_gateway=true and EIP reuse, you should see “0 creates” for EIP/NAT on subsequent runs.
+Validation plan (after changes are applied)
+Re-run Stage‑3 pipeline on main:
+Expect Deploy Infrastructure to fail if the EKS cluster is missing; otherwise it waits for ACTIVE and succeeds
+Deploy Application and Automated GitOps Recovery will resolve cluster name via terraform output and wait until ACTIVE before updating kubeconfig
+No more ResourceNotFoundException in kubectl configuration steps
+Observability:
+If OIDC-based ALB Ingress chosen, validate HTTPS endpoints per hostnames and successful auth redirect
+If NGINX+basic-auth chosen, validate access via basic credentials
+Idempotency:
+Confirm Terraform plan shows zero creates for networking on subsequent runs when EIP reuse is enabled
+Safety guard remains green
+Request for confirmation
+For ALB authentication: do you want OIDC (recommended for ALB) or strictly Basic Auth (which implies deploying NGINX Ingress with basic-auth and not using ALB auth)?
+Are you okay with me applying the above workflow changes (enforcing EKS readiness and resolving cluster name from terraform output) and triggering a pipeline run to validate end-to-end?
+Once you confirm, I’ll implement the changes and run the pipeline to verify the Expected Outcome end-to-end.
+
+
+
+################################################
+
+Task 1 update: Guided cleanup executed and CI re‑run performed
+Here’s what I did and what happened.
+
+Actions performed
+Removed the older duplicate VPC (Option A)
+Ran enhanced duplicate cleanup (with confirmations)
+It handled NAT GWs, VPC endpoints, unattached ENIs, SG rule revocations, route tables, subnets, IGW, and finally VPC removal
+Result: VPC vpc-0bdb999074380c528 was deleted successfully
+Triggered a safe Stage‑3 pipeline run on main
+Created a temp file under src-code/temp-test and pushed
+Run ID: 17414220575
+Monitored run status
+Success: Terraform Validate, Node unit tests, Trivy, Build & Push Images, Update GitOps Manifests, Setup Terraform Backend
+Failed in Deploy Infrastructure at step “Preflight Collision Detection”
+The job failed before the duplicate VPC guard step and Terraform plan
+This indicates the preflight script itself is returning a non‑zero exit after cleanup
+What this means
+The duplicate VPC was removed correctly (no third VPC created; cleanup confirmed)
+The idempotency guard and import logic we added are ready, but the Deploy Infrastructure job is now failing earlier in “Preflight Collision Detection”
+This suggests the preflight script logic is too strict or misreporting after cleanup (e.g., still expecting imports/flags or bailing on a benign condition)
+What I added for cleanup (documentation and script)
+New guided removal script:
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/cleanup/guided-remove-duplicate-vpc.sh
+Documentation section in:
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/cleanup/README-Cleanup-Script.md
+“Guided removal of duplicate VPC (opt-in)” with commands and safety notes
+Recommended next steps to complete Task 1
+I propose a minimal, safe fix to get the pipeline past the preflight step and validate idempotency end‑to‑end:
+
+Inspect and adjust preflight script
+Open scripts/preflight/check-collisions.sh (or equivalent) and:
+Ensure it returns success when:
+Exactly one VPC named healthcare-eks-stage3-dev-vpc exists (expected case)
+Zero duplicates exist (normal after cleanup)
+Ensure it only fails when duplicates are detected or a truly blocking condition exists
+Keep FAIL_FAST behavior for actual duplication
+Confirm it prints a clear summary (counts and decisions)
+Re‑run pipeline on main
+Expect Deploy Infrastructure to pass:
+Guard step should show 0 or 1 VPCs and proceed
+import_vpc_networking runs to reconcile Terraform state
+Terraform plan should show no “create” for VPC/subnets/IGW (reusing existing resources)
+Post‑run verification
+Share plan highlights and confirmation that no duplicate resources were created
+Please confirm if you want me to proceed with patching the preflight collision script now. I’ll keep Ansible configuration and GitOps recovery stages only on main, as you requested.
+
+If you prefer, I can also:
+
+Capture and attach the Deploy Infrastructure job logs to pinpoint the exact failure message from the preflight step before patching
+Make the guard/import ordering even more robust (import first, then guard) if you’d like that flow
+Once Task 1 is fully green, I’ll move on to Task 2 (Skipped stages) and Task 3 (ALB Ingress with TLS + basic auth for Grafana, Prometheus, Alertmanager, ArgoCD).
+
+
+
+###################################################
 2-Sept-2025
+##################################################
+
+Task kickoff and plan
+I’ve started a focused task list to analyze and fix Stage‑3 observability automation. We’ll iterate incrementally, validating at each step.
+
+Current Task List
+
+Investigate/Triage/Understand the Stage‑3 observability pipeline gap
+Implement CI automation for ArgoCD + Observability in stage3-ci.yml
+Fix ArgoCD app destinations and prep for deduplication
+Observability documentation update
+[/] End‑to‑end validation via src-code trigger
+Next immediate steps
+
+Confirm you want me to remove the duplicated ArgoCD app manifests under argocd/applications (keep gitops/applications/*-stage3.yaml as the single source)
+Trigger the pipeline with a minimal src-code change to validate the new automation
+If validation passes, mark this work complete and commit the cleanup; if issues appear, iterate
+1) Root Cause Analysis — Why observability didn’t deploy
+No ArgoCD install/bootstrap in CI: The workflow didn’t install ArgoCD or apply the AppProject and “parent” Applications (observability-monitoring/logging/tracing). With no argocd namespace or CRDs, nothing could sync.
+Ansible monitoring step gated off: The monitoring setup is under job ansible-configuration with if: vars.ENABLE_ANSIBLE == 'true' (disabled by default), so it never ran.
+Parent Applications present but not applied: The app-of-apps manifests exist under gitops/applications/observability-*.yaml, but CI never kubectl apply’ed them; and with no ArgoCD, they couldn’t work anyway.
+Namespaces never created: monitoring/logging/tracing namespaces weren’t created by CI (hence your kubectl output).
+App namespace mismatch: ArgoCD app definitions under argocd/applications targeted namespace: default, but your workloads run in healthcare-stage3-dev. Even if ArgoCD had been installed, these apps would not have landed in the intended namespace.
+2) Pipeline Integration Assessment
+The prior requirement to run manual kubectl/helm commands contradicted the “zero manual intervention” goal. Observability needed to be part of the pipeline that triggers on src-code changes.
+Action taken: I integrated ArgoCD + observability bootstrap into the Stage‑3 workflow (idempotent), so the stack is automatically deployed when the pipeline runs. No doc-only triggers and no local scripts required.
+Note: The deploy-application job (where the new step runs) is guarded by if: github.ref == 'refs/heads/main'. Pushes to develop will not run those steps; we can extend to develop if you want.
+
+3) Full Automation Implementation (what I changed)
+A. CI workflow: auto-install ArgoCD and bootstrap observability
+
+Inserted an idempotent step that:
+Ensures ArgoCD is installed (argocd namespace + install.yaml)
+Applies the AppProject healthcare-stage3
+Creates monitoring/logging namespaces
+Ensures a Grafana admin Secret exists
+Applies parent observability Applications so ArgoCD syncs kube-prometheus-stack and EFK
+File edited: .github/workflows/stage3-ci.yml (in the deploy-application job, before app rollout)
+Tiny excerpt:
+
+
+stage3-ci.yml
+.github/workflows
+B. ArgoCD Application namespace fixes
+
+Updated the older ArgoCD app files to target the correct project/namespace so they don’t deploy to default:
+Project-Stages/.../argocd/applications/healthcare-backend-app.yaml → project: healthcare-stage3, namespace: healthcare-stage3-dev
+Project-Stages/.../argocd/applications/healthcare-frontend-app.yaml → project: healthcare-stage3, namespace: healthcare-stage3-dev
+Tiny excerpt:
+
+
+healthcare-backend-app.yaml
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/argocd/applications
+C. Metrics scraping made easy (no extra CRDs needed)
+
+Annotated Services for Prometheus scrape; this is the fastest way to get metrics without adding ServiceMonitors.
+backend Service: prometheus.io/scrape: "true", prometheus.io/port: "3001", prometheus.io/path: "/metrics"
+frontend Service: prometheus.io/scrape: "true", prometheus.io/port: "80", prometheus.io/path: "/metrics"
+Tiny excerpt:
+
+
+backend.yaml
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/gitops/environments/dev
+D. Documentation additions
+
+Expanded Stage-3-observability-doc.md with:
+Access instructions for Prometheus, Grafana, Alertmanager, and ArgoCD
+Default creds and how to retrieve ArgoCD admin password
+Navigation tips and troubleshooting for common issues
+4) Comprehensive Observability Documentation
+Where to read
+
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/docs/Stage-3-observability-doc.md
+What’s covered
+
+Purpose and role of each tool (Prometheus/Grafana/Alertmanager for metrics; EFK for logs)
+Step-by-step access with port-forward commands
+Default credentials, ArgoCD initial admin password retrieval
+Navigation guides (Dashboards, Targets, Alerts, Applications)
+Troubleshooting common access/sync issues
+5) Namespace Configuration Fix + duplication review
+ArgoCD Applications under gitops/applications/backend-stage3.yaml and frontend-stage3.yaml already target healthcare-stage3-dev correctly. These are the ones we want ArgoCD to manage.
+The older duplicates under argocd/applications were pointed at default; I updated them for safety, but they are redundant with the gitops/applications versions.
+Recommendation: Remove Project-Stages/.../argocd/applications/healthcare--app.yaml to avoid confusion, and keep only gitops/applications/-stage3.yaml as the single source. Confirm and I’ll delete those files.
+Metrics coverage
+
+With Service annotations added, kube-prometheus-stack will scrape the backend/frontend in healthcare-stage3-dev automatically.
+If you prefer ServiceMonitors, the doc includes an example; I can add them to gitops/observability/monitoring if you prefer the CRD route.
+6) End-to-end validation plan
+What I will run if you approve
+
+Commit/push the changes (or you push), then validate via src-code trigger:
+Create a temp file under src-code to trigger the pipeline (main branch)
+echo "obsv e2e $(date)" >> Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/src-code/temp-test/obsv-trigger-$(date +%s).md
+Commit and push to main
+git add .
+git commit -m "chore: trigger Stage-3 CI for observability e2e"
+git push
+Monitor the GitHub Actions run; on success, verify cluster:
+kubectl get ns | egrep 'argocd|monitoring|logging'
+kubectl get pods -n argocd
+kubectl get pods -n monitoring
+kubectl get pods -n logging
+Access UIs via port-forward:
+Grafana: http://localhost:3000 (admin / password from grafana-admin Secret)
+Alertmanager: http://localhost:9093
+Prometheus: http://localhost:9090
+ArgoCD UI: https://localhost:8080 (admin / initial password from Secret)
+Note: The new ArgoCD/observability step runs in the deploy-application job, which runs only on main. If you want it to run on develop too, I can extend the if condition or place the step in a job that runs on both branches.
+
+Requesting confirmation
+Remove duplicates: OK to delete these two files so we only keep gitops/applications as the source?
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/argocd/applications/healthcare-backend-app.yaml
+Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/argocd/applications/healthcare-frontend-app.yaml
+Run validation now: OK for me to trigger a safe pipeline run (by adding a temp file under src-code) and verify namespaces and pods?
+Optional: Enable the same ArgoCD/observability bootstrap on develop as on main?
+Once you confirm, I’ll:
+
+Remove the duplicates
+Trigger the pipeline and post a validation report (commands run, exit codes, and key log lines)
+Mark the task done if observability pods and ArgoCD Applications are healthy
+If you prefer any alternatives (e.g., ServiceMonitor-based scraping, or including Jaeger by default), I’ll incorporate them before final validation.
+
+
+
 ###########################################
 
 Important
