@@ -46,8 +46,6 @@ spec:
             secretKeyRef:
               name: database-credentials-stage3
               key: url
-        - name: FRONTEND_URL
-          value: "http://a46a32210135848f797d5b74ea975657-537872179.us-east-1.elb.amazonaws.com"
         - name: STAGE
           value: "stage-3"
         livenessProbe:

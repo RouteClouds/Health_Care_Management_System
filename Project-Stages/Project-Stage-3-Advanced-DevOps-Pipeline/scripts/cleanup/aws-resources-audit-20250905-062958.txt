@@ -1,4 +1,4 @@
-🔍 AWS Resources Audit - Thu Aug 28 06:08:39 UTC 2025
+🔍 AWS Resources Audit - Fri Sep  5 06:29:58 UTC 2025
 ================================================
 Region: us-east-1
 
@@ -9,8 +9,8 @@ Region: us-east-1
 +---------------+---------------------------------+------------+-------------------------+
 |   CidrBlock   |              Name               |   State    |          VpcId          |
 +---------------+---------------------------------+------------+-------------------------+
+|  10.0.0.0/16  |  healthcare-eks-stage3-dev-vpc  |  available |  vpc-0fc8d08a5479007f9  |
 |  172.31.0.0/16|  null                           |  available |  vpc-0632a4684ecd953bb  |
-|  10.0.0.0/16  |  healthcare-eks-stage3-dev-vpc  |  available |  vpc-0bdb999074380c528  |
 +---------------+---------------------------------+------------+-------------------------+
 
 📋 Subnets:
@@ -19,34 +19,25 @@ Region: us-east-1
 +------------------+-----------------+----------------------------------------------------+---------------------------+-------------------------+
 | AvailabilityZone |    CidrBlock    |                       Name                         |         SubnetId          |          VpcId          |
 +------------------+-----------------+----------------------------------------------------+---------------------------+-------------------------+
-|  us-east-1c      |  10.0.103.0/24  |  healthcare-eks-stage3-dev-vpc-public-us-east-1c   |  subnet-041298c27dc939f7e |  vpc-0bdb999074380c528  |
 |  us-east-1a      |  172.31.32.0/20 |  null                                              |  subnet-081f939b38d114b0f |  vpc-0632a4684ecd953bb  |
 |  us-east-1b      |  172.31.0.0/20  |  null                                              |  subnet-0aac5f2e42a2334b9 |  vpc-0632a4684ecd953bb  |
-|  us-east-1b      |  10.0.102.0/24  |  healthcare-eks-stage3-dev-vpc-public-us-east-1b   |  subnet-04a4c6ebae2f8dd09 |  vpc-0bdb999074380c528  |
+|  us-east-1a      |  10.0.1.0/24    |  healthcare-eks-stage3-dev-vpc-private-us-east-1a  |  subnet-03065536ca1307845 |  vpc-0fc8d08a5479007f9  |
 |  us-east-1d      |  172.31.16.0/20 |  null                                              |  subnet-0a80a6be7a6a7d466 |  vpc-0632a4684ecd953bb  |
+|  us-east-1c      |  10.0.3.0/24    |  healthcare-eks-stage3-dev-vpc-private-us-east-1c  |  subnet-05b45f9f4a6e9c0c8 |  vpc-0fc8d08a5479007f9  |
 |  us-east-1c      |  172.31.80.0/20 |  null                                              |  subnet-0032e3a33627683ed |  vpc-0632a4684ecd953bb  |
 |  us-east-1e      |  172.31.48.0/20 |  null                                              |  subnet-066c4db2bcb027c3c |  vpc-0632a4684ecd953bb  |
-|  us-east-1c      |  10.0.3.0/24    |  healthcare-eks-stage3-dev-vpc-private-us-east-1c  |  subnet-05e3052ed9e4ae165 |  vpc-0bdb999074380c528  |
-|  us-east-1a      |  10.0.1.0/24    |  healthcare-eks-stage3-dev-vpc-private-us-east-1a  |  subnet-0ce436bfa89b2509c |  vpc-0bdb999074380c528  |
-|  us-east-1a      |  10.0.101.0/24  |  healthcare-eks-stage3-dev-vpc-public-us-east-1a   |  subnet-0f7baabb98d73b8e8 |  vpc-0bdb999074380c528  |
+|  us-east-1b      |  10.0.2.0/24    |  healthcare-eks-stage3-dev-vpc-private-us-east-1b  |  subnet-05a7eb333fc52ae06 |  vpc-0fc8d08a5479007f9  |
 |  us-east-1f      |  172.31.64.0/20 |  null                                              |  subnet-0aa59b75ddb82cab9 |  vpc-0632a4684ecd953bb  |
-|  us-east-1b      |  10.0.2.0/24    |  healthcare-eks-stage3-dev-vpc-private-us-east-1b  |  subnet-0e1088e977bd28fdc |  vpc-0bdb999074380c528  |
 +------------------+-----------------+----------------------------------------------------+---------------------------+-------------------------+
 
 📋 NAT Gateways:
------------------------------------------------------------------------------------------------------------------------------------------
-|                                                          DescribeNatGateways                                                          |
-+-----------------------+------------------------+---------------------------+------------+---------------------------------------------+
-|  nat-053707155a494e0be|  vpc-0bdb999074380c528 |  subnet-0f7baabb98d73b8e8 |  available |  healthcare-eks-stage3-dev-vpc-us-east-1a   |
-+-----------------------+------------------------+---------------------------+------------+---------------------------------------------+
 
 📋 Internet Gateways:
---------------------------------------------------------------------------------------------------
-|                                    DescribeInternetGateways                                    |
-+-----------------------+-------------------------+------------+---------------------------------+
-|  igw-04bb5e6f69fb4b30d|  vpc-0bdb999074380c528  |  available |  healthcare-eks-stage3-dev-vpc  |
-|  igw-07effa75a4d44f569|  vpc-0632a4684ecd953bb  |  available |  None                           |
-+-----------------------+-------------------------+------------+---------------------------------+
+-------------------------------------------------------------------------
+|                       DescribeInternetGateways                        |
++------------------------+-------------------------+------------+-------+
+|  igw-07effa75a4d44f569 |  vpc-0632a4684ecd953bb  |  available |  None |
++------------------------+-------------------------+------------+-------+
 
 📋 Classic Load Balancers:
 
@@ -62,11 +53,9 @@ Region: us-east-1
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 |                                                                         DescribeSecurityGroups                                                                         |
 +----------------------+----------------------------------------------------------------+------------------------+-------------------------------------------------------+
-|  sg-00ff79be9e23c7bc4|  healthcare-eks-stage3-dev-cluster-2025082716083946150000000b  |  vpc-0bdb999074380c528 |  EKS cluster security group                           |
-|  sg-07e62215f81872d60|  healthcare-eks-stage3-dev-rds-2025082716083902730000000a      |  vpc-0bdb999074380c528 |  Managed by Terraform                                 |
-|  sg-080b27717f2539b82|  k8s-traffic-healthcareeksstage3dev-2699b5c7d8                 |  vpc-0bdb999074380c528 |  [k8s] Shared Backend SecurityGroup for LoadBalancer  |
-|  sg-02e16962058990107|  healthcare-eks-stage3-dev-node-20250827160839026700000009     |  vpc-0bdb999074380c528 |  EKS node shared security group                       |
-|  sg-005a36697ce8253b5|  k8s-healthcarestage3-8fb288ef6a                               |  vpc-0bdb999074380c528 |  [k8s] Managed SecurityGroup for LoadBalancer         |
+|  sg-0bba33252f8e1ec1c|  healthcare-eks-stage3-dev-node-20250903175903043700000003     |  vpc-0fc8d08a5479007f9 |  EKS node shared security group                       |
+|  sg-06e50b662c7efabb1|  healthcare-eks-stage3-dev-cluster-20250903175903051900000004  |  vpc-0fc8d08a5479007f9 |  EKS cluster security group                           |
+|  sg-01e6fc5a231e21c97|  k8s-traffic-healthcareeksstage3dev-2699b5c7d8                 |  vpc-0fc8d08a5479007f9 |  [k8s] Shared Backend SecurityGroup for LoadBalancer  |
 +----------------------+----------------------------------------------------------------+------------------------+-------------------------------------------------------+
 
 📋 Route Tables:
@@ -75,24 +64,18 @@ Region: us-east-1
 +---------------------------------------+-------------------------+-------------------------+
 |                 Name                  |      RouteTableId       |          VpcId          |
 +---------------------------------------+-------------------------+-------------------------+
-|  healthcare-eks-stage3-dev-vpc-public |  rtb-09b792e10a1904cf8  |  vpc-0bdb999074380c528  |
-|  healthcare-eks-stage3-dev-vpc-private|  rtb-06f5ba7ba379ab5ec  |  vpc-0bdb999074380c528  |
+|  healthcare-eks-stage3-dev-vpc-default|  rtb-0104351c0fefd033b  |  vpc-0fc8d08a5479007f9  |
+|  healthcare-eks-stage3-dev-vpc-private|  rtb-019021188daa6b692  |  vpc-0fc8d08a5479007f9  |
 |  null                                 |  rtb-089db5325fe6e8a9f  |  vpc-0632a4684ecd953bb  |
-|  healthcare-eks-stage3-dev-vpc-default|  rtb-00cbf8edc9c17200a  |  vpc-0bdb999074380c528  |
 +---------------------------------------+-------------------------+-------------------------+
 
 📋 Elastic IPs:
-----------------------------------------------------------------------------------------------------------------------------
-|                                                     DescribeAddresses                                                    |
-+----------------------------+-----------------+-----------------------------+---------------------------------------------+
-|  eipalloc-0aaac2a861d0cd696|  35.168.100.221 |  eipassoc-08401b901e9b66281 |  healthcare-eks-stage3-dev-vpc-us-east-1a   |
-+----------------------------+-----------------+-----------------------------+---------------------------------------------+
 
 📋 S3 Buckets:
 ---------------------------------------------------------------------------------
 |                                  ListBuckets                                  |
 +-------------------------------------------------+-----------------------------+
-|  healthcare-terraform-state-stage3-867344452513 |  2025-08-27T16:06:11+00:00  |
+|  healthcare-terraform-state-stage3-867344452513 |  2025-09-01T14:40:43+00:00  |
 +-------------------------------------------------+-----------------------------+
 
 📋 RDS DB Subnet Groups:
@@ -101,4 +84,4 @@ Region: us-east-1
 
 💰 COST ANALYSIS:
 ==================
-🚪 NAT Gateways: 14 (~$45/month each = $630/month)
+🚪 NAT Gateways: 0 (~$45/month each = $0/month)
