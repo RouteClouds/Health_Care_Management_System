@@ -64,7 +64,13 @@ spec:
       kind: '*'
     - group: 'logging.coreos.com'
       kind: '*'
-  
+    - group: 'rbac.authorization.k8s.io'
+      kind: '*'
+    - group: 'batch'
+      kind: '*'
+    - group: 'argoproj.io'
+      kind: 'Application'
+
   # Roles for project members
   roles:
     - name: admin
