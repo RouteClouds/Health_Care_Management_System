@@ -657,26 +657,28 @@ jobs:
             echo "ℹ️ No existing VPC found; Terraform may create it."
           fi
 
-      - name: Decide EKS Create/Preserve
+      - name: "Decide EKS Create/Preserve (safe: never destroy control plane)"
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
           set -e
           CLUSTER_NAME="healthcare-eks-stage3-dev"
           REGION="${AWS_REGION:-us-east-1}"
-          echo "🔎 Detecting EKS cluster existence to set preserve/create behavior..."
+          echo "🔎 Detecting EKS cluster existence..."
           if aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" >/dev/null 2>&1; then
-            echo "✅ EKS cluster exists; will PRESERVE"
-            echo "TF_VAR_preserve_existing_cluster=true" >> $GITHUB_ENV
+            echo "✅ EKS cluster exists"
           else
             echo "📋 EKS cluster missing; will CREATE"
-            echo "TF_VAR_preserve_existing_cluster=false" >> $GITHUB_ENV
           fi
+          # IMPORTANT: Keep Terraform managing the cluster to avoid accidental destroy
+          # In our module: create = var.preserve_existing_cluster ? false : true
+          # To ensure 'create=true', we must set preserve_existing_cluster=false always
+          echo "TF_VAR_preserve_existing_cluster=false" >> $GITHUB_ENV
 
 
       - name: Persist EKS decision to tfvars
         working-directory: ${{ env.TERRAFORM_PATH }}/environments/dev
         run: |
-          echo "preserve_existing_cluster=${TF_VAR_preserve_existing_cluster}" > terraform.tfvars
+          echo "preserve_existing_cluster=false" > terraform.tfvars
           echo "📄 terraform.tfvars contents:" && cat terraform.tfvars
 
       - name: Terraform Plan
