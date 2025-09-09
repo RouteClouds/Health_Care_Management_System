@@ -12,12 +12,13 @@ spec:
   # Source repositories
   sourceRepos:
     - 'https://github.com/RouteClouds/Health_Care_Management_System.git'
+    - 'https://github.com/prometheus-operator/prometheus-operator.git'
     - 'https://charts.bitnami.com/bitnami'
     - 'https://prometheus-community.github.io/helm-charts'
     - 'https://grafana.github.io/helm-charts'
     - 'https://helm.elastic.co'
     - 'https://jaegertracing.github.io/helm-charts'
-  
+
   # Destination clusters and namespaces
   destinations:
     - namespace: 'healthcare-stage3-*'
