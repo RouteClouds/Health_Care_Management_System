@@ -1800,16 +1800,30 @@ jobs:
           echo "📋 Checking backend logs..."
           kubectl logs deployment/healthcare-backend-stage3 -n healthcare-stage3-dev --tail=50 || echo "Could not get backend logs"
 
-          # Wait for LoadBalancer to be ready
-          echo "⏳ Waiting briefly before ALB checks..."
-          sleep 30
+          # Extra wait for DNS propagation of ALB hostname
+          echo "⏳ Waiting for ALB DNS to resolve..."
+          for i in {1..40}; do
+            if getent hosts "$LB_URL" >/dev/null 2>&1; then
+              echo "✅ DNS resolution successful for $LB_URL"
+              break
+            else
+              echo "⏳ DNS not resolved yet (attempt $i/40). Waiting 15s..."
+              sleep 15
+            fi
+          done
 
-          # Test basic connectivity first
-          echo "🌐 Testing basic connectivity..."
-          if curl -I "http://${LB_URL}" --connect-timeout 10 --max-time 30; then
+          if ! getent hosts "$LB_URL" >/dev/null 2>&1; then
+            echo "❌ DNS still not resolving for $LB_URL after 10 minutes"
+            echo "🔎 Ingress describe:" && kubectl describe ingress healthcare-stage3-ingress -n healthcare-stage3-dev || true
+            exit 1
+          fi
+
+          # Test basic connectivity with retries
+          echo "🌐 Testing basic connectivity (with retries)..."
+          if curl -I "http://${LB_URL}" --connect-timeout 10 --max-time 20 --retry 12 --retry-delay 10 --retry-connrefused; then
             echo "✅ LoadBalancer is accessible"
           else
-            echo "❌ LoadBalancer is not accessible"
+            echo "❌ LoadBalancer is not accessible after retries"
             exit 1
           fi
 
