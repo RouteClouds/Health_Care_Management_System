@@ -1,0 +1,15 @@
+# Ignore out-of-bounds symlinks and local envs that break Argo CD manifest generation
+# Narrowly exclude the Stage-2 testing visualization virtualenv that contains symlinks
+Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/Stage-2-Architecture/Testing-Visualization-System/testing-visualization-env/**
+
+# Also exclude the entire Testing-Visualization-System directory to be safe
+Project-Stages/Project-Stage-2-Automated-CI-CD-Pipeline/Stage-2-Architecture/Testing-Visualization-System/**
+
+# Common local environment directories (defensive)
+**/.venv/**
+**/venv/**
+**/node_modules/**
+**/.terraform/**
+**/.idea/**
+**/.vscode/**
+
