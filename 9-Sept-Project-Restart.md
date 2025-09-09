@@ -126,3 +126,175 @@ Next changes recommended:
 - Harden pipeline ordering and idempotency (imports, waits, diagnostics)
 - Iterate documentation to reflect the simplified, reliable path
 
+
+
+---
+
+### 9) Deployment Execution Report (9‑Sept)
+
+- Final pipeline run: SUCCESS
+- GitHub Actions Run ID: 17576214588
+- Key job timings (approx.):
+  - Deploy Infrastructure: 3m 9s
+  - Deploy Application (with automated DB setup): 6m 17s
+
+What was validated:
+- EKS cluster available and `kubectl` configured
+- AWS Load Balancer Controller running and reconciling Ingress
+- Ingress has ALB hostname; DNS resolved; HTTP 200 at root
+- Backend health shows `database: connected`
+- Sample data present (3 doctors)
+
+How to retrieve the Application Load Balancer URL:
+```bash
+# From the Kubernetes Ingress (preferred)
+kubectl get ingress healthcare-stage3-ingress \
+  -n healthcare-stage3-dev \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+# Fallback: list any application ALB in the region (if needed)
+aws elbv2 describe-load-balancers \
+  --region us-east-1 \
+  --query 'LoadBalancers[?Type==`application`].[DNSName]' \
+  --output text | head -n1
+```
+
+Database connectivity verification (examples):
+```bash
+# Replace $ALB with the hostname printed above
+ALB="$(kubectl get ingress healthcare-stage3-ingress -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+
+# Health endpoint should return database: connected
+curl -s "http://${ALB}/api/health" | jq
+
+# Doctors endpoint should return seeded sample data
+curl -s "http://${ALB}/api/doctors" | jq '.data.doctors | length'
+```
+
+Expected results (from the successful run):
+- Health response contained `"database":"connected"`
+- Doctors count: `3`
+
+
+---
+
+### 10) Troubleshooting Solutions and Root Cause Analysis
+
+Root causes of prior failures:
+- Competing ingress stacks (ALB + NGINX/NLB) causing timing/race conditions and conflicting controllers
+- EKS cluster not created/preserved inconsistently leading to empty kubeconfig targets
+- ALB DNS not yet propagated when validation ran (false negatives)
+- Backend CORS and FRONTEND_URL hardcoding breaking across new ALB hostnames
+- Ordering: secrets/CRDs applied too late for first rollout
+
+Fixes implemented in CI/CD (high level):
+1) EKS creation logic correction
+- Ensured cluster creation path is taken when cluster is missing by setting `preserve_existing_cluster=false` so Terraform creates the control plane instead of skipping.
+- Prevents the empty `cluster_id`/kubeconfig scenario.
+
+2) ALB readiness and DNS propagation
+- Added bounded wait for Ingress hostname and explicit DNS checks via `getent hosts`.
+- Added resilient `curl` connectivity tests with `--retry` and `--retry-connrefused`.
+
+3) Single ingress strategy (ALB only)
+- Removed NLB/NGINX steps entirely; observability accessed via port-forward in dev.
+
+4) Backend robustness
+- Removed hardcoded `FRONTEND_URL` from backend manifest; CORS now reflects requester origin.
+
+Key workflow code changes (.github/workflows/stage3-ci.yml):
+- Deciding EKS create/preserve path: set TF var to force create when needed
+- Ingress/ALB readiness loop with JSONPath to `.status.loadBalancer.ingress[0].hostname`
+- DNS wait using `getent hosts` (bounded loops)
+- Connectivity checks using `curl -I` with retries
+
+Example snippets (for reference):
+```bash
+# Wait for Ingress to expose ALB hostname
+for i in {1..20}; do
+  ALB_URL=$(kubectl get ingress healthcare-stage3-ingress -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+  [[ -n "$ALB_URL" ]] && echo "ALB: http://$ALB_URL" && break
+  sleep 30
+done
+
+# DNS propagation wait
+for i in {1..40}; do
+  getent hosts "$ALB_URL" && break || sleep 15
+done
+
+# Connectivity check with retries
+curl -I "http://${ALB_URL}" --connect-timeout 10 --max-time 20 \
+  --retry 12 --retry-delay 10 --retry-connrefused
+```
+
+Outcome: These changes removed the recurrent failure modes in the "Deploy Application" stage and made validations deterministic and idempotent.
+
+---
+
+### 11) Observability Stack and ArgoCD — Access & Verification (Dev)
+
+Retrieve ALB hostname (app access):
+```bash
+kubectl get ingress healthcare-stage3-ingress \
+  -n healthcare-stage3-dev \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+Port-forward access (local workstation):
+
+ArgoCD (default admin password from secret):
+```bash
+# Port-forward
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# Get initial admin password
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+# Open https://localhost:8080 (username: admin)
+```
+
+Grafana (password via secret; service name may vary by stack):
+```bash
+# Discover Grafana service
+kubectl get svc -n monitoring | grep -i grafana
+# Common port-forward (adjust service name if different)
+kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80
+# Retrieve admin password (try known labels/secret names)
+kubectl get secret -n monitoring \
+  -l app.kubernetes.io/name=grafana \
+  -o jsonpath='{.items[0].data.admin-password}' | base64 -d; echo
+# Open http://localhost:3000 (username: admin)
+```
+
+Prometheus UI:
+```bash
+# Discover Prometheus service
+kubectl get svc -n monitoring | grep -i prometheus
+# Common port-forward
+kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090
+# Open http://localhost:9090
+```
+
+Verify monitoring is scraping healthcare pods:
+```bash
+# Check healthcare workloads are Running
+kubectl get pods -n healthcare-stage3-dev -o wide
+
+# (Prometheus UI) Query 'up' metric filtered to namespace:
+# up{namespace="healthcare-stage3-dev"}
+
+# (CLI) If prom service name is accessible inside a pod:
+# kubectl -n monitoring exec deploy/kube-prometheus-stack-prometheus -- \
+#   curl -s 'http://localhost:9090/api/v1/series?match[]=up{namespace="healthcare-stage3-dev"}' | jq '.data | length'
+```
+
+Verify ArgoCD app sync/health:
+```bash
+kubectl -n argocd get applications.argoproj.io -o wide
+# Or via UI: Application should be Healthy/Synced
+```
+
+Example outputs to expect (from a healthy system):
+- healthcare-stage3-dev pods: STATUS=Running, READY=1/1 (or more), RESTARTS near 0
+- Prometheus 'up{namespace="healthcare-stage3-dev"}' shows 1+ active time series
+- ArgoCD Applications: Sync Status=Synced, Health=Healthy
+

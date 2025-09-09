@@ -1787,6 +1787,14 @@ jobs:
           fi
 
           echo "🔗 Using Application Load Balancer: http://$LB_URL"
+          # Publish ALB URL to GitHub Actions Job Summary for quick access
+          {
+            echo "### Application URL";
+            echo "http://$LB_URL";
+            echo;
+            echo "To retrieve later:";
+            echo "\`kubectl get ingress healthcare-stage3-ingress -n healthcare-stage3-dev -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'\`";
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # Ensure LB_URL is set only once
           :
@@ -2008,6 +2016,12 @@ jobs:
           fi
 
           echo "🔗 Using Application Load Balancer: http://$LB_URL"
+          # Publish ALB URL to GitHub Actions Job Summary for quick access (recovery phase)
+          {
+            echo "### Application URL (Recovery Validation)";
+            echo "http://$LB_URL";
+            echo;
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # Test application health
           for i in {1..5}; do
