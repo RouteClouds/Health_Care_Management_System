@@ -1383,24 +1383,6 @@ jobs:
 
 
 
-      - name: Apply NGINX Ingresses for observability (path-based)
-        run: |
-          set -e
-          echo "🌐 Applying NGINX Ingresses for Grafana/Prometheus/Alertmanager/ArgoCD"
-          # Grafana - requires X-Forwarded-Prefix for sub-path
-          cat <<'EOF' | kubectl apply -f -
-          apiVersion: networking.k8s.io/v1
-          kind: Ingress
-          metadata:
-            name: grafana-basic
-            namespace: monitoring
-            annotations:
-
-              nginx.ingress.kubernetes.io/rewrite-target: /$2
-              nginx.ingress.kubernetes.io/use-regex: "true"
-              nginx.ingress.kubernetes.io/auth-type: basic
-              nginx.ingress.kubernetes.io/auth-secret: grafana-basic-auth
-              nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Grafana'
 
 
       - name: Deploy application with latest GitOps manifests
