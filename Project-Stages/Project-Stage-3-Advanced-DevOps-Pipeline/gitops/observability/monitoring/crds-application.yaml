@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus-operator-crds
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: healthcare-stage3
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: healthcare-stage3
+  source:
+    repoURL: https://github.com/prometheus-operator/prometheus-operator.git
+    targetRevision: v0.73.0
+    path: example/prometheus-operator-crd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: false   # avoid accidental CRD deletes
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - Replace=true
+      - ApplyOutOfSyncOnly=true
+

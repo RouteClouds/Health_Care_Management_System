@@ -298,3 +298,148 @@ Example outputs to expect (from a healthy system):
 - Prometheus 'up{namespace="healthcare-stage3-dev"}' shows 1+ active time series
 - ArgoCD Applications: Sync Status=Synced, Health=Healthy
 
+
+
+---
+
+### 12) Observability RCA, Fixes, and Verified Working Commands (Stage-3)
+
+Summary of the issue and fix:
+- Symptom: Monitoring namespace had no pods; ArgoCD showed OutOfSync for observability app. Grafana service/ingress existed but workloads were missing.
+- Root causes:
+  - ArgoCD Project policy blocked namespace-scoped RBAC (Role/RoleBinding) and Jobs, causing sync failures.
+  - kube-prometheus-stack attempted to create Service objects in kube-system (control-plane targets) not allowed by project destinations.
+  - Large CRDs (Prometheus/Alertmanager/Thanos) hit the Kubernetes 256KB annotations limit when applied client-side.
+- Fixes applied:
+  - ArgoCD Project whitelist updated to allow rbac.authorization.k8s.io (namespace-scoped) and batch (Jobs) in permitted namespaces.
+  - kube-prometheus-stack values updated to disable kube-system related resources and admission webhook jobs:
+    - admissionWebhooks.enabled=false
+    - coreDns/kubeProxy/kubeControllerManager/kubeScheduler/kubeEtcd: enabled=false
+  - ArgoCD syncOptions tuned for the monitoring app to prefer Server-Side Apply and allow Replace for large objects:
+    - syncOptions: [CreateNamespace=true, ApplyOutOfSyncOnly=true, ServerSideApply=true, Replace=true]
+
+Current state (validated):
+- RUNNING: Grafana, Prometheus Operator, kube-state-metrics, node-exporter
+- SERVICES AVAILABLE: grafana, prometheus, alertmanager (pods for Prometheus/Alertmanager appear after CRDs are accepted)
+
+Commands — access all components via port-forward
+- Grafana (default):
+  ```bash
+  kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
+  # Open http://localhost:3000 (username: admin)
+  # Password from secret (if needed):
+  kubectl get secret -n monitoring -l app.kubernetes.io/name=grafana \
+    -o jsonpath='{.items[0].data.admin-password}' | base64 -d; echo
+  ```
+- Prometheus UI:
+  ```bash
+  kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090:9090
+  # Open http://localhost:9090
+  ```
+- Alertmanager UI:
+  ```bash
+  kubectl -n monitoring port-forward svc/kube-prometheus-stack-alertmanager 9093:9093
+  # Open http://localhost:9093
+  ```
+
+Alternate ports to avoid conflicts (choose any free local ports):
+- ArgoCD: 8081:443
+- Grafana: 3001:80
+- Prometheus: 9091:9090
+- Alertmanager: 9094:9093
+Example:
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8081:443
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3001:80
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9091:9090
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-alertmanager 9094:9093
+```
+
+Verification steps (copy/paste):
+```bash
+# 1) Ensure monitoring workloads are up
+kubectl get pods -n monitoring -o wide
+
+# 2) Confirm services exist
+kubectl get svc -n monitoring
+
+# 3) Test Grafana access (after port-forward):
+#   Open http://localhost:3000 and login (admin/<password>)
+#   Navigate: Dashboards -> Kubernetes / Compute Resources -> Workloads
+#   Expect: healthcare-stage3-dev pods visible with metrics
+
+# 4) Test Prometheus UI (after port-forward):
+#   Open http://localhost:9090
+#   Query: up{namespace="healthcare-stage3-dev"}
+#   Expect: 1+ active time series
+
+# 5) Test Alertmanager UI (after port-forward):
+#   Open http://localhost:9093
+#   Expect: UI loads; silences/alerts visible once rules fire
+```
+
+Troubleshooting (documented fixes):
+- If ArgoCD shows errors like "namespace kube-system is not permitted" or RBAC/Job not permitted:
+  - Update AppProject whitelist to include:
+    - namespaceResourceWhitelist: group 'rbac.authorization.k8s.io' and 'batch'
+    - destinations should not include kube-system; keep kube-system resources disabled via chart values as above
+- If ArgoCD shows CRD errors: "metadata.annotations: Too long: must have at most 262144 bytes":
+  - Ensure Application has syncOptions: ServerSideApply=true and Replace=true
+  - If still blocked in your environment, install CRDs once via server-side apply (example, Prometheus Operator v0.73.0):
+    ```bash
+    CRD_BASE="https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.73.0/example/prometheus-operator-crd"
+    for f in monitoring.coreos.com_{alertmanagers,prometheuses,prometheusrules,servicemonitors,podmonitors,probes,thanosrulers,scrapeconfigs,prometheusagents}.yaml; do
+      kubectl apply --server-side -f "$CRD_BASE/$f"
+    done
+    ```
+- If local port is in use:
+  - Use alternative port-forward pairs above, or free the port: `lsof -i :3000` then kill the process.
+- If Grafana admin secret is missing:
+  - Create it once (dev only):
+    ```bash
+    kubectl -n monitoring create secret generic grafana-admin \
+      --from-literal=admin-user=admin \
+      --from-literal=admin-password="ChangeMe!123"
+    ```
+
+Outcome:
+- With the above changes, Stage-3 observability is deployable by ArgoCD, and all three components (Grafana, Prometheus, Alertmanager) are accessible via port-forward with verified service names and commands.
+
+
+---
+
+### 13) CRD-only ArgoCD Application Strategy (Implemented)
+
+Rationale:
+- kube-prometheus-stack bundles large CRDs (Prometheus/Alertmanager/etc). Applying these with client-side apply can exceed the 256KB annotations limit and cause ArgoCD sync errors.
+- Best practice: install CRDs once via a dedicated ArgoCD Application using Server-Side Apply + Replace, and make the Helm application skip CRDs.
+
+What we implemented:
+- A dedicated ArgoCD Application to install Prometheus Operator CRDs from the upstream repository (sync-wave: -2, SSA+Replace, prune disabled).
+- Updated kube-prometheus-stack Application to set `spec.source.helm.skipCrds: true` and placed it at sync-wave 0.
+
+Verification steps (copy/paste):
+```bash
+# Force ArgoCD to refresh the parent app so both child apps reconcile
+kubectl annotate -n argocd application/observability-monitoring \
+  argocd.argoproj.io/refresh=hard --overwrite
+
+# Check CRD-only app
+kubectl get application -n argocd prometheus-operator-crds -o yaml | \
+  yq '.status.sync.status, .status.health.status'
+
+# Confirm CRDs exist
+kubectl get crd | grep -E 'monitoring.coreos.com|prometheus'
+
+# Check monitoring workloads and services after CRDs present
+kubectl get pods -n monitoring -o wide || true
+kubectl get svc -n monitoring || true
+```
+
+Troubleshooting:
+- If CRDs fail with annotation-length errors: ensure the CRD app has `syncOptions: [ServerSideApply=true, Replace=true]`.
+- Do not enable prune on the CRD app in dev/student envs to avoid accidental deletion of cluster-scoped CRDs.
+- Ensure the monitoring AppProject allows required kinds in the monitoring namespace (RBAC, Jobs). Keep kube-system resources disabled in Helm values as documented.
+
+CI/CD usage note:
+- Our Stage-3 workflow triggers on src-code changes and supports manual `workflow_dispatch`. To validate this strategy without touching src-code, trigger the workflow manually and then confirm both ArgoCD apps are Synced/Healthy as above.
