@@ -443,3 +443,37 @@ Troubleshooting:
 
 CI/CD usage note:
 - Our Stage-3 workflow triggers on src-code changes and supports manual `workflow_dispatch`. To validate this strategy without touching src-code, trigger the workflow manually and then confirm both ArgoCD apps are Synced/Healthy as above.
+
+
+---
+
+### 14) Final Verification Snapshot (9‑Sept)
+
+Validated on the live cluster after implementing the CRD‑only strategy:
+- ArgoCD Applications:
+  - prometheus-operator-crds: Sync=Synced, Health=Healthy
+  - kube-prometheus-stack: Sync=Synced (skipCrds=true), Health=Healthy
+- Monitoring namespace:
+  - Pods: grafana, prometheus-operator, kube-state-metrics, node-exporter all Running
+  - Services: grafana (80), prometheus (9090), alertmanager (9093)
+- CRDs present: monitoring.coreos.com/* (10+ total)
+- Access via port-forward: Grafana/Prometheus/Alertmanager reachable; alternative ports documented above
+
+Note: The latest GitHub Actions run (17578629798) failed in the optional "Automated GitOps Recovery" step due to a shell inline block syntax issue, unrelated to observability. The deploy infrastructure and ArgoCD apps were healthy. We will harden that job separately.
+
+### 15) Phase‑2 Cleanup Plan and Approval Gate
+
+Per cost‑optimization and student‑friendly reset requirements, we will perform a full AWS cleanup once you approve:
+
+Proposed commands (from repo root):
+```bash
+# 1) Audit current resources (writes a timestamped report in repo root)
+bash Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/cleanup/audit-aws-resources.sh
+
+# 2) Destroy complete infrastructure (idempotent; prompts/guards inside script)
+bash Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/cleanup/Script-Destroy-complete-infrastructu.sh
+
+# 3) Re-run audit until zero resources remain
+bash Project-Stages/Project-Stage-3-Advanced-DevOps-Pipeline/scripts/cleanup/audit-aws-resources.sh
+```
+We will capture and attach the audit logs before/after, and update TROUBLESHOOTING.md and the Stage‑3‑Project‑Destruction‑Guide with any lessons learned.

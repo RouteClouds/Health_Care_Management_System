@@ -47,6 +47,106 @@ References
 
 ---
 
+
+## 2A) Local Access Quickstart — Step‑by‑Step (from scratch)
+
+Follow these steps on your local machine to access all UIs and verify monitoring is working for the healthcare app infra.
+
+1) Configure kubeconfig for your EKS cluster
+```bash
+# Set AWS credentials in your shell first (export or use AWS SSO), then:
+aws eks update-kubeconfig --region us-east-1 --name healthcare-eks-stage3-dev
+
+# Verify cluster access
+kubectl get nodes
+kubectl get ns | egrep 'argocd|monitoring|logging|healthcare-stage3-dev'
+```
+
+2) Confirm observability components are running
+```bash
+kubectl get pods -n monitoring -o wide
+kubectl get svc  -n monitoring
+kubectl get applications -n argocd | egrep 'kube-prometheus-stack|efk|kibana|fluent-bit'
+```
+
+3) Port-forward UIs (choose alternative ports if conflicts)
+```bash
+# ArgoCD (UI): https://localhost:8080
+kubectl -n argocd     port-forward svc/argocd-server 8080:443
+# Grafana: http://localhost:3000
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
+# Prometheus: http://localhost:9090
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090:9090
+# Alertmanager: http://localhost:9093
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-alertmanager 9093:9093
+```
+Alternative ports (if in use): ArgoCD 8081:443, Grafana 3001:80, Prometheus 9091:9090, Alertmanager 9094:9093.
+
+4) Retrieve credentials
+```bash
+# ArgoCD admin password
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+
+# Grafana admin password (via label selectors)
+kubectl get secret -n monitoring -l app.kubernetes.io/name=grafana \
+  -o jsonpath='{.items[0].data.admin-password}' | base64 -d; echo
+```
+If Grafana secret is missing (rare in dev), create one temporarily:
+```bash
+kubectl -n monitoring create secret generic grafana-admin \
+  --from-literal=admin-user=admin \
+  --from-literal=admin-password='ChangeMe!123'
+```
+
+5) Log in and navigate
+- ArgoCD: https://localhost:8080 (admin/<password>) → Applications
+  - Expect observability-monitoring/logging to be Synced/Healthy
+- Grafana: http://localhost:3000 (admin/<password>)
+  - Dashboards → Browse → “Kubernetes / Compute Resources / Workloads”
+  - Expect workloads from namespace healthcare-stage3-dev with CPU/memory/time‑series
+- Prometheus: http://localhost:9090
+  - Status → Targets → Expect kube-state-metrics, node-exporter, and cluster targets Up
+  - Graph → Query: up{namespace="healthcare-stage3-dev"}
+- Alertmanager: http://localhost:9093
+  - Alerts → Expect “Watchdog” alert present (firing or inactive depending on rules)
+
+6) Verify the stack is actually monitoring the app infrastructure
+```bash
+# Check healthcare namespace workloads are Running
+kubectl get pods -n healthcare-stage3-dev -o wide
+
+# Prometheus targets count (API)
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090:9090 >/dev/null 2>&1 &
+sleep 2
+curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets | length'
+
+# Prometheus query for namespace (UI): up{namespace="healthcare-stage3-dev"}
+# Expect >= 1 active time series.
+```
+If you expose app metrics, either annotate the Service (quick test) or add a ServiceMonitor (GitOps):
+```bash
+# Quick test: annotate backend Service to enable scraping (if metrics exposed on port 3001)
+kubectl annotate svc backend-stage3-svc -n healthcare-stage3-dev \
+  prometheus.io/scrape=true prometheus.io/port=3001 --overwrite
+```
+
+7) What you should see (expected UI descriptions)
+- ArgoCD: Green checkmarks (Healthy/Synced) for kube-prometheus-stack, efk-logging, kibana, fluent-bit
+- Grafana: Time‑series panels showing CPU/Memory for nodes/pods; Workloads dashboard lists healthcare-stage3-dev pods
+- Prometheus: Status → Targets shows multiple Up endpoints; Graph for up{namespace="healthcare-stage3-dev"} returns series
+- Alertmanager: UI loads, Alerts page shows built‑in Watchdog; Silences page empty by default
+
+8) Troubleshooting quick fixes
+- Port already in use → pick alternate ports (e.g., 3001/9091/9094) or free with: lsof -i :3000; kill <pid>
+- Can’t connect to cluster → ensure aws eks update-kubeconfig ran with correct cluster name/region
+- Services not found → confirm names via: kubectl get svc -n monitoring (service names may vary by chart)
+- Prometheus targets empty → ensure CRDs present (kubectl get crd | grep monitoring.coreos.com) and that ServiceMonitor/annotations match labels/ports
+- ArgoCD login fails → reset admin secret (dev only) or retrieve argocd-initial-admin-secret again
+- Grafana login fails → recreate grafana-admin Secret (dev only) and restart grafana pod
+- Pods Pending/CrashLoop → kubectl describe pod and kubectl logs for details; check PVCs and resource requests
+
+---
+
 ## 2) Setup Instructions (MVP)
 
 Prerequisites
